@@ -248,6 +248,29 @@ module Cpu =
         registers
         |> setFlags (value &&& mask = 0uy) false true (registers.F &&& CarryFlag <> 0uy)
 
+    let private decimalAdjust registers =
+        let subtract = registers.F &&& SubtractFlag <> 0uy
+        let halfCarry = registers.F &&& HalfCarryFlag <> 0uy
+        let carry = registers.F &&& CarryFlag <> 0uy
+        let mutable correction = 0
+        let mutable setCarry = carry
+
+        if halfCarry || (not subtract && (registers.A &&& 0x0Fuy) > 0x09uy) then
+            correction <- correction ||| 0x06
+
+        if carry || (not subtract && registers.A > 0x99uy) then
+            correction <- correction ||| 0x60
+            setCarry <- true
+
+        let adjusted =
+            if subtract then
+                byte (int registers.A - correction)
+            else
+                byte (int registers.A + correction)
+
+        { registers with A = adjusted }
+        |> setFlags (adjusted = 0uy) subtract false setCarry
+
     let private jumpRelative pc offset =
         let signedOffset =
             if offset < 0x80uy then
@@ -548,6 +571,12 @@ module Cpu =
                 { Cpu = { cpu with Registers = { nextRegisters with PC = registers.PC + 1us } }
                   Bus = bus
                   Cycles = 4 }
+            | 0x27uy ->
+                let nextRegisters = decimalAdjust registers
+
+                { Cpu = { cpu with Registers = { nextRegisters with PC = registers.PC + 1us } }
+                  Bus = bus
+                  Cycles = 4 }
             | 0x29uy ->
                 let nextRegisters = addHL (getHL registers) registers
 
@@ -577,6 +606,14 @@ module Cpu =
                 let nextRegisters = registers |> setHL (address - 1us)
 
                 { Cpu = { cpu with Registers = { nextRegisters with PC = registers.PC + 1us } }
+                  Bus = bus
+                  Cycles = 8 }
+            | 0x3Auy ->
+                let address = getHL registers
+                let value = Bus.readByte address bus
+                let nextRegisters = registers |> setHL (address - 1us)
+
+                { Cpu = { cpu with Registers = { nextRegisters with A = value; PC = registers.PC + 1us } }
                   Bus = bus
                   Cycles = 8 }
             | 0x34uy ->
@@ -660,6 +697,12 @@ module Cpu =
                 { Cpu = { cpu with Registers = { registers with B = registers.L; PC = registers.PC + 1us } }
                   Bus = bus
                   Cycles = 4 }
+            | 0x46uy ->
+                let value = Bus.readByte (getHL registers) bus
+
+                { Cpu = { cpu with Registers = { registers with B = value; PC = registers.PC + 1us } }
+                  Bus = bus
+                  Cycles = 8 }
             | 0x47uy ->
                 { Cpu = { cpu with Registers = { registers with B = registers.A; PC = registers.PC + 1us } }
                   Bus = bus
@@ -808,6 +851,12 @@ module Cpu =
                 { Cpu = { cpu with Registers = { registers with L = registers.A; PC = registers.PC + 1us } }
                   Bus = bus
                   Cycles = 4 }
+            | 0x70uy ->
+                let bus = Bus.writeByte (getHL registers) registers.B bus
+
+                { Cpu = { cpu with Registers = { registers with PC = registers.PC + 1us } }
+                  Bus = bus
+                  Cycles = 8 }
             | 0x71uy ->
                 let bus = Bus.writeByte (getHL registers) registers.C bus
 
@@ -1157,6 +1206,17 @@ module Cpu =
                 { Cpu = { cpu with Registers = { registers with PC = target } }
                   Bus = bus
                   Cycles = 16 }
+            | 0xC2uy ->
+                let target = readImmediate16 bus (registers.PC + 1us)
+
+                if registers.F &&& ZeroFlag = 0uy then
+                    { Cpu = { cpu with Registers = { registers with PC = target } }
+                      Bus = bus
+                      Cycles = 16 }
+                else
+                    { Cpu = { cpu with Registers = { registers with PC = registers.PC + 3us } }
+                      Bus = bus
+                      Cycles = 12 }
             | 0xC4uy ->
                 let target = readImmediate16 bus (registers.PC + 1us)
 
@@ -1277,6 +1337,17 @@ module Cpu =
                     { Cpu = { cpu with Registers = { registers with PC = registers.PC + 3us } }
                       Bus = bus
                       Cycles = 12 }
+            | 0xDAuy ->
+                let target = readImmediate16 bus (registers.PC + 1us)
+
+                if registers.F &&& CarryFlag <> 0uy then
+                    { Cpu = { cpu with Registers = { registers with PC = target } }
+                      Bus = bus
+                      Cycles = 16 }
+                else
+                    { Cpu = { cpu with Registers = { registers with PC = registers.PC + 3us } }
+                      Bus = bus
+                      Cycles = 12 }
             | 0xCDuy ->
                 let target = readImmediate16 bus (registers.PC + 1us)
                 let returnAddress = registers.PC + 3us
@@ -1329,6 +1400,16 @@ module Cpu =
                     let value, nextRegisters = rr8 registers.A registers
 
                     { Cpu = { cpu with Registers = { nextRegisters with A = value; PC = registers.PC + 2us } }
+                      Bus = bus
+                      Cycles = 8 }
+                | 0x27uy ->
+                    let carry = registers.A &&& 0x80uy <> 0uy
+                    let value = registers.A <<< 1
+                    let nextRegisters =
+                        { registers with A = value }
+                        |> setFlags (value = 0uy) false false carry
+
+                    { Cpu = { cpu with Registers = { nextRegisters with PC = registers.PC + 2us } }
                       Bus = bus
                       Cycles = 8 }
                 | 0x37uy ->
@@ -1407,12 +1488,63 @@ module Cpu =
                     { Cpu = { cpu with Registers = { nextRegisters with PC = registers.PC + 2us } }
                       Bus = bus
                       Cycles = 8 }
+                | 0x50uy ->
+                    let nextRegisters = bitTest 2 registers.B registers
+
+                    { Cpu = { cpu with Registers = { nextRegisters with PC = registers.PC + 2us } }
+                      Bus = bus
+                      Cycles = 8 }
+                | 0x56uy ->
+                    let value = Bus.readByte (getHL registers) bus
+                    let nextRegisters = bitTest 2 value registers
+
+                    { Cpu = { cpu with Registers = { nextRegisters with PC = registers.PC + 2us } }
+                      Bus = bus
+                      Cycles = 12 }
+                | 0x57uy ->
+                    let nextRegisters = bitTest 2 registers.A registers
+
+                    { Cpu = { cpu with Registers = { nextRegisters with PC = registers.PC + 2us } }
+                      Bus = bus
+                      Cycles = 8 }
+                | 0x58uy ->
+                    let nextRegisters = bitTest 3 registers.B registers
+
+                    { Cpu = { cpu with Registers = { nextRegisters with PC = registers.PC + 2us } }
+                      Bus = bus
+                      Cycles = 8 }
+                | 0x5Euy ->
+                    let value = Bus.readByte (getHL registers) bus
+                    let nextRegisters = bitTest 3 value registers
+
+                    { Cpu = { cpu with Registers = { nextRegisters with PC = registers.PC + 2us } }
+                      Bus = bus
+                      Cycles = 12 }
                 | 0x5Fuy ->
                     let nextRegisters = bitTest 3 registers.A registers
 
                     { Cpu = { cpu with Registers = { nextRegisters with PC = registers.PC + 2us } }
                       Bus = bus
                       Cycles = 8 }
+                | 0x60uy ->
+                    let nextRegisters = bitTest 4 registers.B registers
+
+                    { Cpu = { cpu with Registers = { nextRegisters with PC = registers.PC + 2us } }
+                      Bus = bus
+                      Cycles = 8 }
+                | 0x68uy ->
+                    let nextRegisters = bitTest 5 registers.B registers
+
+                    { Cpu = { cpu with Registers = { nextRegisters with PC = registers.PC + 2us } }
+                      Bus = bus
+                      Cycles = 8 }
+                | 0x6Euy ->
+                    let value = Bus.readByte (getHL registers) bus
+                    let nextRegisters = bitTest 5 value registers
+
+                    { Cpu = { cpu with Registers = { nextRegisters with PC = registers.PC + 2us } }
+                      Bus = bus
+                      Cycles = 12 }
                 | 0x77uy ->
                     let nextRegisters = bitTest 6 registers.A registers
 
@@ -1432,6 +1564,14 @@ module Cpu =
                     { Cpu = { cpu with Registers = { nextRegisters with PC = registers.PC + 2us } }
                       Bus = bus
                       Cycles = 12 }
+                | 0x86uy ->
+                    let address = getHL registers
+                    let value = Bus.readByte address bus &&& 0xFEuy
+                    let bus = Bus.writeByte address value bus
+
+                    { Cpu = { cpu with Registers = { registers with PC = registers.PC + 2us } }
+                      Bus = bus
+                      Cycles = 16 }
                 | 0x87uy ->
                     { Cpu = { cpu with Registers = { registers with A = registers.A &&& 0xFEuy; PC = registers.PC + 2us } }
                       Bus = bus
@@ -1460,6 +1600,10 @@ module Cpu =
                     { Cpu = { cpu with Registers = { registers with PC = registers.PC + 2us } }
                       Bus = bus
                       Cycles = 16 }
+                | 0xFFuy ->
+                    { Cpu = { cpu with Registers = { registers with A = registers.A ||| 0x80uy; PC = registers.PC + 2us } }
+                      Bus = bus
+                      Cycles = 8 }
                 | unsupported ->
                     raise (UnsupportedOpcode(unsupported, registers.PC + 1us))
             | 0xBEuy ->

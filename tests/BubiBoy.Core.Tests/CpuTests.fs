@@ -538,6 +538,27 @@ let ``LD A HLI reads through bus and increments HL`` () =
     Assert.Equal(8, result.Cycles)
 
 [<Fact>]
+let ``LD A HLD reads through bus and decrements HL`` () =
+    let bus =
+        makeBus [| 0x3Auy |]
+        |> Bus.writeByte 0xC020us 0x3Auy
+
+    let cpu =
+        { Cpu.initialState with
+            Registers =
+                { Cpu.initialRegisters with
+                    A = 0uy
+                    H = 0xC0uy
+                    L = 0x20uy } }
+
+    let result = Cpu.step cpu bus
+
+    Assert.Equal(0x3Auy, result.Cpu.Registers.A)
+    Assert.Equal(0xC01Fus, (uint16 result.Cpu.Registers.H <<< 8) ||| uint16 result.Cpu.Registers.L)
+    Assert.Equal(0x0101us, result.Cpu.Registers.PC)
+    Assert.Equal(8, result.Cycles)
+
+[<Fact>]
 let ``INC HL increments HL without changing flags`` () =
     let bus = makeBus [| 0x23uy |]
     let cpu =
@@ -638,6 +659,23 @@ let ``LD HL C stores C through bus`` () =
     let result = Cpu.step cpu bus
 
     Assert.Equal(0x71uy, Bus.readByte 0xC010us result.Bus)
+    Assert.Equal(0x0101us, result.Cpu.Registers.PC)
+    Assert.Equal(8, result.Cycles)
+
+[<Fact>]
+let ``LD HL B stores B through bus`` () =
+    let bus = makeBus [| 0x70uy |]
+    let cpu =
+        { Cpu.initialState with
+            Registers =
+                { Cpu.initialRegisters with
+                    B = 0x70uy
+                    H = 0xC0uy
+                    L = 0x10uy } }
+
+    let result = Cpu.step cpu bus
+
+    Assert.Equal(0x70uy, Bus.readByte 0xC010us result.Bus)
     Assert.Equal(0x0101us, result.Cpu.Registers.PC)
     Assert.Equal(8, result.Cycles)
 
@@ -797,6 +835,20 @@ let ``JP Z jumps only when zero flag is set`` () =
     Assert.Equal(12, notJumped.Cycles)
 
 [<Fact>]
+let ``JP NZ jumps only when zero flag is clear`` () =
+    let bus = makeBus [| 0xC2uy; 0x00uy; 0x20uy |]
+    let clearZero = { Cpu.initialState with Registers = { Cpu.initialRegisters with F = 0uy } }
+    let setZero = { Cpu.initialState with Registers = { Cpu.initialRegisters with F = Cpu.ZeroFlag } }
+
+    let jumped = Cpu.step clearZero bus
+    let notJumped = Cpu.step setZero bus
+
+    Assert.Equal(0x2000us, jumped.Cpu.Registers.PC)
+    Assert.Equal(16, jumped.Cycles)
+    Assert.Equal(0x0103us, notJumped.Cpu.Registers.PC)
+    Assert.Equal(12, notJumped.Cycles)
+
+[<Fact>]
 let ``JP NC jumps only when carry flag is clear`` () =
     let bus = makeBus [| 0xD2uy; 0x00uy; 0x20uy |]
     let clearCarry = { Cpu.initialState with Registers = { Cpu.initialRegisters with F = 0uy } }
@@ -804,6 +856,20 @@ let ``JP NC jumps only when carry flag is clear`` () =
 
     let jumped = Cpu.step clearCarry bus
     let notJumped = Cpu.step setCarry bus
+
+    Assert.Equal(0x2000us, jumped.Cpu.Registers.PC)
+    Assert.Equal(16, jumped.Cycles)
+    Assert.Equal(0x0103us, notJumped.Cpu.Registers.PC)
+    Assert.Equal(12, notJumped.Cycles)
+
+[<Fact>]
+let ``JP C jumps only when carry flag is set`` () =
+    let bus = makeBus [| 0xDAuy; 0x00uy; 0x20uy |]
+    let setCarry = { Cpu.initialState with Registers = { Cpu.initialRegisters with F = Cpu.CarryFlag } }
+    let clearCarry = { Cpu.initialState with Registers = { Cpu.initialRegisters with F = 0uy } }
+
+    let jumped = Cpu.step setCarry bus
+    let notJumped = Cpu.step clearCarry bus
 
     Assert.Equal(0x2000us, jumped.Cpu.Registers.PC)
     Assert.Equal(16, jumped.Cycles)
@@ -1310,6 +1376,19 @@ let ``LD B register copies selected register into B`` opcode expected =
     Assert.Equal(expected, result.Cpu.Registers.B)
     Assert.Equal(0x0101us, result.Cpu.Registers.PC)
     Assert.Equal(4, result.Cycles)
+
+[<Fact>]
+let ``LD B HL reads through bus`` () =
+    let bus =
+        makeBus [| 0x46uy |]
+        |> Bus.writeByte 0xC044us 0x46uy
+
+    let cpu = { Cpu.initialState with Registers = { Cpu.initialRegisters with H = 0xC0uy; L = 0x44uy } }
+    let result = Cpu.step cpu bus
+
+    Assert.Equal(0x46uy, result.Cpu.Registers.B)
+    Assert.Equal(0x0101us, result.Cpu.Registers.PC)
+    Assert.Equal(8, result.Cycles)
 
 [<Fact>]
 let ``LD C A copies accumulator`` () =
@@ -2040,6 +2119,30 @@ let ``CPL complements A and preserves zero and carry`` () =
     Assert.Equal(4, result.Cycles)
 
 [<Fact>]
+let ``DAA adjusts accumulator after BCD addition`` () =
+    let bus = makeBus [| 0x27uy |]
+    let cpu = { Cpu.initialState with Registers = { Cpu.initialRegisters with A = 0x3Cuy; F = 0uy } }
+
+    let result = Cpu.step cpu bus
+
+    Assert.Equal(0x42uy, result.Cpu.Registers.A)
+    Assert.Equal(0uy, result.Cpu.Registers.F)
+    Assert.Equal(0x0101us, result.Cpu.Registers.PC)
+    Assert.Equal(4, result.Cycles)
+
+[<Fact>]
+let ``DAA adjusts accumulator after BCD subtraction preserving subtract`` () =
+    let bus = makeBus [| 0x27uy |]
+    let cpu = { Cpu.initialState with Registers = { Cpu.initialRegisters with A = 0x0Fuy; F = Cpu.SubtractFlag ||| Cpu.HalfCarryFlag } }
+
+    let result = Cpu.step cpu bus
+
+    Assert.Equal(0x09uy, result.Cpu.Registers.A)
+    Assert.Equal(Cpu.SubtractFlag, result.Cpu.Registers.F)
+    Assert.Equal(0x0101us, result.Cpu.Registers.PC)
+    Assert.Equal(4, result.Cycles)
+
+[<Fact>]
 let ``SCF sets carry and preserves zero`` () =
     let bus = makeBus [| 0x37uy |]
     let cpu = { Cpu.initialState with Registers = { Cpu.initialRegisters with F = Cpu.ZeroFlag ||| Cpu.SubtractFlag ||| Cpu.HalfCarryFlag } }
@@ -2089,6 +2192,19 @@ let ``CB 96 resets bit two through HL`` () =
     Assert.Equal(16, result.Cycles)
 
 [<Fact>]
+let ``CB 86 resets bit zero through HL`` () =
+    let bus =
+        makeBus [| 0xCBuy; 0x86uy |]
+        |> Bus.writeByte 0xC020us 0xFFuy
+
+    let cpu = { Cpu.initialState with Registers = { Cpu.initialRegisters with H = 0xC0uy; L = 0x20uy } }
+    let result = Cpu.step cpu bus
+
+    Assert.Equal(0xFEuy, Bus.readByte 0xC020us result.Bus)
+    Assert.Equal(0x0102us, result.Cpu.Registers.PC)
+    Assert.Equal(16, result.Cycles)
+
+[<Fact>]
 let ``CB E6 sets bit four through HL`` () =
     let bus =
         makeBus [| 0xCBuy; 0xE6uy |]
@@ -2100,6 +2216,18 @@ let ``CB E6 sets bit four through HL`` () =
     Assert.Equal(0x10uy, Bus.readByte 0xC020us result.Bus)
     Assert.Equal(0x0102us, result.Cpu.Registers.PC)
     Assert.Equal(16, result.Cycles)
+
+[<Fact>]
+let ``CB FF sets bit seven of A`` () =
+    let bus = makeBus [| 0xCBuy; 0xFFuy |]
+    let cpu = { Cpu.initialState with Registers = { Cpu.initialRegisters with A = 0x01uy; F = Cpu.ZeroFlag } }
+
+    let result = Cpu.step cpu bus
+
+    Assert.Equal(0x81uy, result.Cpu.Registers.A)
+    Assert.Equal(Cpu.ZeroFlag, result.Cpu.Registers.F)
+    Assert.Equal(0x0102us, result.Cpu.Registers.PC)
+    Assert.Equal(8, result.Cycles)
 
 [<Fact>]
 let ``CB 37 swaps nibbles of A and updates flags`` () =
@@ -2171,6 +2299,18 @@ let ``CB RR register sets zero when result is zero`` () =
 
     Assert.Equal(0x00uy, result.Cpu.Registers.B)
     Assert.Equal(Cpu.ZeroFlag, result.Cpu.Registers.F)
+    Assert.Equal(0x0102us, result.Cpu.Registers.PC)
+    Assert.Equal(8, result.Cycles)
+
+[<Fact>]
+let ``CB 27 shifts A left arithmetic`` () =
+    let bus = makeBus [| 0xCBuy; 0x27uy |]
+    let cpu = { Cpu.initialState with Registers = { Cpu.initialRegisters with A = 0x80uy; F = Cpu.ZeroFlag } }
+
+    let result = Cpu.step cpu bus
+
+    Assert.Equal(0x00uy, result.Cpu.Registers.A)
+    Assert.Equal(Cpu.ZeroFlag ||| Cpu.CarryFlag, result.Cpu.Registers.F)
     Assert.Equal(0x0102us, result.Cpu.Registers.PC)
     Assert.Equal(8, result.Cycles)
 
@@ -2280,6 +2420,17 @@ let ``CB 4F tests bit one of A`` () =
     Assert.Equal(8, result.Cycles)
 
 [<Fact>]
+let ``CB 50 tests bit two of B`` () =
+    let bus = makeBus [| 0xCBuy; 0x50uy |]
+    let cpu = { Cpu.initialState with Registers = { Cpu.initialRegisters with B = 0x00uy; F = Cpu.CarryFlag } }
+
+    let result = Cpu.step cpu bus
+
+    Assert.Equal(Cpu.ZeroFlag ||| Cpu.HalfCarryFlag ||| Cpu.CarryFlag, result.Cpu.Registers.F)
+    Assert.Equal(0x0102us, result.Cpu.Registers.PC)
+    Assert.Equal(8, result.Cycles)
+
+[<Fact>]
 let ``CB 4E tests bit one through HL`` () =
     let bus =
         makeBus [| 0xCBuy; 0x4Euy |]
@@ -2293,6 +2444,55 @@ let ``CB 4E tests bit one through HL`` () =
     Assert.Equal(12, result.Cycles)
 
 [<Fact>]
+let ``CB 56 tests bit two through HL`` () =
+    let bus =
+        makeBus [| 0xCBuy; 0x56uy |]
+        |> Bus.writeByte 0xC020us 0x04uy
+
+    let cpu = { Cpu.initialState with Registers = { Cpu.initialRegisters with H = 0xC0uy; L = 0x20uy; F = Cpu.CarryFlag } }
+    let result = Cpu.step cpu bus
+
+    Assert.Equal(Cpu.HalfCarryFlag ||| Cpu.CarryFlag, result.Cpu.Registers.F)
+    Assert.Equal(0x0102us, result.Cpu.Registers.PC)
+    Assert.Equal(12, result.Cycles)
+
+[<Fact>]
+let ``CB 57 tests bit two of A`` () =
+    let bus = makeBus [| 0xCBuy; 0x57uy |]
+    let cpu = { Cpu.initialState with Registers = { Cpu.initialRegisters with A = 0x04uy; F = Cpu.CarryFlag } }
+
+    let result = Cpu.step cpu bus
+
+    Assert.Equal(0x04uy, result.Cpu.Registers.A)
+    Assert.Equal(Cpu.HalfCarryFlag ||| Cpu.CarryFlag, result.Cpu.Registers.F)
+    Assert.Equal(0x0102us, result.Cpu.Registers.PC)
+    Assert.Equal(8, result.Cycles)
+
+[<Fact>]
+let ``CB 58 tests bit three of B`` () =
+    let bus = makeBus [| 0xCBuy; 0x58uy |]
+    let cpu = { Cpu.initialState with Registers = { Cpu.initialRegisters with B = 0x08uy; F = Cpu.CarryFlag } }
+
+    let result = Cpu.step cpu bus
+
+    Assert.Equal(Cpu.HalfCarryFlag ||| Cpu.CarryFlag, result.Cpu.Registers.F)
+    Assert.Equal(0x0102us, result.Cpu.Registers.PC)
+    Assert.Equal(8, result.Cycles)
+
+[<Fact>]
+let ``CB 5E tests bit three through HL`` () =
+    let bus =
+        makeBus [| 0xCBuy; 0x5Euy |]
+        |> Bus.writeByte 0xC020us 0x08uy
+
+    let cpu = { Cpu.initialState with Registers = { Cpu.initialRegisters with H = 0xC0uy; L = 0x20uy; F = Cpu.CarryFlag } }
+    let result = Cpu.step cpu bus
+
+    Assert.Equal(Cpu.HalfCarryFlag ||| Cpu.CarryFlag, result.Cpu.Registers.F)
+    Assert.Equal(0x0102us, result.Cpu.Registers.PC)
+    Assert.Equal(12, result.Cycles)
+
+[<Fact>]
 let ``CB 5F tests bit three of A`` () =
     let bus = makeBus [| 0xCBuy; 0x5Fuy |]
     let cpu = { Cpu.initialState with Registers = { Cpu.initialRegisters with A = 0x08uy; F = Cpu.CarryFlag } }
@@ -2302,6 +2502,41 @@ let ``CB 5F tests bit three of A`` () =
     Assert.Equal(Cpu.HalfCarryFlag ||| Cpu.CarryFlag, result.Cpu.Registers.F)
     Assert.Equal(0x0102us, result.Cpu.Registers.PC)
     Assert.Equal(8, result.Cycles)
+
+[<Fact>]
+let ``CB 60 tests bit four of B`` () =
+    let bus = makeBus [| 0xCBuy; 0x60uy |]
+    let cpu = { Cpu.initialState with Registers = { Cpu.initialRegisters with B = 0x10uy; F = Cpu.CarryFlag } }
+
+    let result = Cpu.step cpu bus
+
+    Assert.Equal(Cpu.HalfCarryFlag ||| Cpu.CarryFlag, result.Cpu.Registers.F)
+    Assert.Equal(0x0102us, result.Cpu.Registers.PC)
+    Assert.Equal(8, result.Cycles)
+
+[<Fact>]
+let ``CB 68 tests bit five of B`` () =
+    let bus = makeBus [| 0xCBuy; 0x68uy |]
+    let cpu = { Cpu.initialState with Registers = { Cpu.initialRegisters with B = 0x00uy; F = Cpu.CarryFlag } }
+
+    let result = Cpu.step cpu bus
+
+    Assert.Equal(Cpu.ZeroFlag ||| Cpu.HalfCarryFlag ||| Cpu.CarryFlag, result.Cpu.Registers.F)
+    Assert.Equal(0x0102us, result.Cpu.Registers.PC)
+    Assert.Equal(8, result.Cycles)
+
+[<Fact>]
+let ``CB 6E tests bit five through HL`` () =
+    let bus =
+        makeBus [| 0xCBuy; 0x6Euy |]
+        |> Bus.writeByte 0xC020us 0x20uy
+
+    let cpu = { Cpu.initialState with Registers = { Cpu.initialRegisters with H = 0xC0uy; L = 0x20uy; F = Cpu.CarryFlag } }
+    let result = Cpu.step cpu bus
+
+    Assert.Equal(Cpu.HalfCarryFlag ||| Cpu.CarryFlag, result.Cpu.Registers.F)
+    Assert.Equal(0x0102us, result.Cpu.Registers.PC)
+    Assert.Equal(12, result.Cycles)
 
 [<Fact>]
 let ``CB 77 tests bit six of A`` () =
