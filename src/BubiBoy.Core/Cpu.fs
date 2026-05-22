@@ -244,6 +244,12 @@ module Cpu =
                 { Cpu = { cpu with Registers = { nextRegisters with PC = registers.PC + 1us } }
                   Bus = bus
                   Cycles = 8 }
+            | 0x04uy ->
+                let result, nextRegisters = inc8 registers.B registers
+
+                { Cpu = { cpu with Registers = { nextRegisters with B = result; PC = registers.PC + 1us } }
+                  Bus = bus
+                  Cycles = 4 }
             | 0x05uy ->
                 let result, nextRegisters = dec8 registers.B registers
 
@@ -256,6 +262,16 @@ module Cpu =
                 { Cpu = { cpu with Registers = { registers with B = value; PC = registers.PC + 2us } }
                   Bus = bus
                   Cycles = 8 }
+            | 0x07uy ->
+                let carry = registers.A &&& 0x80uy <> 0uy
+                let value = (registers.A <<< 1) ||| if carry then 0x01uy else 0uy
+                let nextRegisters =
+                    { registers with A = value }
+                    |> setFlags false false false carry
+
+                { Cpu = { cpu with Registers = { nextRegisters with PC = registers.PC + 1us } }
+                  Bus = bus
+                  Cycles = 4 }
             | 0x0Duy ->
                 let result, nextRegisters = dec8 registers.C registers
 
@@ -268,6 +284,16 @@ module Cpu =
                 { Cpu = { cpu with Registers = { registers with C = value; PC = registers.PC + 2us } }
                   Bus = bus
                   Cycles = 8 }
+            | 0x0Fuy ->
+                let carry = registers.A &&& 0x01uy <> 0uy
+                let value = (registers.A >>> 1) ||| if carry then 0x80uy else 0uy
+                let nextRegisters =
+                    { registers with A = value }
+                    |> setFlags false false false carry
+
+                { Cpu = { cpu with Registers = { nextRegisters with PC = registers.PC + 1us } }
+                  Bus = bus
+                  Cycles = 4 }
             | 0x0Buy ->
                 let nextRegisters = registers |> setBC (getBC registers - 1us)
 
@@ -445,6 +471,12 @@ module Cpu =
                   Cycles = 8 }
             | 0x2Cuy ->
                 let result, nextRegisters = inc8 registers.L registers
+
+                { Cpu = { cpu with Registers = { nextRegisters with L = result; PC = registers.PC + 1us } }
+                  Bus = bus
+                  Cycles = 4 }
+            | 0x2Duy ->
+                let result, nextRegisters = dec8 registers.L registers
 
                 { Cpu = { cpu with Registers = { nextRegisters with L = result; PC = registers.PC + 1us } }
                   Bus = bus
@@ -713,6 +745,10 @@ module Cpu =
                 { Cpu = { cpu with Registers = { registers with PC = registers.PC + 1us } }
                   Bus = bus
                   Cycles = 8 }
+            | 0x76uy ->
+                { Cpu = { cpu with Halted = true; Registers = { registers with PC = registers.PC + 1us } }
+                  Bus = bus
+                  Cycles = 4 }
             | 0x77uy ->
                 let bus = Bus.writeByte (getHL registers) registers.A bus
 
@@ -921,6 +957,19 @@ module Cpu =
                 { Cpu = { cpu with Registers = { nextRegisters with PC = registers.PC + 1us } }
                   Bus = bus
                   Cycles = 4 }
+            | 0xB6uy ->
+                let value = Bus.readByte (getHL registers) bus
+                let nextRegisters = orA value registers
+
+                { Cpu = { cpu with Registers = { nextRegisters with PC = registers.PC + 1us } }
+                  Bus = bus
+                  Cycles = 8 }
+            | 0xB7uy ->
+                let nextRegisters = orA registers.A registers
+
+                { Cpu = { cpu with Registers = { nextRegisters with PC = registers.PC + 1us } }
+                  Bus = bus
+                  Cycles = 4 }
             | 0xB0uy ->
                 let nextRegisters = orA registers.B registers
 
@@ -1030,6 +1079,17 @@ module Cpu =
                 { Cpu = { cpu with Registers = { nextRegisters with SP = sp; PC = registers.PC + 1us } }
                   Bus = bus
                   Cycles = 12 }
+            | 0xD0uy ->
+                if registers.F &&& CarryFlag = 0uy then
+                    let target, sp = read16FromStack registers.SP bus
+
+                    { Cpu = { cpu with Registers = { registers with SP = sp; PC = target } }
+                      Bus = bus
+                      Cycles = 20 }
+                else
+                    { Cpu = { cpu with Registers = { registers with PC = registers.PC + 1us } }
+                      Bus = bus
+                      Cycles = 8 }
             | 0xD5uy ->
                 let sp, bus = write16ToStack (getDE registers) registers.SP bus
 
@@ -1185,6 +1245,13 @@ module Cpu =
                     { Cpu = { cpu with Registers = { nextRegisters with PC = registers.PC + 2us } }
                       Bus = bus
                       Cycles = 8 }
+                | 0x7Euy ->
+                    let value = Bus.readByte (getHL registers) bus
+                    let nextRegisters = bitTest 7 value registers
+
+                    { Cpu = { cpu with Registers = { nextRegisters with PC = registers.PC + 2us } }
+                      Bus = bus
+                      Cycles = 12 }
                 | 0x87uy ->
                     { Cpu = { cpu with Registers = { registers with A = registers.A &&& 0xFEuy; PC = registers.PC + 2us } }
                       Bus = bus
@@ -1284,6 +1351,13 @@ module Cpu =
                 { Cpu = { cpu with Registers = { registers with A = a; F = f; SP = sp; PC = registers.PC + 1us } }
                   Bus = bus
                   Cycles = 12 }
+            | 0xF2uy ->
+                let address = 0xFF00us + uint16 registers.C
+                let value = Bus.readByte address bus
+
+                { Cpu = { cpu with Registers = { registers with A = value; PC = registers.PC + 1us } }
+                  Bus = bus
+                  Cycles = 8 }
             | 0xFAuy ->
                 let address = readImmediate16 bus (registers.PC + 1us)
                 let value = Bus.readByte address bus
