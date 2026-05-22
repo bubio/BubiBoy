@@ -40,9 +40,7 @@ module Emulator =
         let mutable stopReason = None
 
         while stopReason.IsNone do
-            if current.Cpu.Halted then
-                stopReason <- Some Halted
-            elif remaining <= 0 then
+            if remaining <= 0 then
                 stopReason <- Some StepLimitReached
             else
                 try

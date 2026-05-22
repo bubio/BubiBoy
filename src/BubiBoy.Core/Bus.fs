@@ -134,12 +134,18 @@ module Bus =
 
         let timerResult = Timer.tick cycles memory.Timer registers
         let lcd = Lcd.tick cycles memory.Lcd
+        let interruptFlags =
+            if memory.Lcd.Line <> 144uy && lcd.Line = 144uy then
+                Interrupt.request Interrupt.VBlankBit timerResult.Registers.InterruptFlags
+            else
+                timerResult.Registers.InterruptFlags
+
         let nextIo = Array.copy memory.Io
         nextIo[0x04] <- timerResult.Registers.Div
         nextIo[0x05] <- timerResult.Registers.Tima
         nextIo[0x06] <- timerResult.Registers.Tma
         nextIo[0x07] <- timerResult.Registers.Tac
-        nextIo[0x0F] <- timerResult.Registers.InterruptFlags
+        nextIo[0x0F] <- interruptFlags
         nextIo[0x44] <- lcd.Line
 
         { memory with

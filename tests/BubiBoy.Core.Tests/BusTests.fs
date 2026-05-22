@@ -106,6 +106,13 @@ let ``LCD LY advances with bus cycles and wraps after one frame`` () =
     Assert.Equal(0uy, Bus.readByte 0xFF44us wrapped)
 
 [<Fact>]
+let ``LCD entering VBlank requests VBlank interrupt`` () =
+    let updated = makeBus () |> Bus.tick (Lcd.CyclesPerLine * 144)
+
+    Assert.Equal(144uy, Bus.readByte 0xFF44us updated)
+    Assert.Equal(Interrupt.VBlankBit, Bus.readByte 0xFF0Fus updated &&& Interrupt.VBlankBit)
+
+[<Fact>]
 let ``writing LY resets LCD line counter`` () =
     let advanced = makeBus () |> Bus.tick (Lcd.CyclesPerLine * 20)
     let reset = Bus.writeByte 0xFF44us 0xFFuy advanced
