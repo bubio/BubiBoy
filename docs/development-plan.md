@@ -1,0 +1,146 @@
+# BubiBoy Development Plan
+
+## Goal
+
+BubiBoy is a Game Boy and Game Boy Color emulator implemented in idiomatic F# on .NET 10. The emulator
+should run on macOS, Linux, and Windows, with an Avalonia UI frontend and miniaudio-backed audio output.
+The core should stay portable, deterministic, testable, and independent from UI concerns.
+
+## Non-Goals For The First Milestone
+
+- Cycle-perfect behavior for every commercial title.
+- Link cable networking.
+- Advanced debugger UX.
+- Shader pipelines, filters, rewind, netplay, or TAS tooling.
+- Built-in copyrighted ROMs, BIOS files, or proprietary assets.
+
+## Guiding Constraints
+
+- Keep a permissive license posture.
+- Use existing emulators only as behavioral references, not as source-code donors.
+- Favor F# domain modeling where it improves clarity.
+- Allow localized mutation in performance-sensitive hardware loops.
+- Make the emulator core usable from tests and alternate frontends without Avalonia.
+
+## Proposed Repository Layout
+
+```text
+src/
+  BubiBoy.Core/
+  BubiBoy.IO/
+  BubiBoy.Audio/
+  BubiBoy.App/
+tests/
+  BubiBoy.Core.Tests/
+  BubiBoy.TestRoms/
+docs/
+```
+
+`BubiBoy.Core` should contain all hardware emulation. `BubiBoy.App` should only orchestrate UI, input,
+video presentation, settings, and user workflows. Audio device code should remain outside the core.
+
+## Phase 1: Foundation
+
+- [x] Create the .NET solution and F# projects.
+- [x] Add CI for macOS, Linux, and Windows.
+- [x] Choose and document the repository license.
+- [x] Establish formatting, warnings, and test conventions.
+- [x] Add a minimal ROM loading path that parses cartridge headers.
+- [x] Add a small reference-provenance document for manuals, test ROMs, and emulator references.
+
+Deliverable: a buildable solution with an empty but shaped emulator core and tests.
+
+## Phase 2: DMG Core Bring-Up
+
+- [ ] Implement CPU register state, flags, instruction decoding, and instruction execution.
+- [ ] Implement the memory bus, boot state assumptions, cartridge ROM access, WRAM, HRAM, and IO registers.
+- [x] Implement interrupts, timers, divider behavior, joypad input, and serial stubs.
+- [x] Add ROM-only cartridge support.
+- [ ] Validate CPU behavior using permissively licensed test ROMs and focused unit tests.
+
+Deliverable: basic DMG test ROMs execute far enough to report pass/fail through memory or serial output.
+
+## Phase 3: Video Path
+
+- Implement LCD control/status registers and PPU mode timing.
+- Render background, window, and sprites for DMG mode.
+- Expose a stable framebuffer from the core.
+- Build a simple Avalonia viewport that displays frames.
+- Add frame stepping and throttling in the app layer.
+
+Deliverable: simple DMG games and visual test ROMs render recognizable output.
+
+## Phase 4: Cartridge Support
+
+- Implement MBC1, MBC2, MBC3, MBC5, RAM enable, ROM/RAM banking, and save RAM persistence.
+- Add battery-backed save handling through `BubiBoy.IO`.
+- Add RTC support for MBC3 with deterministic test hooks.
+- Document unsupported cartridge hardware as explicit compatibility gaps.
+
+Deliverable: common DMG cartridges load, run, and persist saves.
+
+## Phase 5: Audio
+
+- Implement APU channel state, frame sequencer, envelopes, sweep, length counters, and mixer behavior.
+- Keep sample generation deterministic in the core.
+- Add miniaudio output through a thin host layer.
+- Handle underrun, latency configuration, pause/resume, and device changes.
+
+Deliverable: audible DMG playback with acceptable latency and no UI dependency in the core.
+
+## Phase 6: Game Boy Color
+
+- Add CGB mode detection and hardware state.
+- Implement VRAM banks, WRAM banks, CGB palettes, HDMA/GDMA, speed switching, and CGB-specific registers.
+- Extend PPU rendering for CGB attributes and palettes.
+- Add CGB compatibility tests and known-title smoke tests where legally available.
+
+Deliverable: representative CGB titles boot and render with correct palette behavior.
+
+## Phase 7: Product Quality
+
+- Add input mapping UI and persistent settings.
+- Add save-state support with versioned serialization.
+- Add pause, reset, ROM recent list, fullscreen, scaling, and basic diagnostics.
+- Add compatibility notes and a known-issues document.
+- Improve error messages for unsupported ROMs or invalid files.
+
+Deliverable: a usable desktop emulator for routine testing and play.
+
+## Testing Strategy
+
+- Unit-test small hardware behaviors directly.
+- Use test ROM harnesses for CPU, PPU, timers, interrupts, and APU where licenses permit redistribution.
+- Keep test ROM provenance documented.
+- Add deterministic frame tests for rendering only when the expected output is stable enough to maintain.
+- Run `dotnet test` in CI across all target operating systems.
+
+## Reference And License Policy
+
+Permissive and documentation-oriented references are preferred. Before adding code, tests, or data from
+another project, record:
+
+- project or document name;
+- source URL;
+- license;
+- whether redistribution is allowed;
+- how it is used by BubiBoy.
+
+Never translate incompatible emulator source directly into F#. Hardware behavior can be reimplemented from
+public documentation, test results, and independently written notes.
+
+## Early Risks
+
+- CPU timing and interrupt edge cases can create hidden bugs if implemented too coarsely.
+- PPU timing is likely to require iterative correction against test ROMs.
+- Audio correctness can be difficult to validate without a good test strategy.
+- CGB support will significantly expand memory and PPU complexity.
+- Native audio packaging must be checked on all target platforms early, not at the end.
+
+## Initial Next Steps
+
+1. Create the solution and project skeleton.
+2. Select the repository license.
+3. Add the core domain types for CPU registers, cartridge headers, and memory map constants.
+4. Add cartridge header parsing tests.
+5. Add a reference-provenance document before importing any test ROMs or external assets.
