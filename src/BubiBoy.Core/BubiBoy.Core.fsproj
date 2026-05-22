@@ -11,6 +11,7 @@
     <Compile Include="CartridgeMemory.fs" />
     <Compile Include="Interrupt.fs" />
     <Compile Include="Timer.fs" />
+    <Compile Include="Lcd.fs" />
     <Compile Include="Joypad.fs" />
     <Compile Include="Bus.fs" />
     <Compile Include="Cpu.fs" />

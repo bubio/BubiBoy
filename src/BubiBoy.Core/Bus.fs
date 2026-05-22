@@ -9,6 +9,7 @@ module Bus =
           Io: byte[]
           Hram: byte[]
           Timer: Timer.State
+          Lcd: Lcd.State
           Joypad: Joypad.State
           InterruptEnable: byte }
 
@@ -35,6 +36,7 @@ module Bus =
           Io = Array.zeroCreate<byte> IoSize
           Hram = Array.zeroCreate<byte> HramSize
           Timer = Timer.initial
+          Lcd = Lcd.initial
           Joypad = Joypad.initial
           InterruptEnable = 0uy }
 
@@ -62,6 +64,8 @@ module Bus =
             Joypad.readP1 memory.Joypad
         | 0xFF04 ->
             Timer.div memory.Timer
+        | 0xFF44 ->
+            memory.Lcd.Line
         | value when value >= 0xFF00 && value <= 0xFF7F ->
             memory.Io[value - 0xFF00]
         | value when value >= 0xFF80 && value <= 0xFFFE ->
@@ -103,6 +107,10 @@ module Bus =
             let next = Array.copy memory.Io
             next[0x04] <- 0uy
             { memory with Io = next; Timer = Timer.resetDiv memory.Timer }
+        | 0xFF44 ->
+            let next = Array.copy memory.Io
+            next[0x44] <- 0uy
+            { memory with Io = next; Lcd = Lcd.resetLine memory.Lcd }
         | addr when addr >= 0xFF00 && addr <= 0xFF7F ->
             let next = Array.copy memory.Io
             next[addr - 0xFF00] <- value
@@ -124,16 +132,19 @@ module Bus =
               Tac = readByte 0xFF07us memory
               InterruptFlags = readByte 0xFF0Fus memory }
 
-        let result = Timer.tick cycles memory.Timer registers
+        let timerResult = Timer.tick cycles memory.Timer registers
+        let lcd = Lcd.tick cycles memory.Lcd
         let nextIo = Array.copy memory.Io
-        nextIo[0x04] <- result.Registers.Div
-        nextIo[0x05] <- result.Registers.Tima
-        nextIo[0x06] <- result.Registers.Tma
-        nextIo[0x07] <- result.Registers.Tac
-        nextIo[0x0F] <- result.Registers.InterruptFlags
+        nextIo[0x04] <- timerResult.Registers.Div
+        nextIo[0x05] <- timerResult.Registers.Tima
+        nextIo[0x06] <- timerResult.Registers.Tma
+        nextIo[0x07] <- timerResult.Registers.Tac
+        nextIo[0x0F] <- timerResult.Registers.InterruptFlags
+        nextIo[0x44] <- lcd.Line
 
         { memory with
-            Timer = result.State
+            Timer = timerResult.State
+            Lcd = lcd
             Io = nextIo }
 
     let setButton button pressed memory =

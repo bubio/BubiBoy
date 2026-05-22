@@ -93,3 +93,22 @@ let ``serial registers are retained as IO stubs`` () =
 
     Assert.Equal(0x42uy, Bus.readByte 0xFF01us bus)
     Assert.Equal(0x81uy, Bus.readByte 0xFF02us bus)
+
+[<Fact>]
+let ``LCD LY advances with bus cycles and wraps after one frame`` () =
+    let bus = makeBus ()
+    let line1 = Bus.tick Lcd.CyclesPerLine bus
+    let line153 = Bus.tick (Lcd.CyclesPerLine * 152) line1
+    let wrapped = Bus.tick Lcd.CyclesPerLine line153
+
+    Assert.Equal(0x01uy, Bus.readByte 0xFF44us line1)
+    Assert.Equal(153uy, Bus.readByte 0xFF44us line153)
+    Assert.Equal(0uy, Bus.readByte 0xFF44us wrapped)
+
+[<Fact>]
+let ``writing LY resets LCD line counter`` () =
+    let advanced = makeBus () |> Bus.tick (Lcd.CyclesPerLine * 20)
+    let reset = Bus.writeByte 0xFF44us 0xFFuy advanced
+
+    Assert.Equal(20uy, Bus.readByte 0xFF44us advanced)
+    Assert.Equal(0uy, Bus.readByte 0xFF44us reset)

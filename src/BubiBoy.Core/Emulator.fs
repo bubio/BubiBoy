@@ -35,19 +35,22 @@ module Emulator =
           Steps = session.Steps + 1 }
 
     let run maxSteps session =
-        let rec loop remaining current =
+        let mutable remaining = maxSteps
+        let mutable current = session
+        let mutable stopReason = None
+
+        while stopReason.IsNone do
             if current.Cpu.Halted then
-                { Session = current
-                  StopReason = Halted }
+                stopReason <- Some Halted
             elif remaining <= 0 then
-                { Session = current
-                  StopReason = StepLimitReached }
+                stopReason <- Some StepLimitReached
             else
                 try
-                    loop (remaining - 1) (step current)
+                    current <- step current
+                    remaining <- remaining - 1
                 with
                 | Cpu.UnsupportedOpcode(opcode, pc) ->
-                    { Session = current
-                      StopReason = UnsupportedOpcode(opcode, pc) }
+                    stopReason <- Some(UnsupportedOpcode(opcode, pc))
 
-        loop maxSteps session
+        { Session = current
+          StopReason = stopReason.Value }
