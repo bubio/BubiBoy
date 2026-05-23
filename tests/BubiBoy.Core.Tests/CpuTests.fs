@@ -3288,3 +3288,195 @@ let ``CB 7E tests bit seven through HL`` () =
     Assert.Equal(Cpu.HalfCarryFlag ||| Cpu.CarryFlag, result.Cpu.Registers.F)
     Assert.Equal(0x0102us, result.Cpu.Registers.PC)
     Assert.Equal(12, result.Cycles)
+
+[<Fact>]
+let ``DEC H updates H and flags preserving carry`` () =
+    let bus = makeBus [| 0x25uy |]
+    let cpu = { Cpu.initialState with Registers = { Cpu.initialRegisters with H = 0x10uy; F = Cpu.CarryFlag } }
+
+    let result = Cpu.step cpu bus
+
+    Assert.Equal(0x0Fuy, result.Cpu.Registers.H)
+    Assert.Equal(Cpu.SubtractFlag ||| Cpu.HalfCarryFlag ||| Cpu.CarryFlag, result.Cpu.Registers.F)
+    Assert.Equal(0x0101us, result.Cpu.Registers.PC)
+    Assert.Equal(4, result.Cycles)
+
+[<Fact>]
+let ``DEC HL decrements HL without changing flags`` () =
+    let bus = makeBus [| 0x2Buy |]
+    let cpu = { Cpu.initialState with Registers = { Cpu.initialRegisters with H = 0xC1uy; L = 0x00uy; F = Cpu.CarryFlag } }
+
+    let result = Cpu.step cpu bus
+
+    Assert.Equal(0xC0uy, result.Cpu.Registers.H)
+    Assert.Equal(0xFFuy, result.Cpu.Registers.L)
+    Assert.Equal(Cpu.CarryFlag, result.Cpu.Registers.F)
+    Assert.Equal(0x0101us, result.Cpu.Registers.PC)
+    Assert.Equal(8, result.Cycles)
+
+[<Fact>]
+let ``DEC SP decrements stack pointer without changing flags`` () =
+    let bus = makeBus [| 0x3Buy |]
+    let cpu = { Cpu.initialState with Registers = { Cpu.initialRegisters with SP = 0xD000us; F = Cpu.CarryFlag } }
+
+    let result = Cpu.step cpu bus
+
+    Assert.Equal(0xCFFFus, result.Cpu.Registers.SP)
+    Assert.Equal(Cpu.CarryFlag, result.Cpu.Registers.F)
+    Assert.Equal(0x0101us, result.Cpu.Registers.PC)
+    Assert.Equal(8, result.Cycles)
+
+[<Theory>]
+[<InlineData(0x49uy, 0x22uy)>]
+[<InlineData(0x4Buy, 0x33uy)>]
+[<InlineData(0x4Cuy, 0x44uy)>]
+let ``LD C missing register variants copy source into C`` opcode expected =
+    let bus = makeBus [| opcode |]
+    let cpu =
+        { Cpu.initialState with
+            Registers =
+                { Cpu.initialRegisters with
+                    C = 0x22uy
+                    E = 0x33uy
+                    H = 0x44uy } }
+
+    let result = Cpu.step cpu bus
+
+    Assert.Equal(expected, result.Cpu.Registers.C)
+    Assert.Equal(0x0101us, result.Cpu.Registers.PC)
+    Assert.Equal(4, result.Cycles)
+
+[<Fact>]
+let ``LD HL H stores H through bus`` () =
+    let bus = makeBus [| 0x74uy |]
+    let cpu = { Cpu.initialState with Registers = { Cpu.initialRegisters with H = 0xC0uy; L = 0x20uy } }
+
+    let result = Cpu.step cpu bus
+
+    Assert.Equal(0xC0uy, Bus.readByte 0xC020us result.Bus)
+    Assert.Equal(0x0101us, result.Cpu.Registers.PC)
+    Assert.Equal(8, result.Cycles)
+
+[<Theory>]
+[<InlineData(0x8Buy)>]
+[<InlineData(0x8Cuy)>]
+let ``ADC A missing register variants include carry in sum`` opcode =
+    let bus = makeBus [| opcode |]
+    let cpu =
+        { Cpu.initialState with
+            Registers =
+                { Cpu.initialRegisters with
+                    A = 0x0Fuy
+                    E = 0x01uy
+                    H = 0x01uy
+                    F = Cpu.CarryFlag } }
+
+    let result = Cpu.step cpu bus
+
+    Assert.Equal(0x11uy, result.Cpu.Registers.A)
+    Assert.Equal(Cpu.HalfCarryFlag, result.Cpu.Registers.F)
+    Assert.Equal(0x0101us, result.Cpu.Registers.PC)
+    Assert.Equal(4, result.Cycles)
+
+[<Fact>]
+let ``AND L updates A and sets half carry`` () =
+    let bus = makeBus [| 0xA5uy |]
+    let cpu = { Cpu.initialState with Registers = { Cpu.initialRegisters with A = 0xF0uy; L = 0x0Fuy; F = 0uy } }
+
+    let result = Cpu.step cpu bus
+
+    Assert.Equal(0uy, result.Cpu.Registers.A)
+    Assert.Equal(Cpu.ZeroFlag ||| Cpu.HalfCarryFlag, result.Cpu.Registers.F)
+    Assert.Equal(0x0101us, result.Cpu.Registers.PC)
+    Assert.Equal(4, result.Cycles)
+
+[<Theory>]
+[<InlineData(0xAAuy, 0xF0uy)>]
+[<InlineData(0xABuy, 0xF0uy)>]
+[<InlineData(0xACuy, 0xF0uy)>]
+[<InlineData(0xADuy, 0xF0uy)>]
+let ``XOR missing register variants update A and clear flags`` opcode expected =
+    let bus = makeBus [| opcode |]
+    let cpu =
+        { Cpu.initialState with
+            Registers =
+                { Cpu.initialRegisters with
+                    A = 0x0Fuy
+                    D = 0xFFuy
+                    E = 0xFFuy
+                    H = 0xFFuy
+                    L = 0xFFuy
+                    F = 0xF0uy } }
+
+    let result = Cpu.step cpu bus
+
+    Assert.Equal(expected, result.Cpu.Registers.A)
+    Assert.Equal(0uy, result.Cpu.Registers.F)
+    Assert.Equal(0x0101us, result.Cpu.Registers.PC)
+    Assert.Equal(4, result.Cycles)
+
+[<Fact>]
+let ``OR H updates A and clears arithmetic flags`` () =
+    let bus = makeBus [| 0xB4uy |]
+    let cpu = { Cpu.initialState with Registers = { Cpu.initialRegisters with A = 0x0Fuy; H = 0xF0uy; F = 0xF0uy } }
+
+    let result = Cpu.step cpu bus
+
+    Assert.Equal(0xFFuy, result.Cpu.Registers.A)
+    Assert.Equal(0uy, result.Cpu.Registers.F)
+    Assert.Equal(0x0101us, result.Cpu.Registers.PC)
+    Assert.Equal(4, result.Cycles)
+
+[<Theory>]
+[<InlineData(0xD4uy, 0uy, true)>]
+[<InlineData(0xD4uy, Cpu.CarryFlag, false)>]
+[<InlineData(0xDCuy, Cpu.CarryFlag, true)>]
+[<InlineData(0xDCuy, 0uy, false)>]
+let ``conditional carry CALL variants push return address only when condition matches`` opcode flags shouldCall =
+    let bus = makeBus [| opcode; 0x00uy; 0x20uy |]
+    let cpu = { Cpu.initialState with Registers = { Cpu.initialRegisters with F = flags; SP = 0xD000us } }
+
+    let result = Cpu.step cpu bus
+
+    if shouldCall then
+        Assert.Equal(0x2000us, result.Cpu.Registers.PC)
+        Assert.Equal(0xCFFEus, result.Cpu.Registers.SP)
+        Assert.Equal(0x03uy, Bus.readByte 0xCFFEus result.Bus)
+        Assert.Equal(0x01uy, Bus.readByte 0xCFFFus result.Bus)
+        Assert.Equal(24, result.Cycles)
+    else
+        Assert.Equal(0x0103us, result.Cpu.Registers.PC)
+        Assert.Equal(0xD000us, result.Cpu.Registers.SP)
+        Assert.Equal(12, result.Cycles)
+
+[<Theory>]
+[<InlineData(0xC7uy, 0x0000us)>]
+[<InlineData(0xCFuy, 0x0008us)>]
+[<InlineData(0xD7uy, 0x0010us)>]
+[<InlineData(0xDFuy, 0x0018us)>]
+[<InlineData(0xF7uy, 0x0030us)>]
+let ``additional RST vectors push return address and jump`` opcode vector =
+    let bus = makeBus [| opcode |]
+    let cpu = { Cpu.initialState with Registers = { Cpu.initialRegisters with SP = 0xD000us } }
+
+    let result = Cpu.step cpu bus
+
+    Assert.Equal(vector, result.Cpu.Registers.PC)
+    Assert.Equal(0xCFFEus, result.Cpu.Registers.SP)
+    Assert.Equal(0x01uy, Bus.readByte 0xCFFEus result.Bus)
+    Assert.Equal(0x01uy, Bus.readByte 0xCFFFus result.Bus)
+    Assert.Equal(16, result.Cycles)
+
+[<Theory>]
+[<InlineData(0x00FFus, 0x01uy, 0x0100us, Cpu.HalfCarryFlag ||| Cpu.CarryFlag)>]
+[<InlineData(0x0001us, 0xFEuy, 0xFFFFus, 0uy)>]
+let ``ADD SP signed offset updates SP and flags`` sp offset expected flags =
+    let bus = makeBus [| 0xE8uy; offset |]
+    let cpu = { Cpu.initialState with Registers = { Cpu.initialRegisters with SP = sp; F = Cpu.ZeroFlag } }
+
+    let result = Cpu.step cpu bus
+
+    Assert.Equal(expected, result.Cpu.Registers.SP)
+    Assert.Equal(flags, result.Cpu.Registers.F)
+    Assert.Equal(0x0102us, result.Cpu.Registers.PC)
+    Assert.Equal(16, result.Cycles)
