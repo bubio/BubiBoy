@@ -15,6 +15,8 @@ Output statuses:
 - `STEP_LIMIT`: execution reached the requested step count.
 - `HALTED`: CPU entered the halted state.
 - `UNSUPPORTED_OPCODE`: execution stopped at an opcode not implemented yet.
+- `BAD_STACK_POINTER`: diagnostic mode stopped after `SP` moved below WRAM.
+- `BAD_PROGRAM_COUNTER`: diagnostic mode stopped after `PC` entered a suspicious non-code region.
 - `LOAD_ERROR`: ROM loading or cartridge setup failed.
 
 Useful options:
@@ -22,8 +24,16 @@ Useful options:
 ```sh
 --steps N
 --max N
+--name TEXT
+--trace-tail N
+--stop-on-bad-sp
+--stop-on-bad-pc
 --include-bios
 --fail-on-load-error
 ```
+
+`--name` filters ROMs by file name. `--trace-tail` records the final N executed sessions and prints them
+when execution reaches an unsupported opcode or a diagnostic stop. The stack and PC stop options are meant
+for investigating late failures in commercial ROM smoke runs without producing huge logs.
 
 `UNSUPPORTED_OPCODE` is expected during Phase 2 while the CPU instruction set is incomplete. Treat it as actionable coverage data rather than a smoke-run infrastructure failure.
