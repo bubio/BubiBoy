@@ -258,6 +258,11 @@ module Cpu =
         let result = (value >>> 1) ||| if carry then 0x80uy else 0uy
         result, setFlags (result = 0uy) false false carry registers
 
+    let private rlc8 value registers =
+        let carry = value &&& 0x80uy <> 0uy
+        let result = (value <<< 1) ||| if carry then 0x01uy else 0uy
+        result, setFlags (result = 0uy) false false carry registers
+
     let private rl8 value registers =
         let carryIn = if registers.F &&& CarryFlag <> 0uy then 0x01uy else 0uy
         let carry = value &&& 0x80uy <> 0uy
@@ -272,6 +277,80 @@ module Cpu =
         let mask = 1uy <<< bit
         registers
         |> setFlags (value &&& mask = 0uy) false true (registers.F &&& CarryFlag <> 0uy)
+
+    let private readIndexedRegister index registers bus =
+        match index with
+        | 0 -> registers.B
+        | 1 -> registers.C
+        | 2 -> registers.D
+        | 3 -> registers.E
+        | 4 -> registers.H
+        | 5 -> registers.L
+        | 6 -> Bus.readByte (getHL registers) bus
+        | 7 -> registers.A
+        | _ -> failwith $"Invalid register index: {index}"
+
+    let private writeIndexedRegister index value registers bus =
+        match index with
+        | 0 -> { registers with B = value }, bus
+        | 1 -> { registers with C = value }, bus
+        | 2 -> { registers with D = value }, bus
+        | 3 -> { registers with E = value }, bus
+        | 4 -> { registers with H = value }, bus
+        | 5 -> { registers with L = value }, bus
+        | 6 -> registers, Bus.writeByte (getHL registers) value bus
+        | 7 -> { registers with A = value }, bus
+        | _ -> failwith $"Invalid register index: {index}"
+
+    let private stepGenericPrefixed prefixed cpu bus =
+        let registers = cpu.Registers
+        let group = int prefixed >>> 6
+        let operation = (int prefixed >>> 3) &&& 0x07
+        let target = int prefixed &&& 0x07
+        let targetValue = readIndexedRegister target registers bus
+        let cycles registerCycles memoryCycles = if target = 6 then memoryCycles else registerCycles
+
+        match group with
+        | 0 ->
+            let value, nextRegisters =
+                match operation with
+                | 0 -> rlc8 targetValue registers
+                | 1 -> rrc8 targetValue registers
+                | 2 -> rl8 targetValue registers
+                | 3 -> rr8 targetValue registers
+                | 4 -> sla8 targetValue registers
+                | 5 -> sra8 targetValue registers
+                | 6 -> swap8 targetValue registers
+                | 7 -> srl8 targetValue registers
+                | _ -> failwith $"Invalid CB rotate operation: {operation}"
+
+            let nextRegisters, bus = writeIndexedRegister target value nextRegisters bus
+
+            { Cpu = { cpu with Registers = { nextRegisters with PC = registers.PC + 2us } }
+              Bus = bus
+              Cycles = cycles 8 16 }
+        | 1 ->
+            let nextRegisters = bitTest operation targetValue registers
+
+            { Cpu = { cpu with Registers = { nextRegisters with PC = registers.PC + 2us } }
+              Bus = bus
+              Cycles = cycles 8 12 }
+        | 2 ->
+            let value = targetValue &&& ~~~(1uy <<< operation)
+            let nextRegisters, bus = writeIndexedRegister target value registers bus
+
+            { Cpu = { cpu with Registers = { nextRegisters with PC = registers.PC + 2us } }
+              Bus = bus
+              Cycles = cycles 8 16 }
+        | 3 ->
+            let value = targetValue ||| (1uy <<< operation)
+            let nextRegisters, bus = writeIndexedRegister target value registers bus
+
+            { Cpu = { cpu with Registers = { nextRegisters with PC = registers.PC + 2us } }
+              Bus = bus
+              Cycles = cycles 8 16 }
+        | _ ->
+            failwith $"Invalid CB opcode group: {group}"
 
     let private decimalAdjust registers =
         let subtract = registers.F &&& SubtractFlag <> 0uy
@@ -2114,8 +2193,8 @@ module Cpu =
                     { Cpu = { cpu with Registers = { registers with A = registers.A ||| 0x80uy; PC = registers.PC + 2us } }
                       Bus = bus
                       Cycles = 8 }
-                | unsupported ->
-                    raise (UnsupportedOpcode(unsupported, registers.PC + 1us))
+                | prefixed ->
+                    stepGenericPrefixed prefixed cpu bus
             | 0xBEuy ->
                 let value = Bus.readByte (getHL registers) bus
                 let nextRegisters = compareA value registers

@@ -3480,3 +3480,65 @@ let ``ADD SP signed offset updates SP and flags`` sp offset expected flags =
     Assert.Equal(flags, result.Cpu.Registers.F)
     Assert.Equal(0x0102us, result.Cpu.Registers.PC)
     Assert.Equal(16, result.Cycles)
+
+[<Fact>]
+let ``generic CB RLC B rotates left and sets carry`` () =
+    let bus = makeBus [| 0xCBuy; 0x00uy |]
+    let cpu = { Cpu.initialState with Registers = { Cpu.initialRegisters with B = 0x80uy; F = 0xF0uy } }
+
+    let result = Cpu.step cpu bus
+
+    Assert.Equal(0x01uy, result.Cpu.Registers.B)
+    Assert.Equal(Cpu.CarryFlag, result.Cpu.Registers.F)
+    Assert.Equal(0x0102us, result.Cpu.Registers.PC)
+    Assert.Equal(8, result.Cycles)
+
+[<Fact>]
+let ``generic CB SRA through HL preserves sign bit`` () =
+    let bus =
+        makeBus [| 0xCBuy; 0x2Euy |]
+        |> Bus.writeByte 0xC020us 0x81uy
+
+    let cpu = { Cpu.initialState with Registers = { Cpu.initialRegisters with H = 0xC0uy; L = 0x20uy } }
+
+    let result = Cpu.step cpu bus
+
+    Assert.Equal(0xC0uy, Bus.readByte 0xC020us result.Bus)
+    Assert.Equal(Cpu.CarryFlag, result.Cpu.Registers.F)
+    Assert.Equal(0x0102us, result.Cpu.Registers.PC)
+    Assert.Equal(16, result.Cycles)
+
+[<Fact>]
+let ``generic CB BIT tests register bits without changing carry`` () =
+    let bus = makeBus [| 0xCBuy; 0x7Buy |]
+    let cpu = { Cpu.initialState with Registers = { Cpu.initialRegisters with E = 0x7Fuy; F = Cpu.CarryFlag } }
+
+    let result = Cpu.step cpu bus
+
+    Assert.Equal(Cpu.ZeroFlag ||| Cpu.HalfCarryFlag ||| Cpu.CarryFlag, result.Cpu.Registers.F)
+    Assert.Equal(0x0102us, result.Cpu.Registers.PC)
+    Assert.Equal(8, result.Cycles)
+
+[<Fact>]
+let ``generic CB RES clears register bit without changing flags`` () =
+    let bus = makeBus [| 0xCBuy; 0x85uy |]
+    let cpu = { Cpu.initialState with Registers = { Cpu.initialRegisters with L = 0xFFuy; F = Cpu.CarryFlag } }
+
+    let result = Cpu.step cpu bus
+
+    Assert.Equal(0xFEuy, result.Cpu.Registers.L)
+    Assert.Equal(Cpu.CarryFlag, result.Cpu.Registers.F)
+    Assert.Equal(0x0102us, result.Cpu.Registers.PC)
+    Assert.Equal(8, result.Cycles)
+
+[<Fact>]
+let ``generic CB SET sets register bit without changing flags`` () =
+    let bus = makeBus [| 0xCBuy; 0xC0uy |]
+    let cpu = { Cpu.initialState with Registers = { Cpu.initialRegisters with B = 0x00uy; F = Cpu.CarryFlag } }
+
+    let result = Cpu.step cpu bus
+
+    Assert.Equal(0x01uy, result.Cpu.Registers.B)
+    Assert.Equal(Cpu.CarryFlag, result.Cpu.Registers.F)
+    Assert.Equal(0x0102us, result.Cpu.Registers.PC)
+    Assert.Equal(8, result.Cycles)
