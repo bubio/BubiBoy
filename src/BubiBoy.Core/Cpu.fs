@@ -1023,6 +1023,12 @@ module Cpu =
                 { Cpu = { cpu with Registers = { nextRegisters with PC = registers.PC + 1us } }
                   Bus = bus
                   Cycles = 4 }
+            | 0x89uy ->
+                let nextRegisters = adcA registers.C registers
+
+                { Cpu = { cpu with Registers = { nextRegisters with PC = registers.PC + 1us } }
+                  Bus = bus
+                  Cycles = 4 }
             | 0x8Auy ->
                 let nextRegisters = adcA registers.D registers
 
@@ -1472,6 +1478,12 @@ module Cpu =
                     { Cpu = { cpu with Registers = { nextRegisters with PC = registers.PC + 2us } }
                       Bus = bus
                       Cycles = 16 }
+                | 0x0Buy ->
+                    let value, nextRegisters = rrc8 registers.E registers
+
+                    { Cpu = { cpu with Registers = { nextRegisters with E = value; PC = registers.PC + 2us } }
+                      Bus = bus
+                      Cycles = 8 }
                 | 0x18uy ->
                     let value, nextRegisters = rr8 registers.B registers
 
@@ -1524,6 +1536,12 @@ module Cpu =
                     let value, nextRegisters = sla8 registers.E registers
 
                     { Cpu = { cpu with Registers = { nextRegisters with E = value; PC = registers.PC + 2us } }
+                      Bus = bus
+                      Cycles = 8 }
+                | 0x21uy ->
+                    let value, nextRegisters = sla8 registers.C registers
+
+                    { Cpu = { cpu with Registers = { nextRegisters with C = value; PC = registers.PC + 2us } }
                       Bus = bus
                       Cycles = 8 }
                 | 0x27uy ->
@@ -1612,8 +1630,20 @@ module Cpu =
                     { Cpu = { cpu with Registers = { nextRegisters with PC = registers.PC + 2us } }
                       Bus = bus
                       Cycles = 8 }
+                | 0x41uy ->
+                    let nextRegisters = bitTest 0 registers.C registers
+
+                    { Cpu = { cpu with Registers = { nextRegisters with PC = registers.PC + 2us } }
+                      Bus = bus
+                      Cycles = 8 }
                 | 0x42uy ->
                     let nextRegisters = bitTest 0 registers.D registers
+
+                    { Cpu = { cpu with Registers = { nextRegisters with PC = registers.PC + 2us } }
+                      Bus = bus
+                      Cycles = 8 }
+                | 0x43uy ->
+                    let nextRegisters = bitTest 0 registers.E registers
 
                     { Cpu = { cpu with Registers = { nextRegisters with PC = registers.PC + 2us } }
                       Bus = bus
@@ -1632,6 +1662,12 @@ module Cpu =
                     { Cpu = { cpu with Registers = { nextRegisters with PC = registers.PC + 2us } }
                       Bus = bus
                       Cycles = 12 }
+                | 0x48uy ->
+                    let nextRegisters = bitTest 1 registers.B registers
+
+                    { Cpu = { cpu with Registers = { nextRegisters with PC = registers.PC + 2us } }
+                      Bus = bus
+                      Cycles = 8 }
                 | 0x4Fuy ->
                     let nextRegisters = bitTest 1 registers.A registers
 
@@ -1682,6 +1718,12 @@ module Cpu =
                     { Cpu = { cpu with Registers = { nextRegisters with PC = registers.PC + 2us } }
                       Bus = bus
                       Cycles = 8 }
+                | 0x61uy ->
+                    let nextRegisters = bitTest 4 registers.C registers
+
+                    { Cpu = { cpu with Registers = { nextRegisters with PC = registers.PC + 2us } }
+                      Bus = bus
+                      Cycles = 8 }
                 | 0x66uy ->
                     let value = Bus.readByte (getHL registers) bus
                     let nextRegisters = bitTest 4 value registers
@@ -1691,6 +1733,12 @@ module Cpu =
                       Cycles = 12 }
                 | 0x68uy ->
                     let nextRegisters = bitTest 5 registers.B registers
+
+                    { Cpu = { cpu with Registers = { nextRegisters with PC = registers.PC + 2us } }
+                      Bus = bus
+                      Cycles = 8 }
+                | 0x69uy ->
+                    let nextRegisters = bitTest 5 registers.C registers
 
                     { Cpu = { cpu with Registers = { nextRegisters with PC = registers.PC + 2us } }
                       Bus = bus
@@ -1798,6 +1846,10 @@ module Cpu =
                     { Cpu = { cpu with Registers = { registers with PC = registers.PC + 2us } }
                       Bus = bus
                       Cycles = 16 }
+                | 0xCFuy ->
+                    { Cpu = { cpu with Registers = { registers with A = registers.A ||| 0x02uy; PC = registers.PC + 2us } }
+                      Bus = bus
+                      Cycles = 8 }
                 | 0xDEuy ->
                     let address = getHL registers
                     let value = Bus.readByte address bus ||| 0x08uy
