@@ -25,6 +25,15 @@ let ``readByte delegates ROM area to cartridge`` () =
     Assert.Equal(0xC3uy, Bus.readByte 0x4000us bus)
 
 [<Fact>]
+let ``bus starts with common DMG post boot IO defaults`` () =
+    let bus = makeBus ()
+
+    Assert.Equal(0xCFuy, Bus.readByte 0xFF00us bus)
+    Assert.Equal(0x91uy, Bus.readByte 0xFF40us bus)
+    Assert.Equal(0xFCuy, Bus.readByte 0xFF47us bus)
+    Assert.Equal(0xE1uy, Bus.readByte 0xFF0Fus bus)
+
+[<Fact>]
 let ``writeByte stores WRAM and echo RAM consistently`` () =
     let bus = makeBus ()
 
@@ -119,3 +128,70 @@ let ``writing LY resets LCD line counter`` () =
 
     Assert.Equal(20uy, Bus.readByte 0xFF44us advanced)
     Assert.Equal(0uy, Bus.readByte 0xFF44us reset)
+
+[<Fact>]
+let ``LCD STAT exposes current mode and coincidence flag`` () =
+    let bus = makeBus () |> Bus.writeByte 0xFF45us 0x00uy
+    let transfer = Bus.tick 80 bus
+    let hblank = Bus.tick 252 bus
+    let vblank = Bus.tick (Lcd.CyclesPerLine * 144) bus
+
+    Assert.Equal(0x06uy, Bus.readByte 0xFF41us bus &&& 0x07uy)
+    Assert.Equal(0x07uy, Bus.readByte 0xFF41us transfer &&& 0x07uy)
+    Assert.Equal(0x00uy, Bus.readByte 0xFF41us hblank &&& 0x03uy)
+    Assert.Equal(0x01uy, Bus.readByte 0xFF41us vblank &&& 0x03uy)
+
+[<Fact>]
+let ``LCD STAT selected mode requests LCD interrupt`` () =
+    let bus = makeBus () |> Bus.writeByte 0xFF41us 0x08uy
+    let hblank = Bus.tick 252 bus
+
+    Assert.Equal(Interrupt.LcdStatBit, Bus.readByte 0xFF0Fus hblank &&& Interrupt.LcdStatBit)
+
+[<Fact>]
+let ``LCD STAT interrupt is requested only on signal rising edge`` () =
+    let bus =
+        makeBus ()
+        |> Bus.writeByte 0xFF0Fus 0x00uy
+        |> Bus.writeByte 0xFF41us 0x08uy
+
+    let hblank = Bus.tick 252 bus
+    let acknowledged = Bus.writeByte 0xFF0Fus 0x00uy hblank
+    let stillHblank = Bus.tick 4 acknowledged
+
+    Assert.Equal(Interrupt.LcdStatBit, Bus.readByte 0xFF0Fus hblank &&& Interrupt.LcdStatBit)
+    Assert.Equal(0uy, Bus.readByte 0xFF0Fus stillHblank &&& Interrupt.LcdStatBit)
+
+[<Fact>]
+let ``OAM DMA copies one hundred sixty bytes from source page`` () =
+    let source =
+        [ 0 .. Bus.OamSize - 1 ]
+        |> List.fold (fun bus offset -> Bus.writeByte (0xC000us + uint16 offset) (byte offset) bus) (makeBus ())
+
+    let copied = Bus.writeByte 0xFF46us 0xC0uy source
+    let readable = Bus.tick 252 copied
+
+    Assert.Equal(0xC0uy, Bus.readByte 0xFF46us copied)
+    Assert.Equal(0x00uy, Bus.readByte 0xFE00us readable)
+    Assert.Equal(0x7Fuy, Bus.readByte 0xFE7Fus readable)
+    Assert.Equal(0x9Fuy, Bus.readByte 0xFE9Fus readable)
+
+[<Fact>]
+let ``VRAM is inaccessible during LCD transfer mode`` () =
+    let transfer = makeBus () |> Bus.tick 80
+    let blocked = Bus.writeByte 0x8000us 0x42uy transfer
+    let hblank = makeBus () |> Bus.tick 252
+    let written = Bus.writeByte 0x8000us 0x42uy hblank
+
+    Assert.Equal(0xFFuy, Bus.readByte 0x8000us blocked)
+    Assert.Equal(0x42uy, Bus.readByte 0x8000us written)
+
+[<Fact>]
+let ``OAM is accessible only during HBlank and VBlank`` () =
+    let oamSearch = makeBus ()
+    let blocked = Bus.writeByte 0xFE00us 0x42uy oamSearch
+    let hblank = makeBus () |> Bus.tick 252
+    let written = Bus.writeByte 0xFE00us 0x42uy hblank
+
+    Assert.Equal(0xFFuy, Bus.readByte 0xFE00us blocked)
+    Assert.Equal(0x42uy, Bus.readByte 0xFE00us written)

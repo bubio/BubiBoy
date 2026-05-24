@@ -17,8 +17,8 @@ module Joypad =
           Pressed: Set<Button> }
 
     let initial =
-        { SelectAction = false
-          SelectDirection = false
+        { SelectAction = true
+          SelectDirection = true
           Pressed = Set.empty }
 
     let writeP1 value state =

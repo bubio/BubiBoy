@@ -28,12 +28,46 @@ module Bus =
     [<Literal>]
     let HramSize = 127
 
+    let private initialIo () =
+        let io = Array.zeroCreate<byte> IoSize
+        io[0x00] <- 0xCFuy
+        io[0x01] <- 0x00uy
+        io[0x02] <- 0x7Euy
+        io[0x04] <- 0x18uy
+        io[0x07] <- 0xF8uy
+        io[0x0F] <- 0xE1uy
+        io[0x10] <- 0x80uy
+        io[0x11] <- 0xBFuy
+        io[0x12] <- 0xF3uy
+        io[0x13] <- 0xFFuy
+        io[0x14] <- 0xBFuy
+        io[0x16] <- 0x3Fuy
+        io[0x18] <- 0xFFuy
+        io[0x19] <- 0xBFuy
+        io[0x1A] <- 0x7Fuy
+        io[0x1B] <- 0xFFuy
+        io[0x1C] <- 0x9Fuy
+        io[0x1D] <- 0xFFuy
+        io[0x1E] <- 0xBFuy
+        io[0x20] <- 0xFFuy
+        io[0x23] <- 0xBFuy
+        io[0x24] <- 0x77uy
+        io[0x25] <- 0xF3uy
+        io[0x26] <- 0xF1uy
+        io[0x40] <- 0x91uy
+        io[0x41] <- 0x80uy
+        io[0x46] <- 0xFFuy
+        io[0x47] <- 0xFCuy
+        io[0x48] <- 0xFFuy
+        io[0x49] <- 0xFFuy
+        io
+
     let create cartridge =
         { Cartridge = cartridge
           Vram = Array.zeroCreate<byte> VramSize
           Wram = Array.zeroCreate<byte> WramSize
           Oam = Array.zeroCreate<byte> OamSize
-          Io = Array.zeroCreate<byte> IoSize
+          Io = initialIo ()
           Hram = Array.zeroCreate<byte> HramSize
           Timer = Timer.initial
           Lcd = Lcd.initial
@@ -42,6 +76,28 @@ module Bus =
 
     let private unusableRead = 0xFFuy
 
+    let private stat memory =
+        let raw = memory.Io[0x41] &&& 0xF8uy
+        let coincidence =
+            if memory.Lcd.Line = memory.Io[0x45] then
+                0x04uy
+            else
+                0uy
+
+        raw ||| coincidence ||| Lcd.modeBits memory.Lcd.Mode
+
+    let private statInterruptSignal (memory: Memory) (lcd: Lcd.State) =
+        let statRegister = memory.Io[0x41] &&& 0xF8uy
+        let coincidenceSelected = statRegister &&& 0x40uy <> 0uy && lcd.Line = memory.Io[0x45]
+        let modeSelected =
+            match lcd.Mode with
+            | Lcd.HBlank -> statRegister &&& 0x08uy <> 0uy
+            | Lcd.VBlank -> statRegister &&& 0x10uy <> 0uy
+            | Lcd.OamSearch -> statRegister &&& 0x20uy <> 0uy
+            | Lcd.Transfer -> false
+
+        coincidenceSelected || modeSelected
+
     let readByte (address: uint16) memory =
         let address = int address
 
@@ -49,7 +105,10 @@ module Bus =
         | value when value <= 0x7FFF ->
             CartridgeMemory.readByte (uint16 value) memory.Cartridge
         | value when value >= 0x8000 && value <= 0x9FFF ->
-            memory.Vram[value - 0x8000]
+            if memory.Lcd.Mode = Lcd.Transfer then
+                unusableRead
+            else
+                memory.Vram[value - 0x8000]
         | value when value >= 0xA000 && value <= 0xBFFF ->
             CartridgeMemory.readByte (uint16 value) memory.Cartridge
         | value when value >= 0xC000 && value <= 0xDFFF ->
@@ -57,13 +116,18 @@ module Bus =
         | value when value >= 0xE000 && value <= 0xFDFF ->
             memory.Wram[value - 0xE000]
         | value when value >= 0xFE00 && value <= 0xFE9F ->
-            memory.Oam[value - 0xFE00]
+            match memory.Lcd.Mode with
+            | Lcd.HBlank
+            | Lcd.VBlank -> memory.Oam[value - 0xFE00]
+            | _ -> unusableRead
         | value when value >= 0xFEA0 && value <= 0xFEFF ->
             unusableRead
         | 0xFF00 ->
             Joypad.readP1 memory.Joypad
         | 0xFF04 ->
             Timer.div memory.Timer
+        | 0xFF41 ->
+            stat memory
         | 0xFF44 ->
             memory.Lcd.Line
         | value when value >= 0xFF00 && value <= 0xFF7F ->
@@ -82,9 +146,12 @@ module Bus =
         | addr when addr <= 0x7FFF ->
             { memory with Cartridge = CartridgeMemory.writeByte (uint16 addr) value memory.Cartridge }
         | addr when addr >= 0x8000 && addr <= 0x9FFF ->
-            let next = Array.copy memory.Vram
-            next[addr - 0x8000] <- value
-            { memory with Vram = next }
+            if memory.Lcd.Mode = Lcd.Transfer then
+                memory
+            else
+                let next = Array.copy memory.Vram
+                next[addr - 0x8000] <- value
+                { memory with Vram = next }
         | addr when addr >= 0xA000 && addr <= 0xBFFF ->
             { memory with Cartridge = CartridgeMemory.writeByte (uint16 addr) value memory.Cartridge }
         | addr when addr >= 0xC000 && addr <= 0xDFFF ->
@@ -96,9 +163,13 @@ module Bus =
             next[addr - 0xE000] <- value
             { memory with Wram = next }
         | addr when addr >= 0xFE00 && addr <= 0xFE9F ->
-            let next = Array.copy memory.Oam
-            next[addr - 0xFE00] <- value
-            { memory with Oam = next }
+            match memory.Lcd.Mode with
+            | Lcd.HBlank
+            | Lcd.VBlank ->
+                let next = Array.copy memory.Oam
+                next[addr - 0xFE00] <- value
+                { memory with Oam = next }
+            | _ -> memory
         | addr when addr >= 0xFEA0 && addr <= 0xFEFF ->
             memory
         | 0xFF00 ->
@@ -107,10 +178,24 @@ module Bus =
             let next = Array.copy memory.Io
             next[0x04] <- 0uy
             { memory with Io = next; Timer = Timer.resetDiv memory.Timer }
+        | 0xFF41 ->
+            let next = Array.copy memory.Io
+            next[0x41] <- value &&& 0xF8uy
+            { memory with Io = next }
         | 0xFF44 ->
             let next = Array.copy memory.Io
             next[0x44] <- 0uy
             { memory with Io = next; Lcd = Lcd.resetLine memory.Lcd }
+        | 0xFF46 ->
+            let sourceBase = uint16 value <<< 8
+            let nextOam = Array.copy memory.Oam
+
+            for offset in 0 .. OamSize - 1 do
+                nextOam[offset] <- readByte (sourceBase + uint16 offset) memory
+
+            let nextIo = Array.copy memory.Io
+            nextIo[0x46] <- value
+            { memory with Io = nextIo; Oam = nextOam }
         | addr when addr >= 0xFF00 && addr <= 0xFF7F ->
             let next = Array.copy memory.Io
             next[addr - 0xFF00] <- value
@@ -134,11 +219,16 @@ module Bus =
 
         let timerResult = Timer.tick cycles memory.Timer registers
         let lcd = Lcd.tick cycles memory.Lcd
-        let interruptFlags =
+        let mutable interruptFlags =
             if memory.Lcd.Line <> 144uy && lcd.Line = 144uy then
                 Interrupt.request Interrupt.VBlankBit timerResult.Registers.InterruptFlags
             else
                 timerResult.Registers.InterruptFlags
+
+        let statSignal = statInterruptSignal memory lcd
+
+        if statSignal && not memory.Lcd.StatSignal then
+            interruptFlags <- Interrupt.request Interrupt.LcdStatBit interruptFlags
 
         let nextIo = Array.copy memory.Io
         nextIo[0x04] <- timerResult.Registers.Div
@@ -146,11 +236,12 @@ module Bus =
         nextIo[0x06] <- timerResult.Registers.Tma
         nextIo[0x07] <- timerResult.Registers.Tac
         nextIo[0x0F] <- interruptFlags
+        nextIo[0x41] <- stat { memory with Lcd = lcd; Io = nextIo }
         nextIo[0x44] <- lcd.Line
 
         { memory with
             Timer = timerResult.State
-            Lcd = lcd
+            Lcd = { lcd with StatSignal = statSignal }
             Io = nextIo }
 
     let setButton button pressed memory =
