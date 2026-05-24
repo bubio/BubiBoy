@@ -72,10 +72,10 @@ Deliverable: simple DMG games and visual test ROMs render recognizable output.
 
 ## Phase 4: Cartridge Support
 
-- Implement MBC1, MBC2, MBC3, MBC5, RAM enable, ROM/RAM banking, and save RAM persistence.
-- Add battery-backed save handling through `BubiBoy.IO`.
-- Add RTC support for MBC3 with deterministic test hooks.
-- Document unsupported cartridge hardware as explicit compatibility gaps.
+- [x] Implement MBC1, MBC2, MBC3, MBC5, RAM enable, and ROM/RAM banking.
+- [ ] Add battery-backed save handling through `BubiBoy.IO`.
+- [ ] Add RTC support for MBC3 with deterministic test hooks.
+- [x] Document unsupported cartridge hardware as explicit compatibility gaps.
 
 Deliverable: common DMG cartridges load, run, and persist saves.
 

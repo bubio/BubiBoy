@@ -11,13 +11,36 @@ module CartridgeMemory =
           BankHigh2: int
           BankingMode: BankingMode }
 
+    type Mbc2State =
+        { RamEnabled: bool
+          RomBank: int }
+
+    type Mbc3State =
+        { RamEnabled: bool
+          RomBank: int
+          RamOrRtcSelect: int
+          RtcRegisters: byte[] }
+
+    type Mbc5State =
+        { RamEnabled: bool
+          RomBankLow8: int
+          RomBankHigh1: int
+          RamBank: int }
+
+    type MbcState =
+        | NoMbc
+        | Mbc1 of Mbc1State
+        | Mbc2 of Mbc2State
+        | Mbc3 of Mbc3State
+        | Mbc5 of Mbc5State
+
     type CartridgeImage =
         { Header: Cartridge.CartridgeHeader
           Rom: byte[]
           RomBanks: int
           Ram: byte[]
           RamBanks: int
-          Mbc1: Mbc1State option }
+          Mbc: MbcState }
 
     let private bankSize = 16 * 1024
     let private ramBankSize = 8 * 1024
@@ -29,10 +52,34 @@ module CartridgeMemory =
         | Cartridge.Mbc1RamBattery -> true
         | _ -> false
 
+    let private supportsMbc2 kind =
+        match kind with
+        | Cartridge.Mbc2
+        | Cartridge.Mbc2Battery -> true
+        | _ -> false
+
+    let private supportsMbc3 kind =
+        match kind with
+        | Cartridge.Mbc3TimerBattery
+        | Cartridge.Mbc3TimerRamBattery
+        | Cartridge.Mbc3
+        | Cartridge.Mbc3Ram
+        | Cartridge.Mbc3RamBattery -> true
+        | _ -> false
+
+    let private supportsMbc5 kind =
+        match kind with
+        | Cartridge.Mbc5
+        | Cartridge.Mbc5Ram
+        | Cartridge.Mbc5RamBattery -> true
+        | _ -> false
+
     let private supportsRam kind =
         match kind with
         | Cartridge.Mbc1Ram
         | Cartridge.Mbc1RamBattery
+        | Cartridge.Mbc2
+        | Cartridge.Mbc2Battery
         | Cartridge.Mbc3TimerRamBattery
         | Cartridge.Mbc3Ram
         | Cartridge.Mbc3RamBattery
@@ -46,6 +93,29 @@ module CartridgeMemory =
           BankHigh2 = 0
           BankingMode = RomBanking }
 
+    let private defaultMbc2 =
+        { RamEnabled = false
+          RomBank = 1 }
+
+    let private defaultMbc3 =
+        { RamEnabled = false
+          RomBank = 1
+          RamOrRtcSelect = 0
+          RtcRegisters = Array.zeroCreate 5 }
+
+    let private defaultMbc5 =
+        { RamEnabled = false
+          RomBankLow8 = 1
+          RomBankHigh1 = 0
+          RamBank = 0 }
+
+    let private mbcState kind =
+        if supportsMbc1 kind then Mbc1 defaultMbc1
+        elif supportsMbc2 kind then Mbc2 defaultMbc2
+        elif supportsMbc3 kind then Mbc3 defaultMbc3
+        elif supportsMbc5 kind then Mbc5 defaultMbc5
+        else NoMbc
+
     let create (rom: byte[]) =
         match Cartridge.parseHeader rom with
         | Error message -> Error message
@@ -58,7 +128,9 @@ module CartridgeMemory =
                     Error $"ROM data is smaller than the size declared in the header: expected {romSize.Bytes} bytes, got {rom.Length} bytes."
                 else
                     let ramBytes =
-                        if supportsRam header.CartridgeKind then
+                        if supportsMbc2 header.CartridgeKind then
+                            Array.zeroCreate<byte> 512
+                        elif supportsRam header.CartridgeKind then
                             Array.zeroCreate<byte> ramSize.Bytes
                         else
                             Array.empty
@@ -69,7 +141,7 @@ module CartridgeMemory =
                           RomBanks = romSize.Banks
                           Ram = ramBytes
                           RamBanks = ramSize.Banks
-                          Mbc1 = if supportsMbc1 header.CartridgeKind then Some defaultMbc1 else None }
+                          Mbc = mbcState header.CartridgeKind }
 
     let private normalizeRomBank bankCount bank =
         if bankCount <= 0 then
@@ -90,50 +162,137 @@ module CartridgeMemory =
         let normalizedBank = normalizeRomBank image.RomBanks bank
         image.Rom[normalizedBank * bankSize + offset]
 
+    let private readRamBank image bank offset =
+        if image.Ram.Length = 0 then
+            0xFFuy
+        else
+            let normalizedBank = normalizeRomBank image.RamBanks bank
+            image.Ram[normalizedBank * ramBankSize + offset]
+
+    let private writeRamBank image bank offset value =
+        if image.Ram.Length = 0 then
+            image
+        else
+            let normalizedBank = normalizeRomBank image.RamBanks bank
+            let nextRam = Array.copy image.Ram
+            nextRam[normalizedBank * ramBankSize + offset] <- value
+            { image with Ram = nextRam }
+
+    let private mbc3RtcRegisterIndex selector =
+        if selector >= 0x08 && selector <= 0x0C then
+            Some(selector - 0x08)
+        else
+            None
+
     let readByte (address: uint16) image =
         let address = int address
 
         match address with
         | value when value >= 0x0000 && value <= 0x3FFF ->
-            match image.Mbc1 with
-            | Some state -> readRomBank image (mbc1LowerRomBank state) value
-            | None -> readRomBank image 0 value
+            match image.Mbc with
+            | Mbc1 state -> readRomBank image (mbc1LowerRomBank state) value
+            | _ -> readRomBank image 0 value
         | value when value >= 0x4000 && value <= 0x7FFF ->
             let offset = value - 0x4000
 
-            match image.Mbc1 with
-            | Some state -> readRomBank image (mbc1UpperRomBank state) offset
-            | None -> readRomBank image 1 offset
+            match image.Mbc with
+            | Mbc1 state -> readRomBank image (mbc1UpperRomBank state) offset
+            | Mbc2 state -> readRomBank image state.RomBank offset
+            | Mbc3 state -> readRomBank image state.RomBank offset
+            | Mbc5 state -> readRomBank image ((state.RomBankHigh1 <<< 8) ||| state.RomBankLow8) offset
+            | NoMbc -> readRomBank image 1 offset
         | value when value >= 0xA000 && value <= 0xBFFF ->
-            match image.Mbc1 with
-            | Some state when state.RamEnabled && image.Ram.Length > 0 ->
+            let offset = value - 0xA000
+
+            match image.Mbc with
+            | Mbc1 state when state.RamEnabled && image.Ram.Length > 0 ->
                 let ramBank =
                     match state.BankingMode with
                     | RomBanking -> 0
                     | RamBanking -> state.BankHigh2
 
-                image.Ram[ramBank * ramBankSize + value - 0xA000]
+                readRamBank image ramBank offset
+            | Mbc2 state when state.RamEnabled && image.Ram.Length > 0 ->
+                0xF0uy ||| (image.Ram[offset &&& 0x01FF] &&& 0x0Fuy)
+            | Mbc3 state when state.RamEnabled ->
+                match mbc3RtcRegisterIndex state.RamOrRtcSelect with
+                | Some rtcIndex -> state.RtcRegisters[rtcIndex]
+                | None when state.RamOrRtcSelect >= 0 && state.RamOrRtcSelect <= 3 ->
+                    readRamBank image state.RamOrRtcSelect offset
+                | _ -> 0xFFuy
+            | Mbc5 state when state.RamEnabled && image.Ram.Length > 0 ->
+                readRamBank image state.RamBank offset
             | _ -> 0xFFuy
         | _ -> 0xFFuy
 
     let writeByte (address: uint16) (value: byte) image =
         let address = int address
-        let value = int value
+        let numericValue = int value
 
-        match image.Mbc1 with
-        | None -> image
-        | Some state ->
-            let nextState =
-                match address with
-                | addr when addr >= 0x0000 && addr <= 0x1FFF ->
-                    { state with RamEnabled = value &&& 0x0F = 0x0A }
-                | addr when addr >= 0x2000 && addr <= 0x3FFF ->
-                    let low5 = value &&& 0x1F
-                    { state with RomBankLow5 = if low5 = 0 then 1 else low5 }
-                | addr when addr >= 0x4000 && addr <= 0x5FFF ->
-                    { state with BankHigh2 = value &&& 0x03 }
-                | addr when addr >= 0x6000 && addr <= 0x7FFF ->
-                    { state with BankingMode = if value &&& 0x01 = 0 then RomBanking else RamBanking }
-                | _ -> state
+        match image.Mbc with
+        | NoMbc -> image
+        | Mbc1 state ->
+            match address with
+            | addr when addr >= 0x0000 && addr <= 0x1FFF ->
+                { image with Mbc = Mbc1 { state with RamEnabled = numericValue &&& 0x0F = 0x0A } }
+            | addr when addr >= 0x2000 && addr <= 0x3FFF ->
+                let low5 = numericValue &&& 0x1F
+                { image with Mbc = Mbc1 { state with RomBankLow5 = if low5 = 0 then 1 else low5 } }
+            | addr when addr >= 0x4000 && addr <= 0x5FFF ->
+                { image with Mbc = Mbc1 { state with BankHigh2 = numericValue &&& 0x03 } }
+            | addr when addr >= 0x6000 && addr <= 0x7FFF ->
+                { image with
+                    Mbc = Mbc1 { state with BankingMode = if numericValue &&& 0x01 = 0 then RomBanking else RamBanking } }
+            | addr when addr >= 0xA000 && addr <= 0xBFFF && state.RamEnabled ->
+                let ramBank =
+                    match state.BankingMode with
+                    | RomBanking -> 0
+                    | RamBanking -> state.BankHigh2
 
-            { image with Mbc1 = Some nextState }
+                writeRamBank image ramBank (addr - 0xA000) value
+            | _ -> image
+        | Mbc2 state ->
+            match address with
+            | addr when addr >= 0x0000 && addr <= 0x3FFF ->
+                if addr &&& 0x0100 = 0 then
+                    { image with Mbc = Mbc2 { state with RamEnabled = numericValue &&& 0x0F = 0x0A } }
+                else
+                    let bank = numericValue &&& 0x0F
+                    { image with Mbc = Mbc2 { state with RomBank = if bank = 0 then 1 else bank } }
+            | addr when addr >= 0xA000 && addr <= 0xBFFF && state.RamEnabled ->
+                let nextRam = Array.copy image.Ram
+                nextRam[(addr - 0xA000) &&& 0x01FF] <- value &&& 0x0Fuy
+                { image with Ram = nextRam }
+            | _ -> image
+        | Mbc3 state ->
+            match address with
+            | addr when addr >= 0x0000 && addr <= 0x1FFF ->
+                { image with Mbc = Mbc3 { state with RamEnabled = numericValue &&& 0x0F = 0x0A } }
+            | addr when addr >= 0x2000 && addr <= 0x3FFF ->
+                let bank = numericValue &&& 0x7F
+                { image with Mbc = Mbc3 { state with RomBank = if bank = 0 then 1 else bank } }
+            | addr when addr >= 0x4000 && addr <= 0x5FFF ->
+                { image with Mbc = Mbc3 { state with RamOrRtcSelect = numericValue } }
+            | addr when addr >= 0xA000 && addr <= 0xBFFF && state.RamEnabled ->
+                match mbc3RtcRegisterIndex state.RamOrRtcSelect with
+                | Some rtcIndex ->
+                    let nextRtc = Array.copy state.RtcRegisters
+                    nextRtc[rtcIndex] <- value
+                    { image with Mbc = Mbc3 { state with RtcRegisters = nextRtc } }
+                | None when state.RamOrRtcSelect >= 0 && state.RamOrRtcSelect <= 3 ->
+                    writeRamBank image state.RamOrRtcSelect (addr - 0xA000) value
+                | _ -> image
+            | _ -> image
+        | Mbc5 state ->
+            match address with
+            | addr when addr >= 0x0000 && addr <= 0x1FFF ->
+                { image with Mbc = Mbc5 { state with RamEnabled = numericValue &&& 0x0F = 0x0A } }
+            | addr when addr >= 0x2000 && addr <= 0x2FFF ->
+                { image with Mbc = Mbc5 { state with RomBankLow8 = numericValue &&& 0xFF } }
+            | addr when addr >= 0x3000 && addr <= 0x3FFF ->
+                { image with Mbc = Mbc5 { state with RomBankHigh1 = numericValue &&& 0x01 } }
+            | addr when addr >= 0x4000 && addr <= 0x5FFF ->
+                { image with Mbc = Mbc5 { state with RamBank = numericValue &&& 0x0F } }
+            | addr when addr >= 0xA000 && addr <= 0xBFFF && state.RamEnabled ->
+                writeRamBank image state.RamBank (addr - 0xA000) value
+            | _ -> image

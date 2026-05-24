@@ -60,6 +60,38 @@ module Video =
     let private windowTileMapBase lcdc =
         if bitSet 6 lcdc then 0x9C00 else 0x9800
 
+    type private Sprite =
+        { Index: int
+          X: int
+          Y: int
+          TileIndex: byte
+          Attributes: byte }
+
+    let private spriteOnLine spriteHeight y sprite =
+        let yInSprite = y - sprite.Y
+        yInSprite >= 0 && yInSprite < spriteHeight
+
+    let private lineSprites (memory: Bus.Memory) spriteHeight y =
+        seq {
+            for spriteIndex in 0 .. 39 do
+                let baseIndex = spriteIndex * 4
+                let sprite =
+                    { Index = spriteIndex
+                      Y = int memory.Oam[baseIndex] - 16
+                      X = int memory.Oam[baseIndex + 1] - 8
+                      TileIndex = memory.Oam[baseIndex + 2]
+                      Attributes = memory.Oam[baseIndex + 3] }
+
+                if spriteOnLine spriteHeight y sprite then
+                    sprite
+        }
+        |> Seq.truncate 10
+        |> Seq.sortWith (fun left right ->
+            match compare right.X left.X with
+            | 0 -> compare right.Index left.Index
+            | result -> result)
+        |> Seq.toArray
+
     let private renderBackgroundPixel memory lcdc x y =
         if not (bitSet 0 lcdc) then
             0
@@ -98,23 +130,20 @@ module Video =
         if bitSet 1 lcdc then
             let spriteHeight = if bitSet 2 lcdc then 16 else 8
 
-            for spriteIndex in 0 .. 39 do
-                let baseIndex = spriteIndex * 4
-                let spriteY = int memory.Oam[baseIndex] - 16
-                let spriteX = int memory.Oam[baseIndex + 1] - 8
+            for sprite in lineSprites memory spriteHeight y do
                 let tileIndex =
                     if spriteHeight = 16 then
-                        memory.Oam[baseIndex + 2] &&& 0xFEuy
+                        sprite.TileIndex &&& 0xFEuy
                     else
-                        memory.Oam[baseIndex + 2]
+                        sprite.TileIndex
 
-                let attributes = memory.Oam[baseIndex + 3]
+                let attributes = sprite.Attributes
                 let palette = if bitSet 4 attributes then io 0x49 memory else io 0x48 memory
                 let xFlip = bitSet 5 attributes
                 let yFlip = bitSet 6 attributes
                 let behindBackground = bitSet 7 attributes
 
-                let yInSprite = y - spriteY
+                let yInSprite = y - sprite.Y
 
                 if yInSprite >= 0 && yInSprite < spriteHeight then
                     let sourceY =
@@ -128,7 +157,7 @@ module Video =
                     let address = unsignedTileAddress (tileIndex + byte tileOffset) row
 
                     for xInSprite in 0 .. 7 do
-                        let x = spriteX + xInSprite
+                        let x = sprite.X + xInSprite
 
                         if x >= 0 && x < Hardware.ScreenWidth then
                             let sourceX = if xFlip then 7 - xInSprite else xInSprite

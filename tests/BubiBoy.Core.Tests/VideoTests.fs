@@ -159,6 +159,82 @@ let ``sprite x and y flip select mirrored tile pixels`` () =
     Assert.Equal(Video.DmgColors[1], pixel 0 0 framebuffer)
 
 [<Fact>]
+let ``sprites with lower OAM index win when x coordinates match`` () =
+    let framebuffer =
+        makeBus ()
+        |> withIo 0x40 0x93uy
+        |> withIo 0x48 0xE4uy
+        |> withVram 0x8010 0x80uy
+        |> withVram 0x8011 0x00uy
+        |> withVram 0x8020 0x00uy
+        |> withVram 0x8021 0x80uy
+        |> withOam 0 16uy
+        |> withOam 1 8uy
+        |> withOam 2 1uy
+        |> withOam 3 0uy
+        |> withOam 4 16uy
+        |> withOam 5 8uy
+        |> withOam 6 2uy
+        |> withOam 7 0uy
+        |> Video.renderFrame
+
+    Assert.Equal(Video.DmgColors[1], pixel 0 0 framebuffer)
+
+[<Fact>]
+let ``sprites with smaller x coordinate win over later OAM entries`` () =
+    let framebuffer =
+        makeBus ()
+        |> withIo 0x40 0x93uy
+        |> withIo 0x48 0xE4uy
+        |> withVram 0x8010 0x40uy
+        |> withVram 0x8011 0x00uy
+        |> withVram 0x8020 0x00uy
+        |> withVram 0x8021 0x40uy
+        |> withOam 0 16uy
+        |> withOam 1 9uy
+        |> withOam 2 1uy
+        |> withOam 3 0uy
+        |> withOam 4 16uy
+        |> withOam 5 8uy
+        |> withOam 6 2uy
+        |> withOam 7 0uy
+        |> Video.renderFrame
+
+    Assert.Equal(Video.DmgColors[2], pixel 1 0 framebuffer)
+
+[<Fact>]
+let ``only first ten OAM sprites on a scanline are rendered`` () =
+    let bus =
+        makeBus ()
+        |> withIo 0x40 0x93uy
+        |> withIo 0x48 0xE4uy
+        |> withVram 0x8010 0x80uy
+        |> withVram 0x8011 0x00uy
+
+    let busWithFirstTenSprites =
+        [ 0 .. 9 ]
+        |> List.fold
+            (fun current spriteIndex ->
+                let baseIndex = spriteIndex * 4
+
+                current
+                |> withOam baseIndex 16uy
+                |> withOam (baseIndex + 1) 40uy
+                |> withOam (baseIndex + 2) 1uy
+                |> withOam (baseIndex + 3) 0uy)
+            bus
+
+    let framebuffer =
+        busWithFirstTenSprites
+        |> withOam 40 16uy
+        |> withOam 41 8uy
+        |> withOam 42 1uy
+        |> withOam 43 0uy
+        |> Video.renderFrame
+
+    Assert.Equal(Video.DmgColors[0], pixel 0 0 framebuffer)
+
+[<Fact>]
 let ``renderScanline preserves lines rendered with earlier scroll values`` () =
     let framebuffer = Video.blankFrame ()
 
