@@ -121,24 +121,16 @@ Examples:
         | Emulator.UnsupportedOpcode(opcode, pc) -> $"UNSUPPORTED_OPCODE opcode=0x{opcode:X2} pc=0x{pc:X4}"
 
     let private describeCartridgeBank (cartridge: CartridgeMemory.CartridgeImage) =
-        match cartridge.Mbc with
-        | CartridgeMemory.Mbc1 state ->
-            let upperRaw = (state.BankHigh2 <<< 5) ||| state.RomBankLow5
-            let upperBank = if upperRaw &&& 0x1F = 0 then upperRaw ||| 1 else upperRaw
-            let lowerBank =
-                match state.BankingMode with
-                | CartridgeMemory.RomBanking -> 0
-                | CartridgeMemory.RamBanking -> state.BankHigh2 <<< 5
-
-            $"\tmbc1Low=%d{state.RomBankLow5}\tmbc1High=%d{state.BankHigh2}\tmbc1Mode=%A{state.BankingMode}\trom0Bank=%d{lowerBank % cartridge.RomBanks}\tromXBank=%d{upperBank % cartridge.RomBanks}"
-        | CartridgeMemory.Mbc2 state ->
-            $"\tmbc2RomBank=%d{state.RomBank % cartridge.RomBanks}\tramEnabled=%b{state.RamEnabled}"
-        | CartridgeMemory.Mbc3 state ->
-            $"\tmbc3RomBank=%d{state.RomBank % cartridge.RomBanks}\tramOrRtc=%d{state.RamOrRtcSelect}\tramEnabled=%b{state.RamEnabled}"
-        | CartridgeMemory.Mbc5 state ->
-            let romBank = (state.RomBankHigh1 <<< 8) ||| state.RomBankLow8
-            $"\tmbc5RomBank=%d{romBank % cartridge.RomBanks}\tramBank=%d{state.RamBank}\tramEnabled=%b{state.RamEnabled}"
-        | CartridgeMemory.NoMbc -> ""
+        match CartridgeMemory.bankDebug cartridge with
+        | CartridgeMemory.Mbc1Debug(romBankLow5, bankHigh2, bankingMode, rom0Bank, romXBank) ->
+            $"\tmbc1Low=%d{romBankLow5}\tmbc1High=%d{bankHigh2}\tmbc1Mode=%A{bankingMode}\trom0Bank=%d{rom0Bank}\tromXBank=%d{romXBank}"
+        | CartridgeMemory.Mbc2Debug(romBank, ramEnabled) ->
+            $"\tmbc2RomBank=%d{romBank}\tramEnabled=%b{ramEnabled}"
+        | CartridgeMemory.Mbc3Debug(romBank, ramOrRtcSelect, ramEnabled) ->
+            $"\tmbc3RomBank=%d{romBank}\tramOrRtc=%d{ramOrRtcSelect}\tramEnabled=%b{ramEnabled}"
+        | CartridgeMemory.Mbc5Debug(romBank, ramBank, ramEnabled) ->
+            $"\tmbc5RomBank=%d{romBank}\tramBank=%d{ramBank}\tramEnabled=%b{ramEnabled}"
+        | CartridgeMemory.NoBanking -> ""
 
     let private formatTraceEntry step cycles (session: Emulator.Session) =
         let registers = session.Cpu.Registers

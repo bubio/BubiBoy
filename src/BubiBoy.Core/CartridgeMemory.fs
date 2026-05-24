@@ -43,12 +43,20 @@ module CartridgeMemory =
           LatchPrepared: bool }
 
     type CartridgeImage =
-        { Header: Cartridge.CartridgeHeader
-          Rom: byte[]
-          RomBanks: int
-          Ram: byte[]
-          RamBanks: int
-          Mbc: MbcState }
+        private
+            { Header: Cartridge.CartridgeHeader
+              Rom: byte[]
+              RomBanks: int
+              Ram: byte[]
+              RamBanks: int
+              Mbc: MbcState }
+
+    type BankDebug =
+        | NoBanking
+        | Mbc1Debug of romBankLow5: int * bankHigh2: int * bankingMode: BankingMode * rom0Bank: int * romXBank: int
+        | Mbc2Debug of romBank: int * ramEnabled: bool
+        | Mbc3Debug of romBank: int * ramOrRtcSelect: int * ramEnabled: bool
+        | Mbc5Debug of romBank: int * ramBank: int * ramEnabled: bool
 
     let private bankSize = 16 * 1024
     let private ramBankSize = 8 * 1024
@@ -176,6 +184,9 @@ module CartridgeMemory =
             0
         else
             bank % bankCount
+
+    let private normalizeBankForDebug bankCount bank =
+        if bankCount <= 0 then 0 else bank % bankCount
 
     let private mbc1LowerRomBank state =
         match state.BankingMode with
@@ -310,6 +321,30 @@ module CartridgeMemory =
 
     let hasBatteryBackedRam image =
         hasBattery image.Header.CartridgeKind && image.Ram.Length > 0
+
+    let bankDebug image =
+        match image.Mbc with
+        | NoMbc -> NoBanking
+        | Mbc1 state ->
+            let upperRaw = (state.BankHigh2 <<< 5) ||| state.RomBankLow5
+            let upperBank = if upperRaw &&& 0x1F = 0 then upperRaw ||| 1 else upperRaw
+            let lowerBank =
+                match state.BankingMode with
+                | RomBanking -> 0
+                | RamBanking -> state.BankHigh2 <<< 5
+
+            Mbc1Debug(
+                state.RomBankLow5,
+                state.BankHigh2,
+                state.BankingMode,
+                normalizeBankForDebug image.RomBanks lowerBank,
+                normalizeBankForDebug image.RomBanks upperBank
+            )
+        | Mbc2 state -> Mbc2Debug(normalizeBankForDebug image.RomBanks state.RomBank, state.RamEnabled)
+        | Mbc3 state -> Mbc3Debug(normalizeBankForDebug image.RomBanks state.RomBank, state.RamOrRtcSelect, state.RamEnabled)
+        | Mbc5 state ->
+            let romBank = (state.RomBankHigh1 <<< 8) ||| state.RomBankLow8
+            Mbc5Debug(normalizeBankForDebug image.RomBanks romBank, state.RamBank, state.RamEnabled)
 
     let exportSaveRam image =
         if hasBatteryBackedRam image then

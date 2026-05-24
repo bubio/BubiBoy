@@ -30,6 +30,6 @@ Phase 2 is closed, but the Mooneye harness should grow as CPU, interrupt, timer,
 
 ## State Modeling Follow-up
 
-`Bus.Memory` now hides its record representation and exposes narrow accessor/transition functions instead of public `byte[]` fields. This keeps existing hot-path arrays inside the core while preventing outside modules from mutating bus memory behind the state transition API.
+`Bus.Memory` and `CartridgeMemory.CartridgeImage` now hide their record representations and expose narrow accessor/transition functions instead of public `byte[]` fields. This keeps existing hot-path arrays inside the core while preventing outside modules from mutating bus or cartridge memory behind the state transition API.
 
 New code should continue this direction: prefer narrow transition functions, defensive copies at IO boundaries, and small domain types over raw byte arrays when the data is not on a hot path.
