@@ -9,22 +9,21 @@ This audit reconciles the Phase 2 plan with the current implementation state.
 - Interrupts, timers, divider behavior, joypad input, and serial IO register stubs are implemented and covered by focused tests.
 - ROM-only cartridge support exists, and later cartridge work extends this through MBC1, MBC2, MBC3, and MBC5.
 
-## Remaining Phase 2 Gap
+## Test ROM Validation
 
-The remaining unchecked item is CPU validation with redistributable test ROMs.
+Phase 2 CPU validation is covered by a redistributable Mooneye Test Suite subset.
 
-Current coverage is useful but not enough to close this item:
+Current coverage:
 
 - Focused unit tests exercise CPU instructions, flags, interrupts, bus behavior, timers, joypad, cartridge memory, and video behavior.
 - The ROM smoke runner executes local ROMs and reports load errors, unsupported opcodes, bad stack pointers, and suspicious program counters.
 - Local commercial ROMs are useful for smoke testing but cannot be committed and do not provide standardized pass/fail CPU validation.
+- `tests/BubiBoy.TestRoms` runs MIT-licensed Mooneye acceptance ROMs under `dotnet test`.
+- The current vendored Mooneye subset is `acceptance/instr/daa.gb` and `acceptance/bits/reg_f.gb`.
+- The harness detects Mooneye pass/fail through the documented `LD B,B` breakpoint register protocol.
 
-To close Phase 2 fully, add a test-ROM harness that can run permissively licensed or explicitly redistributable CPU test ROMs and detect pass/fail through serial output or documented memory locations. Each imported ROM must be recorded in `reference-provenance.md` with license and redistribution notes before it is committed.
+Each imported ROM is recorded in `reference-provenance.md` with license and redistribution notes.
 
-## Next Actions
+## Follow-up Coverage
 
-1. Select CPU test ROMs with redistribution terms compatible with the repository license posture.
-2. Add a `tests/BubiBoy.TestRoms` harness or equivalent test project that runs ROMs deterministically.
-3. Capture pass/fail output through serial or memory conventions.
-4. Document each test ROM in `reference-provenance.md`.
-5. Mark the remaining Phase 2 validation item complete only after the harness runs in `dotnet test`.
+Phase 2 is closed, but the Mooneye harness should grow as CPU, interrupt, timer, and PPU timing accuracy improves. Add new ROMs one at a time so failures remain actionable.
