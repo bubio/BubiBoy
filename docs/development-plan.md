@@ -52,13 +52,16 @@ Deliverable: a buildable solution with an empty but shaped emulator core and tes
 
 ## Phase 2: DMG Core Bring-Up
 
-- [ ] Implement CPU register state, flags, instruction decoding, and instruction execution.
-- [ ] Implement the memory bus, boot state assumptions, cartridge ROM access, WRAM, HRAM, and IO registers.
+- [x] Implement CPU register state, flags, instruction decoding, and instruction execution.
+- [x] Implement the memory bus, boot state assumptions, cartridge ROM access, WRAM, HRAM, and IO registers.
 - [x] Implement interrupts, timers, divider behavior, joypad input, and serial stubs.
 - [x] Add ROM-only cartridge support.
 - [ ] Validate CPU behavior using permissively licensed test ROMs and focused unit tests.
 
 Deliverable: basic DMG test ROMs execute far enough to report pass/fail through memory or serial output.
+
+Current gap: focused unit tests and local ROM smoke runs exist, but a redistributable CPU test-ROM
+harness with pass/fail reporting has not been added yet. See [phase2-audit.md](phase2-audit.md).
 
 ## Phase 3: Video Path
 

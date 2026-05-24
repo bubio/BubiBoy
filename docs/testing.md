@@ -27,6 +27,8 @@ Only commit test ROMs when redistribution is explicitly permitted. Record source
 
 For private local ROM collections, use the smoke runner documented in [rom-smoke.md](rom-smoke.md). Local commercial ROMs must not be committed.
 
+The Phase 2 CPU validation gap is tracked in [phase2-audit.md](phase2-audit.md). Do not mark that item complete until a redistributable test-ROM harness runs under `dotnet test`.
+
 ## Style
 
 - Prefer readable test names that describe hardware behavior.
