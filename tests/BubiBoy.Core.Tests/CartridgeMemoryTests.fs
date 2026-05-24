@@ -136,3 +136,49 @@ let ``MBC5 uses nine bit ROM banks and four bit RAM banks`` () =
 
         Assert.Equal(0x01uy, CartridgeMemory.readByte 0x4000us switched)
         Assert.Equal(0x77uy, CartridgeMemory.readByte 0xA000us switched)
+
+[<Fact>]
+let ``battery-backed RAM can be exported and imported defensively`` () =
+    let rom = makeRom 0x03uy 0x04uy 0x03uy 32
+
+    match CartridgeMemory.create rom with
+    | Error message -> Assert.Fail message
+    | Ok image ->
+        let withSave =
+            image
+            |> CartridgeMemory.writeByte 0x0000us 0x0Auy
+            |> CartridgeMemory.writeByte 0xA000us 0x5Auy
+
+        match CartridgeMemory.exportSaveRam withSave with
+        | None -> Assert.Fail "Expected battery-backed RAM to export."
+        | Some saveRam ->
+            saveRam[0] <- 0x00uy
+
+            match CartridgeMemory.importSaveRam saveRam image with
+            | Error message -> Assert.Fail message
+            | Ok imported ->
+                Assert.Equal(0x00uy, CartridgeMemory.readByte 0xA000us (imported |> CartridgeMemory.writeByte 0x0000us 0x0Auy))
+
+                saveRam[0] <- 0x7Fuy
+                Assert.Equal(0x00uy, CartridgeMemory.readByte 0xA000us (imported |> CartridgeMemory.writeByte 0x0000us 0x0Auy))
+
+[<Fact>]
+let ``non battery cartridges do not export save RAM`` () =
+    let rom = makeRom 0x02uy 0x04uy 0x03uy 32
+
+    match CartridgeMemory.create rom with
+    | Error message -> Assert.Fail message
+    | Ok image ->
+        Assert.False(CartridgeMemory.hasBatteryBackedRam image)
+        Assert.Equal(None, CartridgeMemory.exportSaveRam image)
+
+[<Fact>]
+let ``importSaveRam rejects wrong size`` () =
+    let rom = makeRom 0x03uy 0x04uy 0x03uy 32
+
+    match CartridgeMemory.create rom with
+    | Error message -> Assert.Fail message
+    | Ok image ->
+        match CartridgeMemory.importSaveRam [| 0uy |] image with
+        | Ok _ -> Assert.Fail "Expected save RAM size mismatch."
+        | Error message -> Assert.Contains("size mismatch", message)

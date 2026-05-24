@@ -74,6 +74,16 @@ module CartridgeMemory =
         | Cartridge.Mbc5RamBattery -> true
         | _ -> false
 
+    let private hasBattery kind =
+        match kind with
+        | Cartridge.Mbc1RamBattery
+        | Cartridge.Mbc2Battery
+        | Cartridge.Mbc3TimerBattery
+        | Cartridge.Mbc3TimerRamBattery
+        | Cartridge.Mbc3RamBattery
+        | Cartridge.Mbc5RamBattery -> true
+        | _ -> false
+
     let private supportsRam kind =
         match kind with
         | Cartridge.Mbc1Ram
@@ -183,6 +193,25 @@ module CartridgeMemory =
             Some(selector - 0x08)
         else
             None
+
+    let hasBatteryBackedRam image =
+        hasBattery image.Header.CartridgeKind && image.Ram.Length > 0
+
+    let exportSaveRam image =
+        if hasBatteryBackedRam image then
+            Some(Array.copy image.Ram)
+        else
+            None
+
+    let importSaveRam (saveRam: byte[]) image =
+        if isNull saveRam then
+            Error "Save RAM data is null."
+        elif not (hasBatteryBackedRam image) then
+            Error "Cartridge does not have battery-backed RAM."
+        elif saveRam.Length <> image.Ram.Length then
+            Error $"Save RAM size mismatch: expected {image.Ram.Length} bytes, got {saveRam.Length} bytes."
+        else
+            Ok { image with Ram = Array.copy saveRam }
 
     let readByte (address: uint16) image =
         let address = int address

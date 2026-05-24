@@ -149,6 +149,7 @@ type MainWindow() as this =
         let mutable loadedRom: RomFile.LoadedRom option = None
         let mutable currentSession: Emulator.Session option = None
         let mutable isRunning = false
+        let mutable lastSaveStatus: string option = None
 
         let openButton =
             Button(
@@ -222,6 +223,15 @@ type MainWindow() as this =
         let stopRunning () =
             isRunning <- false
             startStopButton.Content <- "Start"
+
+        let saveCurrentRam () =
+            match loadedRom, currentSession with
+            | Some rom, Some session ->
+                match SaveRam.saveForRom rom.Path session.Bus.Cartridge with
+                | Ok true -> lastSaveStatus <- Some "Save RAM written."
+                | Ok false -> lastSaveStatus <- None
+                | Error message -> lastSaveStatus <- Some $"Save RAM error: {message}"
+            | _ -> ()
 
         let updateFrame (result: Emulator.FrameResult) =
             currentSession <- Some result.Session
@@ -306,20 +316,36 @@ type MainWindow() as this =
                     if String.IsNullOrWhiteSpace path then
                         status.Text <- "Could not open the selected ROM path."
                     else
+                        saveCurrentRam ()
+
                         match RomFile.load path with
                         | Ok loaded ->
                             let header = loaded.Header
+                            let sessionResult =
+                                Emulator.createSession loaded.Bytes
+                                |> Result.bind (fun session ->
+                                    SaveRam.loadForRom loaded.Path session.Bus.Cartridge
+                                    |> Result.map (fun cartridge ->
+                                        { session with Bus = { session.Bus with Cartridge = cartridge } }))
+
                             loadedRom <- Some loaded
-                            currentSession <- Emulator.createSession loaded.Bytes |> Result.toOption
+                            currentSession <- sessionResult |> Result.toOption
                             stepFrameButton.IsEnabled <- currentSession.IsSome
                             startStopButton.IsEnabled <- currentSession.IsSome
                             stopRunning ()
                             framebufferImage.Source <- FramebufferBitmap.create (Video.blankFrame ())
 
-                            status.Text <- $"Loaded {IO.Path.GetFileName loaded.Path}"
+                            status.Text <-
+                                match sessionResult, lastSaveStatus with
+                                | Ok _, Some saveMessage -> $"Loaded {IO.Path.GetFileName loaded.Path}  {saveMessage}"
+                                | Ok _, None -> $"Loaded {IO.Path.GetFileName loaded.Path}"
+                                | Error message, _ -> $"Could not start ROM: {message}"
                             romDetails.Text <-
                                 $"Title: {header.Title}\nCGB: {header.CgbSupport}\nSGB: {header.SgbSupport}\nCartridge: {header.CartridgeKind} (0x{header.CartridgeTypeCode:X2})\nROM: {HeaderDisplay.formatRomSize header.RomSizeCode} (0x{header.RomSizeCode:X2})\nRAM: {HeaderDisplay.formatRamSize header.RamSizeCode} (0x{header.RamSizeCode:X2})"
-                            debugDetails.Text <- "Ready to run frames."
+                            debugDetails.Text <-
+                                match sessionResult with
+                                | Ok _ -> "Ready to run frames."
+                                | Error message -> message
                         | Error message ->
                             loadedRom <- None
                             currentSession <- None
@@ -336,8 +362,13 @@ type MainWindow() as this =
 
         startStopButton.Click.Add(fun _ ->
             isRunning <- not isRunning
+            if not isRunning then
+                saveCurrentRam ()
+
             startStopButton.Content <- if isRunning then "Stop" else "Start"
             this.Focus() |> ignore)
+
+        this.Closing.Add(fun _ -> saveCurrentRam ())
 
         let panel =
             StackPanel(
