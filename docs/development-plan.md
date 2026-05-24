@@ -74,7 +74,7 @@ Deliverable: simple DMG games and visual test ROMs render recognizable output.
 
 - [x] Implement MBC1, MBC2, MBC3, MBC5, RAM enable, and ROM/RAM banking.
 - [x] Add battery-backed save handling through `BubiBoy.IO`.
-- [ ] Add RTC support for MBC3 with deterministic test hooks.
+- [x] Add RTC support for MBC3 with deterministic test hooks.
 - [x] Document unsupported cartridge hardware as explicit compatibility gaps.
 
 Deliverable: common DMG cartridges load, run, and persist saves.

@@ -120,6 +120,97 @@ let ``MBC3 switches ROM banks RAM banks and deterministic RTC registers`` () =
         Assert.Equal(0x12uy, CartridgeMemory.readByte 0xA000us (withRtc |> CartridgeMemory.writeByte 0x4000us 0x08uy))
 
 [<Fact>]
+let ``MBC3 RTC advances deterministically across seconds minutes hours and days`` () =
+    let rom = makeRom 0x10uy 0x04uy 0x03uy 32
+
+    match CartridgeMemory.create rom with
+    | Error message -> Assert.Fail message
+    | Ok image ->
+        let advanced =
+            image
+            |> CartridgeMemory.writeByte 0x0000us 0x0Auy
+            |> CartridgeMemory.advanceRtcSeconds (1 + 2 * 60 + 3 * 60 * 60 + 4 * 24 * 60 * 60)
+
+        Assert.Equal(0x01uy, CartridgeMemory.readByte 0xA000us (advanced |> CartridgeMemory.writeByte 0x4000us 0x08uy))
+        Assert.Equal(0x02uy, CartridgeMemory.readByte 0xA000us (advanced |> CartridgeMemory.writeByte 0x4000us 0x09uy))
+        Assert.Equal(0x03uy, CartridgeMemory.readByte 0xA000us (advanced |> CartridgeMemory.writeByte 0x4000us 0x0Auy))
+        Assert.Equal(0x04uy, CartridgeMemory.readByte 0xA000us (advanced |> CartridgeMemory.writeByte 0x4000us 0x0Buy))
+        Assert.Equal(0x00uy, CartridgeMemory.readByte 0xA000us (advanced |> CartridgeMemory.writeByte 0x4000us 0x0Cuy))
+
+[<Fact>]
+let ``MBC3 RTC latch keeps a stable snapshot until latched again`` () =
+    let rom = makeRom 0x10uy 0x04uy 0x03uy 32
+
+    match CartridgeMemory.create rom with
+    | Error message -> Assert.Fail message
+    | Ok image ->
+        let latched =
+            image
+            |> CartridgeMemory.writeByte 0x0000us 0x0Auy
+            |> CartridgeMemory.advanceRtcSeconds 10
+            |> CartridgeMemory.writeByte 0x6000us 0x00uy
+            |> CartridgeMemory.writeByte 0x6000us 0x01uy
+
+        let advanced = latched |> CartridgeMemory.advanceRtcSeconds 5
+
+        Assert.Equal(0x0Auy, CartridgeMemory.readByte 0xA000us (advanced |> CartridgeMemory.writeByte 0x4000us 0x08uy))
+
+        let relatched =
+            advanced
+            |> CartridgeMemory.writeByte 0x6000us 0x00uy
+            |> CartridgeMemory.writeByte 0x6000us 0x01uy
+
+        Assert.Equal(0x0Fuy, CartridgeMemory.readByte 0xA000us (relatched |> CartridgeMemory.writeByte 0x4000us 0x08uy))
+
+[<Fact>]
+let ``MBC3 RTC halt bit stops deterministic advancement`` () =
+    let rom = makeRom 0x10uy 0x04uy 0x03uy 32
+
+    match CartridgeMemory.create rom with
+    | Error message -> Assert.Fail message
+    | Ok image ->
+        let halted =
+            image
+            |> CartridgeMemory.writeByte 0x0000us 0x0Auy
+            |> CartridgeMemory.writeByte 0x4000us 0x0Cuy
+            |> CartridgeMemory.writeByte 0xA000us 0x40uy
+            |> CartridgeMemory.advanceRtcSeconds 120
+
+        Assert.Equal(0x00uy, CartridgeMemory.readByte 0xA000us (halted |> CartridgeMemory.writeByte 0x4000us 0x08uy))
+        Assert.Equal(0x40uy, CartridgeMemory.readByte 0xA000us (halted |> CartridgeMemory.writeByte 0x4000us 0x0Cuy))
+
+[<Fact>]
+let ``MBC3 RTC sets carry and wraps after five hundred twelve days`` () =
+    let rom = makeRom 0x10uy 0x04uy 0x03uy 32
+
+    match CartridgeMemory.create rom with
+    | Error message -> Assert.Fail message
+    | Ok image ->
+        let advanced =
+            image
+            |> CartridgeMemory.writeByte 0x0000us 0x0Auy
+            |> CartridgeMemory.advanceRtcSeconds (512 * 24 * 60 * 60)
+
+        Assert.Equal(0x00uy, CartridgeMemory.readByte 0xA000us (advanced |> CartridgeMemory.writeByte 0x4000us 0x0Buy))
+        Assert.Equal(0x80uy, CartridgeMemory.readByte 0xA000us (advanced |> CartridgeMemory.writeByte 0x4000us 0x0Cuy))
+
+[<Fact>]
+let ``MBC3 cartridges without timer do not expose RTC registers`` () =
+    let rom = makeRom 0x13uy 0x04uy 0x03uy 32
+
+    match CartridgeMemory.create rom with
+    | Error message -> Assert.Fail message
+    | Ok image ->
+        let attempted =
+            image
+            |> CartridgeMemory.writeByte 0x0000us 0x0Auy
+            |> CartridgeMemory.writeByte 0x4000us 0x08uy
+            |> CartridgeMemory.writeByte 0xA000us 0x12uy
+            |> CartridgeMemory.advanceRtcSeconds 30
+
+        Assert.Equal(0xFFuy, CartridgeMemory.readByte 0xA000us attempted)
+
+[<Fact>]
 let ``MBC5 uses nine bit ROM banks and four bit RAM banks`` () =
     let rom = makeRom 0x1Buy 0x08uy 0x04uy 512
 

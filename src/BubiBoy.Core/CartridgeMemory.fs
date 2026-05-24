@@ -19,7 +19,10 @@ module CartridgeMemory =
         { RamEnabled: bool
           RomBank: int
           RamOrRtcSelect: int
-          RtcRegisters: byte[] }
+          HasRtc: bool
+          RtcRegisters: byte[]
+          LatchedRtcRegisters: byte[] option
+          RtcLatchPrepared: bool }
 
     type Mbc5State =
         { RamEnabled: bool
@@ -107,11 +110,14 @@ module CartridgeMemory =
         { RamEnabled = false
           RomBank = 1 }
 
-    let private defaultMbc3 =
+    let private defaultMbc3 hasRtc =
         { RamEnabled = false
           RomBank = 1
           RamOrRtcSelect = 0
-          RtcRegisters = Array.zeroCreate 5 }
+          HasRtc = hasRtc
+          RtcRegisters = Array.zeroCreate 5
+          LatchedRtcRegisters = None
+          RtcLatchPrepared = false }
 
     let private defaultMbc5 =
         { RamEnabled = false
@@ -122,7 +128,14 @@ module CartridgeMemory =
     let private mbcState kind =
         if supportsMbc1 kind then Mbc1 defaultMbc1
         elif supportsMbc2 kind then Mbc2 defaultMbc2
-        elif supportsMbc3 kind then Mbc3 defaultMbc3
+        elif supportsMbc3 kind then
+            let hasRtc =
+                match kind with
+                | Cartridge.Mbc3TimerBattery
+                | Cartridge.Mbc3TimerRamBattery -> true
+                | _ -> false
+
+            Mbc3(defaultMbc3 hasRtc)
         elif supportsMbc5 kind then Mbc5 defaultMbc5
         else NoMbc
 
@@ -194,6 +207,96 @@ module CartridgeMemory =
         else
             None
 
+    let private rtcDay (registers: byte[]) =
+        int registers[3] ||| ((int registers[4] &&& 0x01) <<< 8)
+
+    let private rtcHalted (registers: byte[]) =
+        registers[4] &&& 0x40uy <> 0uy
+
+    let private rtcCarry (registers: byte[]) =
+        registers[4] &&& 0x80uy <> 0uy
+
+    let private normalizeRtcRegister index value =
+        match index with
+        | 0
+        | 1 -> value % 60
+        | 2 -> value % 24
+        | 3 -> value &&& 0xFF
+        | 4 -> value &&& 0xC1
+        | _ -> value &&& 0xFF
+
+    let private setRtcFromTotalSeconds carry halted totalSeconds (registers: byte[]) =
+        let secondsPerMinute = 60
+        let secondsPerHour = secondsPerMinute * 60
+        let secondsPerDay = secondsPerHour * 24
+        let boundedTotal = max 0 totalSeconds
+        let day = min 511 (boundedTotal / secondsPerDay)
+        let remainderAfterDays = boundedTotal % secondsPerDay
+        let hour = remainderAfterDays / secondsPerHour
+        let remainderAfterHours = remainderAfterDays % secondsPerHour
+        let minute = remainderAfterHours / secondsPerMinute
+        let second = remainderAfterHours % secondsPerMinute
+        let high =
+            (if day &&& 0x100 <> 0 then 0x01uy else 0uy)
+            ||| (if halted then 0x40uy else 0uy)
+            ||| (if carry then 0x80uy else 0uy)
+
+        registers[0] <- byte second
+        registers[1] <- byte minute
+        registers[2] <- byte hour
+        registers[3] <- byte (day &&& 0xFF)
+        registers[4] <- high
+
+    let private rtcTotalSeconds (registers: byte[]) =
+        int registers[0]
+        + int registers[1] * 60
+        + int registers[2] * 60 * 60
+        + rtcDay registers * 24 * 60 * 60
+
+    let private advanceRtcRegisters seconds (registers: byte[]) =
+        let next = Array.copy registers
+
+        if seconds > 0 && not (rtcHalted next) then
+            let secondsPerDay = 24 * 60 * 60
+            let currentTotal = rtcTotalSeconds next
+            let advancedTotal = currentTotal + seconds
+            let carry = rtcCarry next || advancedTotal >= 512 * secondsPerDay
+            let wrappedTotal = advancedTotal % (512 * secondsPerDay)
+            setRtcFromTotalSeconds carry false wrappedTotal next
+
+        next
+
+    let private readMbc3Rtc state rtcIndex =
+        if not state.HasRtc then
+            0xFFuy
+        else
+            let registers =
+                match state.LatchedRtcRegisters with
+                | Some latched -> latched
+                | None -> state.RtcRegisters
+
+            registers[rtcIndex]
+
+    let private writeMbc3Rtc state rtcIndex value =
+        if not state.HasRtc then
+            state
+        else
+            let nextRtc = Array.copy state.RtcRegisters
+            nextRtc[rtcIndex] <- byte (normalizeRtcRegister rtcIndex (int value))
+            { state with RtcRegisters = nextRtc }
+
+    let private latchMbc3Rtc value state =
+        if not state.HasRtc then
+            state
+        else if value = 0 then
+            { state with RtcLatchPrepared = true }
+        else if value = 1 && state.RtcLatchPrepared then
+            { state with
+                LatchedRtcRegisters = Some(Array.copy state.RtcRegisters)
+                RtcLatchPrepared = false }
+        else
+            { state with RtcLatchPrepared = false }
+
     let hasBatteryBackedRam image =
         hasBattery image.Header.CartridgeKind && image.Ram.Length > 0
 
@@ -212,6 +315,12 @@ module CartridgeMemory =
             Error $"Save RAM size mismatch: expected {image.Ram.Length} bytes, got {saveRam.Length} bytes."
         else
             Ok { image with Ram = Array.copy saveRam }
+
+    let advanceRtcSeconds seconds image =
+        match image.Mbc with
+        | Mbc3 state when state.HasRtc ->
+            { image with Mbc = Mbc3 { state with RtcRegisters = advanceRtcRegisters seconds state.RtcRegisters } }
+        | _ -> image
 
     let readByte (address: uint16) image =
         let address = int address
@@ -245,7 +354,7 @@ module CartridgeMemory =
                 0xF0uy ||| (image.Ram[offset &&& 0x01FF] &&& 0x0Fuy)
             | Mbc3 state when state.RamEnabled ->
                 match mbc3RtcRegisterIndex state.RamOrRtcSelect with
-                | Some rtcIndex -> state.RtcRegisters[rtcIndex]
+                | Some rtcIndex -> readMbc3Rtc state rtcIndex
                 | None when state.RamOrRtcSelect >= 0 && state.RamOrRtcSelect <= 3 ->
                     readRamBank image state.RamOrRtcSelect offset
                 | _ -> 0xFFuy
@@ -302,12 +411,12 @@ module CartridgeMemory =
                 { image with Mbc = Mbc3 { state with RomBank = if bank = 0 then 1 else bank } }
             | addr when addr >= 0x4000 && addr <= 0x5FFF ->
                 { image with Mbc = Mbc3 { state with RamOrRtcSelect = numericValue } }
+            | addr when addr >= 0x6000 && addr <= 0x7FFF ->
+                { image with Mbc = Mbc3(latchMbc3Rtc (numericValue &&& 0x01) state) }
             | addr when addr >= 0xA000 && addr <= 0xBFFF && state.RamEnabled ->
                 match mbc3RtcRegisterIndex state.RamOrRtcSelect with
                 | Some rtcIndex ->
-                    let nextRtc = Array.copy state.RtcRegisters
-                    nextRtc[rtcIndex] <- value
-                    { image with Mbc = Mbc3 { state with RtcRegisters = nextRtc } }
+                    { image with Mbc = Mbc3(writeMbc3Rtc state rtcIndex value) }
                 | None when state.RamOrRtcSelect >= 0 && state.RamOrRtcSelect <= 3 ->
                     writeRamBank image state.RamOrRtcSelect (addr - 0xA000) value
                 | _ -> image
