@@ -227,7 +227,7 @@ type MainWindow() as this =
         let saveCurrentRam () =
             match loadedRom, currentSession with
             | Some rom, Some session ->
-                match SaveRam.saveForRom rom.Path session.Bus.Cartridge with
+                match SaveRam.saveForRom rom.Path (Bus.cartridge session.Bus) with
                 | Ok true -> lastSaveStatus <- Some "Save RAM written."
                 | Ok false -> lastSaveStatus <- None
                 | Error message -> lastSaveStatus <- Some $"Save RAM error: {message}"
@@ -324,9 +324,9 @@ type MainWindow() as this =
                             let sessionResult =
                                 Emulator.createSession loaded.Bytes
                                 |> Result.bind (fun session ->
-                                    SaveRam.loadForRom loaded.Path session.Bus.Cartridge
+                                    SaveRam.loadForRom loaded.Path (Bus.cartridge session.Bus)
                                     |> Result.map (fun cartridge ->
-                                        { session with Bus = { session.Bus with Cartridge = cartridge } }))
+                                        { session with Bus = Bus.withCartridge cartridge session.Bus }))
 
                             loadedRom <- Some loaded
                             currentSession <- sessionResult |> Result.toOption

@@ -37,11 +37,14 @@ module Emulator =
         Bus.readByte 0xFF40us bus &&& 0x80uy <> 0uy
 
     let private shouldRenderScanline (beforeBus: Bus.Memory) (afterBus: Bus.Memory) =
+        let beforeLcd = Bus.lcdState beforeBus
+        let afterLcd = Bus.lcdState afterBus
+
         lcdEnabled beforeBus
-        && beforeBus.Lcd.Line < byte Hardware.ScreenHeight
-        && beforeBus.Lcd.Mode <> Lcd.HBlank
-        && ((afterBus.Lcd.Line = beforeBus.Lcd.Line && afterBus.Lcd.Mode = Lcd.HBlank)
-            || afterBus.Lcd.Line <> beforeBus.Lcd.Line)
+        && beforeLcd.Line < byte Hardware.ScreenHeight
+        && beforeLcd.Mode <> Lcd.HBlank
+        && ((afterLcd.Line = beforeLcd.Line && afterLcd.Mode = Lcd.HBlank)
+            || afterLcd.Line <> beforeLcd.Line)
 
     let step session =
         let beforeBus = session.Bus
@@ -50,7 +53,7 @@ module Emulator =
         let framebuffer =
             if shouldRenderScanline beforeBus bus then
                 let next = Array.copy session.Framebuffer
-                Video.renderScanline (int beforeBus.Lcd.Line) bus next
+                Video.renderScanline (int (Bus.lcdState beforeBus).Line) bus next
                 next
             else
                 session.Framebuffer

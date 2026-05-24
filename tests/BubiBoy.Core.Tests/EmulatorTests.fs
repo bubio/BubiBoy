@@ -20,14 +20,10 @@ let private createSession program =
     | Error message -> failwith message
 
 let private withIo index value (bus: Bus.Memory) =
-    let io = Array.copy bus.Io
-    io[index] <- value
-    { bus with Io = io }
+    Bus.withIoByte index value bus
 
 let private withVram address value (bus: Bus.Memory) =
-    let vram = Array.copy bus.Vram
-    vram[address - 0x8000] <- value
-    { bus with Vram = vram }
+    Bus.withVramByte address value bus
 
 [<Fact>]
 let ``runFrame advances until one hardware frame elapses`` () =

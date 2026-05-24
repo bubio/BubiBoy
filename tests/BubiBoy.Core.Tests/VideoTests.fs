@@ -16,19 +16,13 @@ let private makeBus () =
     | Error message -> failwith message
 
 let private withIo index value (bus: Bus.Memory) =
-    let io = Array.copy bus.Io
-    io[index] <- value
-    { bus with Io = io }
+    Bus.withIoByte index value bus
 
 let private withVram address value (bus: Bus.Memory) =
-    let vram = Array.copy bus.Vram
-    vram[address - 0x8000] <- value
-    { bus with Vram = vram }
+    Bus.withVramByte address value bus
 
 let private withOam index value (bus: Bus.Memory) =
-    let oam = Array.copy bus.Oam
-    oam[index] <- value
-    { bus with Oam = oam }
+    Bus.withOamByte index value bus
 
 let private pixel x y (framebuffer: uint32[]) =
     framebuffer[y * Hardware.ScreenWidth + x]

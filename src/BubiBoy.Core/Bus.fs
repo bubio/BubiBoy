@@ -2,16 +2,17 @@ namespace BubiBoy.Core
 
 module Bus =
     type Memory =
-        { Cartridge: CartridgeMemory.CartridgeImage
-          Vram: byte[]
-          Wram: byte[]
-          Oam: byte[]
-          Io: byte[]
-          Hram: byte[]
-          Timer: Timer.State
-          Lcd: Lcd.State
-          Joypad: Joypad.State
-          InterruptEnable: byte }
+        private
+            { Cartridge: CartridgeMemory.CartridgeImage
+              Vram: byte[]
+              Wram: byte[]
+              Oam: byte[]
+              Io: byte[]
+              Hram: byte[]
+              Timer: Timer.State
+              Lcd: Lcd.State
+              Joypad: Joypad.State
+              InterruptEnable: byte }
 
     [<Literal>]
     let VramSize = 8 * 1024
@@ -78,6 +79,39 @@ module Bus =
 
     let private lcdEnabled memory =
         memory.Io[0x40] &&& 0x80uy <> 0uy
+
+    let cartridge memory =
+        memory.Cartridge
+
+    let withCartridge cartridge memory =
+        { memory with Cartridge = cartridge }
+
+    let lcdState memory =
+        memory.Lcd
+
+    let rawIoByte index memory =
+        memory.Io[index]
+
+    let rawVramByte address memory =
+        memory.Vram[address - 0x8000]
+
+    let rawOamByte index memory =
+        memory.Oam[index]
+
+    let withIoByte index value memory =
+        let next = Array.copy memory.Io
+        next[index] <- value
+        { memory with Io = next }
+
+    let withVramByte address value memory =
+        let next = Array.copy memory.Vram
+        next[address - 0x8000] <- value
+        { memory with Vram = next }
+
+    let withOamByte index value memory =
+        let next = Array.copy memory.Oam
+        next[index] <- value
+        { memory with Oam = next }
 
     let private vramBlocked memory =
         lcdEnabled memory && memory.Lcd.Mode = Lcd.Transfer

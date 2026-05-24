@@ -143,7 +143,7 @@ Examples:
     let private formatTraceEntry step cycles (session: Emulator.Session) =
         let registers = session.Cpu.Registers
         let opcode = Bus.readByte registers.PC session.Bus
-        let cartridgeBank = describeCartridgeBank session.Bus.Cartridge
+        let cartridgeBank = describeCartridgeBank (Bus.cartridge session.Bus)
 
         $"TRACE\tstep=%d{step}\tcycles=%d{cycles}\tpc=0x%04X{registers.PC}\topcode=0x%02X{opcode}\tsp=0x%04X{registers.SP}\ta=0x%02X{registers.A}\tf=0x%02X{registers.F}\tb=0x%02X{registers.B}\tc=0x%02X{registers.C}\td=0x%02X{registers.D}\te=0x%02X{registers.E}\th=0x%02X{registers.H}\tl=0x%02X{registers.L}%s{cartridgeBank}"
 
@@ -221,7 +221,7 @@ Examples:
             printfn $"LOAD_ERROR\t{relativePath}\t{message}"
         | Ran(result, trace) ->
             let registers = result.Session.Cpu.Registers
-            let cartridgeBank = describeCartridgeBank result.Session.Bus.Cartridge
+            let cartridgeBank = describeCartridgeBank (Bus.cartridge result.Session.Bus)
             printfn
                 $"%s{describeStopReason result.StopReason}\t%s{relativePath}\tsteps=%d{result.Session.Steps}\tcycles=%d{result.Session.TotalCycles}\tpc=0x%04X{registers.PC}\tsp=0x%04X{registers.SP}\ta=0x%02X{registers.A}\tf=0x%02X{registers.F}%s{cartridgeBank}"
 
@@ -231,14 +231,14 @@ Examples:
             | _ -> ()
         | BadStackPointer(session, trace) ->
             let registers = session.Cpu.Registers
-            let cartridgeBank = describeCartridgeBank session.Bus.Cartridge
+            let cartridgeBank = describeCartridgeBank (Bus.cartridge session.Bus)
             printfn
                 $"BAD_STACK_POINTER\t%s{relativePath}\tsteps=%d{session.Steps}\tcycles=%d{session.TotalCycles}\tpc=0x%04X{registers.PC}\tsp=0x%04X{registers.SP}\ta=0x%02X{registers.A}\tf=0x%02X{registers.F}%s{cartridgeBank}"
 
             trace |> List.iter (printfn "%s")
         | BadProgramCounter(session, trace) ->
             let registers = session.Cpu.Registers
-            let cartridgeBank = describeCartridgeBank session.Bus.Cartridge
+            let cartridgeBank = describeCartridgeBank (Bus.cartridge session.Bus)
             printfn
                 $"BAD_PROGRAM_COUNTER\t%s{relativePath}\tsteps=%d{session.Steps}\tcycles=%d{session.TotalCycles}\tpc=0x%04X{registers.PC}\tsp=0x%04X{registers.SP}\ta=0x%02X{registers.A}\tf=0x%02X{registers.F}%s{cartridgeBank}"
 

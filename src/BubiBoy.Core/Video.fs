@@ -17,10 +17,10 @@ module Video =
         value &&& (1uy <<< bit) <> 0uy
 
     let private io index (memory: Bus.Memory) =
-        memory.Io[index]
+        Bus.rawIoByte index memory
 
     let private vramByte address (memory: Bus.Memory) =
-        memory.Vram[address - 0x8000]
+        Bus.rawVramByte address memory
 
     let private paletteShade palette colorNumber =
         int ((palette >>> (colorNumber * 2)) &&& 0x03uy)
@@ -77,10 +77,10 @@ module Video =
                 let baseIndex = spriteIndex * 4
                 let sprite =
                     { Index = spriteIndex
-                      Y = int memory.Oam[baseIndex] - 16
-                      X = int memory.Oam[baseIndex + 1] - 8
-                      TileIndex = memory.Oam[baseIndex + 2]
-                      Attributes = memory.Oam[baseIndex + 3] }
+                      Y = int (Bus.rawOamByte baseIndex memory) - 16
+                      X = int (Bus.rawOamByte (baseIndex + 1) memory) - 8
+                      TileIndex = Bus.rawOamByte (baseIndex + 2) memory
+                      Attributes = Bus.rawOamByte (baseIndex + 3) memory }
 
                 if spriteOnLine spriteHeight y sprite then
                     sprite

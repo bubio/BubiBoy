@@ -30,4 +30,6 @@ Phase 2 is closed, but the Mooneye harness should grow as CPU, interrupt, timer,
 
 ## State Modeling Follow-up
 
-The core still exposes several mutable arrays on hardware state records for pragmatic bring-up speed and rendering performance. New code should prefer narrow transition functions, defensive copies at IO boundaries, and small domain types over raw byte arrays when the data is not on a hot path.
+`Bus.Memory` now hides its record representation and exposes narrow accessor/transition functions instead of public `byte[]` fields. This keeps existing hot-path arrays inside the core while preventing outside modules from mutating bus memory behind the state transition API.
+
+New code should continue this direction: prefer narrow transition functions, defensive copies at IO boundaries, and small domain types over raw byte arrays when the data is not on a hot path.
