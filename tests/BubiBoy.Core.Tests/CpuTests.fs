@@ -967,6 +967,7 @@ let ``Emulator run stops at unsupported opcode with current session`` () =
     let session: Emulator.Session =
         { Cpu = Cpu.initialState
           Bus = bus
+          Framebuffer = Video.blankFrame ()
           TotalCycles = 0L
           Steps = 0 }
 
@@ -988,6 +989,7 @@ let ``Emulator run handles large step counts without growing the stack`` () =
     let session: Emulator.Session =
         { Cpu = Cpu.initialState
           Bus = bus
+          Framebuffer = Video.blankFrame ()
           TotalCycles = 0L
           Steps = 0 }
 
@@ -1004,6 +1006,7 @@ let ``Emulator run continues ticking while CPU is halted`` () =
     let session: Emulator.Session =
         { Cpu = Cpu.initialState
           Bus = bus
+          Framebuffer = Video.blankFrame ()
           TotalCycles = 0L
           Steps = 0 }
 

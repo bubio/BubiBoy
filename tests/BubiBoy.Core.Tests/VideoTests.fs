@@ -157,3 +157,30 @@ let ``sprite x and y flip select mirrored tile pixels`` () =
         |> Video.renderFrame
 
     Assert.Equal(Video.DmgColors[1], pixel 0 0 framebuffer)
+
+[<Fact>]
+let ``renderScanline preserves lines rendered with earlier scroll values`` () =
+    let framebuffer = Video.blankFrame ()
+
+    let firstLine =
+        makeBus ()
+        |> withIo 0x40 0x91uy
+        |> withIo 0x47 0xE4uy
+        |> withIo 0x42 0x00uy
+        |> withVram 0x9800 0x01uy
+        |> withVram 0x8010 0x80uy
+        |> withVram 0x8011 0x00uy
+
+    Video.renderScanline 0 firstLine framebuffer
+
+    let secondLine =
+        firstLine
+        |> withIo 0x42 0x07uy
+        |> withVram (0x9800 + 32) 0x02uy
+        |> withVram 0x8020 0x80uy
+        |> withVram 0x8021 0x80uy
+
+    Video.renderScanline 1 secondLine framebuffer
+
+    Assert.Equal(Video.DmgColors[1], pixel 0 0 framebuffer)
+    Assert.Equal(Video.DmgColors[3], pixel 0 1 framebuffer)

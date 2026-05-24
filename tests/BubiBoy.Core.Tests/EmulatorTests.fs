@@ -19,6 +19,16 @@ let private createSession program =
     | Ok session -> session
     | Error message -> failwith message
 
+let private withIo index value (bus: Bus.Memory) =
+    let io = Array.copy bus.Io
+    io[index] <- value
+    { bus with Io = io }
+
+let private withVram address value (bus: Bus.Memory) =
+    let vram = Array.copy bus.Vram
+    vram[address - 0x8000] <- value
+    { bus with Vram = vram }
+
 [<Fact>]
 let ``runFrame advances until one hardware frame elapses`` () =
     let result = createSession [| 0x00uy |] |> Emulator.runFrame 20_000
@@ -27,6 +37,22 @@ let ``runFrame advances until one hardware frame elapses`` () =
     Assert.True(result.Session.TotalCycles >= int64 Hardware.CyclesPerFrame)
     Assert.Equal(17_556, result.Session.Steps)
     Assert.Equal(Video.FramebufferPixels, result.Framebuffer.Length)
+
+[<Fact>]
+let ``runFrame returns scanline framebuffer captured during the frame`` () =
+    let session = createSession [| 0x00uy |]
+    let bus =
+        session.Bus
+        |> withIo 0x40 0x91uy
+        |> withIo 0x47 0xE4uy
+        |> withVram 0x9800 0x01uy
+        |> withVram 0x8010 0x80uy
+        |> withVram 0x8011 0x00uy
+
+    let result = Emulator.runFrame 20_000 { session with Bus = bus }
+
+    Assert.Equal(Emulator.FrameCompleted, result.StopReason)
+    Assert.Equal(Video.DmgColors[1], result.Framebuffer[0])
 
 [<Fact>]
 let ``runFrame stops at step limit before frame completion`` () =

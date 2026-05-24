@@ -94,7 +94,7 @@ module Video =
         else
             None
 
-    let private renderSprites (memory: Bus.Memory) lcdc (backgroundShades: byte[]) (framebuffer: uint32[]) =
+    let private renderSpriteLine (memory: Bus.Memory) lcdc y (backgroundShades: byte[]) (framebuffer: uint32[]) =
         if bitSet 1 lcdc then
             let spriteHeight = if bitSet 2 lcdc then 16 else 8
 
@@ -114,53 +114,64 @@ module Video =
                 let yFlip = bitSet 6 attributes
                 let behindBackground = bitSet 7 attributes
 
-                for yInSprite in 0 .. spriteHeight - 1 do
-                    let y = spriteY + yInSprite
+                let yInSprite = y - spriteY
 
-                    if y >= 0 && y < Hardware.ScreenHeight then
-                        let sourceY =
-                            if yFlip then
-                                spriteHeight - 1 - yInSprite
-                            else
-                                yInSprite
+                if yInSprite >= 0 && yInSprite < spriteHeight then
+                    let sourceY =
+                        if yFlip then
+                            spriteHeight - 1 - yInSprite
+                        else
+                            yInSprite
 
-                        let tileOffset = if spriteHeight = 16 && sourceY >= 8 then 1 else 0
-                        let row = sourceY % 8
-                        let address = unsignedTileAddress (tileIndex + byte tileOffset) row
+                    let tileOffset = if spriteHeight = 16 && sourceY >= 8 then 1 else 0
+                    let row = sourceY % 8
+                    let address = unsignedTileAddress (tileIndex + byte tileOffset) row
 
-                        for xInSprite in 0 .. 7 do
-                            let x = spriteX + xInSprite
+                    for xInSprite in 0 .. 7 do
+                        let x = spriteX + xInSprite
 
-                            if x >= 0 && x < Hardware.ScreenWidth then
-                                let sourceX = if xFlip then 7 - xInSprite else xInSprite
-                                let colorNumber = tilePixel memory address sourceX
+                        if x >= 0 && x < Hardware.ScreenWidth then
+                            let sourceX = if xFlip then 7 - xInSprite else xInSprite
+                            let colorNumber = tilePixel memory address sourceX
 
-                                if colorNumber <> 0 then
-                                    let pixelIndex = y * Hardware.ScreenWidth + x
-                                    let backgroundIsOpaque = backgroundShades[pixelIndex] <> 0uy
+                            if colorNumber <> 0 then
+                                let pixelIndex = y * Hardware.ScreenWidth + x
+                                let backgroundIsOpaque = backgroundShades[pixelIndex] <> 0uy
 
-                                    if not behindBackground || not backgroundIsOpaque then
-                                        framebuffer[pixelIndex] <- pixelColor palette colorNumber
+                                if not behindBackground || not backgroundIsOpaque then
+                                    framebuffer[pixelIndex] <- pixelColor palette colorNumber
 
-    let renderFrame memory =
+    let renderScanline y memory (framebuffer: uint32[]) =
         let lcdc = io 0x40 memory
-        let framebuffer = blankFrame ()
 
-        if bitSet 7 lcdc then
-            let backgroundShades = Array.zeroCreate<byte> FramebufferPixels
-            let bgp = io 0x47 memory
+        if y >= 0 && y < Hardware.ScreenHeight then
+            let lineStart = y * Hardware.ScreenWidth
 
-            for y in 0 .. Hardware.ScreenHeight - 1 do
+            if bitSet 7 lcdc then
+                let backgroundShades = Array.zeroCreate<byte> FramebufferPixels
+                let bgp = io 0x47 memory
+
                 for x in 0 .. Hardware.ScreenWidth - 1 do
                     let colorNumber =
                         match renderWindowPixel memory lcdc x y with
                         | Some windowColor -> windowColor
                         | None -> renderBackgroundPixel memory lcdc x y
 
-                    let pixelIndex = y * Hardware.ScreenWidth + x
+                    let pixelIndex = lineStart + x
                     backgroundShades[pixelIndex] <- byte colorNumber
                     framebuffer[pixelIndex] <- pixelColor bgp colorNumber
 
-            renderSprites memory lcdc backgroundShades framebuffer
+                renderSpriteLine memory lcdc y backgroundShades framebuffer
+            else
+                for x in 0 .. Hardware.ScreenWidth - 1 do
+                    framebuffer[lineStart + x] <- DmgColors[0]
+
+    let renderFrame memory =
+        let lcdc = io 0x40 memory
+        let framebuffer = blankFrame ()
+
+        if bitSet 7 lcdc then
+            for y in 0 .. Hardware.ScreenHeight - 1 do
+                renderScanline y memory framebuffer
 
         framebuffer
