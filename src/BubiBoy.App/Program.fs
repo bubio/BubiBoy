@@ -6,11 +6,14 @@ open Avalonia.Controls
 open Avalonia.Controls.ApplicationLifetimes
 open Avalonia.Layout
 open Avalonia.Media
+open Avalonia.Media.Imaging
+open Avalonia.Platform
 open Avalonia.Platform.Storage
 open Avalonia.Styling
 open Avalonia.Themes.Fluent
 open BubiBoy.Core
 open BubiBoy.IO
+open System.Runtime.InteropServices
 
 module private HeaderDisplay =
     let private formatByteSize bytes =
@@ -51,6 +54,42 @@ module private DebugDisplay =
 
         $"Run stopped: {formatStopReason result.StopReason}\nSteps: {result.Session.Steps}    Cycles: {result.Session.TotalCycles}\nPC: 0x{registers.PC:X4}    SP: 0x{registers.SP:X4}\nA: 0x{registers.A:X2}  F: 0x{registers.F:X2}  B: 0x{registers.B:X2}  C: 0x{registers.C:X2}  D: 0x{registers.D:X2}  E: 0x{registers.E:X2}  H: 0x{registers.H:X2}  L: 0x{registers.L:X2}"
 
+module private FramebufferBitmap =
+    let private toBgraBytes (pixels: uint32[]) =
+        let bytes = Array.zeroCreate<byte> (pixels.Length * 4)
+
+        for index in 0 .. pixels.Length - 1 do
+            let color = pixels[index]
+            let offset = index * 4
+            bytes[offset] <- byte (color &&& 0x000000FFu)
+            bytes[offset + 1] <- byte ((color >>> 8) &&& 0x000000FFu)
+            bytes[offset + 2] <- byte ((color >>> 16) &&& 0x000000FFu)
+            bytes[offset + 3] <- byte ((color >>> 24) &&& 0x000000FFu)
+
+        bytes
+
+    let create (pixels: uint32[]) =
+        let bitmap =
+            new WriteableBitmap(
+                PixelSize(Hardware.ScreenWidth, Hardware.ScreenHeight),
+                Vector(96.0, 96.0),
+                PixelFormat.Bgra8888,
+                AlphaFormat.Premul
+            )
+
+        let bytes = toBgraBytes pixels
+
+        use locked = bitmap.Lock()
+        let rowBytes = Hardware.ScreenWidth * 4
+
+        if locked.RowBytes = rowBytes then
+            Marshal.Copy(bytes, 0, locked.Address, bytes.Length)
+        else
+            for y in 0 .. Hardware.ScreenHeight - 1 do
+                Marshal.Copy(bytes, y * rowBytes, IntPtr.Add(locked.Address, y * locked.RowBytes), rowBytes)
+
+        bitmap
+
 type MainWindow() as this =
     inherit Window()
 
@@ -88,17 +127,15 @@ type MainWindow() as this =
                 VerticalAlignment = VerticalAlignment.Center
             )
 
-        let framebufferText =
-            TextBlock(
-                Text = $"{Hardware.ScreenWidth} x {Hardware.ScreenHeight}",
-                FontSize = 18.0,
-                FontWeight = FontWeight.SemiBold,
-                Foreground = SolidColorBrush(Color.Parse("#253826")),
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center
+        let framebufferImage =
+            Image(
+                Width = float Hardware.ScreenWidth * 2.0,
+                Height = float Hardware.ScreenHeight * 2.0,
+                Stretch = Stretch.Fill,
+                Source = FramebufferBitmap.create (Video.blankFrame ())
             )
 
-        framebuffer.Child <- framebufferText
+        framebuffer.Child <- framebufferImage
 
         let mutable loadedRom: RomFile.LoadedRom option = None
 
@@ -183,6 +220,7 @@ type MainWindow() as this =
                             let header = loaded.Header
                             loadedRom <- Some loaded
                             runButton.IsEnabled <- true
+                            framebufferImage.Source <- FramebufferBitmap.create (Video.blankFrame ())
 
                             status.Text <- $"Loaded {IO.Path.GetFileName loaded.Path}"
                             romDetails.Text <-
@@ -206,9 +244,9 @@ type MainWindow() as this =
                 | Error message ->
                     debugDetails.Text <- message
                 | Ok session ->
-                    Emulator.run 2000 session
-                    |> DebugDisplay.formatRunResult
-                    |> fun text -> debugDetails.Text <- text)
+                    let result = Emulator.run 2000 session
+                    framebufferImage.Source <- FramebufferBitmap.create (Video.renderFrame result.Session.Bus)
+                    debugDetails.Text <- DebugDisplay.formatRunResult result)
 
         let panel =
             StackPanel(

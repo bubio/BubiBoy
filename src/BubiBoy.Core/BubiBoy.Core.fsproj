@@ -15,6 +15,7 @@
     <Compile Include="Joypad.fs" />
     <Compile Include="Bus.fs" />
     <Compile Include="Cpu.fs" />
+    <Compile Include="Video.fs" />
     <Compile Include="Emulator.fs" />
   </ItemGroup>
 
