@@ -37,6 +37,11 @@ module CartridgeMemory =
         | Mbc3 of Mbc3State
         | Mbc5 of Mbc5State
 
+    type RtcSave =
+        { Registers: byte[]
+          LatchedRegisters: byte[] option
+          LatchPrepared: bool }
+
     type CartridgeImage =
         { Header: Cartridge.CartridgeHeader
           Rom: byte[]
@@ -160,7 +165,7 @@ module CartridgeMemory =
 
                     Ok
                         { Header = header
-                          Rom = rom
+                          Rom = Array.copy rom
                           RomBanks = romSize.Banks
                           Ram = ramBytes
                           RamBanks = ramSize.Banks
@@ -190,7 +195,10 @@ module CartridgeMemory =
             0xFFuy
         else
             let normalizedBank = normalizeRomBank image.RamBanks bank
-            image.Ram[normalizedBank * ramBankSize + offset]
+            let baseOffset = normalizedBank * ramBankSize
+            let bankedOffset = baseOffset + (offset % ramBankSize)
+            let effectiveOffset = bankedOffset % image.Ram.Length
+            image.Ram[effectiveOffset]
 
     let private writeRamBank image bank offset value =
         if image.Ram.Length = 0 then
@@ -198,7 +206,10 @@ module CartridgeMemory =
         else
             let normalizedBank = normalizeRomBank image.RamBanks bank
             let nextRam = Array.copy image.Ram
-            nextRam[normalizedBank * ramBankSize + offset] <- value
+            let baseOffset = normalizedBank * ramBankSize
+            let bankedOffset = baseOffset + (offset % ramBankSize)
+            let effectiveOffset = bankedOffset % nextRam.Length
+            nextRam[effectiveOffset] <- value
             { image with Ram = nextRam }
 
     let private mbc3RtcRegisterIndex selector =
@@ -315,6 +326,43 @@ module CartridgeMemory =
             Error $"Save RAM size mismatch: expected {image.Ram.Length} bytes, got {saveRam.Length} bytes."
         else
             Ok { image with Ram = Array.copy saveRam }
+
+    let hasRtc image =
+        match image.Mbc with
+        | Mbc3 state -> state.HasRtc
+        | _ -> false
+
+    let exportRtc image =
+        match image.Mbc with
+        | Mbc3 state when state.HasRtc ->
+            Some
+                { Registers = Array.copy state.RtcRegisters
+                  LatchedRegisters = state.LatchedRtcRegisters |> Option.map Array.copy
+                  LatchPrepared = state.RtcLatchPrepared }
+        | _ -> None
+
+    let importRtc rtc image =
+        let validRegisters (registers: byte[]) =
+            not (isNull registers) && registers.Length = 5
+
+        match image.Mbc with
+        | Mbc3 state when state.HasRtc ->
+            if not (validRegisters rtc.Registers) then
+                Error "RTC register data must contain exactly 5 bytes."
+            else
+                match rtc.LatchedRegisters with
+                | Some latched when not (validRegisters latched) ->
+                    Error "Latched RTC register data must contain exactly 5 bytes."
+                | _ ->
+                    Ok
+                        { image with
+                            Mbc =
+                                Mbc3
+                                    { state with
+                                        RtcRegisters = Array.copy rtc.Registers
+                                        LatchedRtcRegisters = rtc.LatchedRegisters |> Option.map Array.copy
+                                        RtcLatchPrepared = rtc.LatchPrepared } }
+        | _ -> Error "Cartridge does not have an MBC3 RTC."
 
     let advanceRtcSeconds seconds image =
         match image.Mbc with

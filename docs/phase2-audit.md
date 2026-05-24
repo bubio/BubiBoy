@@ -27,3 +27,7 @@ Each imported ROM is recorded in `reference-provenance.md` with license and redi
 ## Follow-up Coverage
 
 Phase 2 is closed, but the Mooneye harness should grow as CPU, interrupt, timer, and PPU timing accuracy improves. Add new ROMs one at a time so failures remain actionable.
+
+## State Modeling Follow-up
+
+The core still exposes several mutable arrays on hardware state records for pragmatic bring-up speed and rendering performance. New code should prefer narrow transition functions, defensive copies at IO boundaries, and small domain types over raw byte arrays when the data is not on a hot path.

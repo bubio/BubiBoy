@@ -25,6 +25,13 @@ let private makeCartridge () =
     | Ok image -> image
     | Error message -> failwith message
 
+let private makeRtcCartridge () =
+    let rom = makeRom 0x10uy 0x04uy 0x03uy 32
+
+    match CartridgeMemory.create rom with
+    | Ok image -> image
+    | Error message -> failwith message
+
 let private tempPath name =
     Path.Combine(Path.GetTempPath(), $"bubiboy-{Guid.NewGuid():N}", name)
 
@@ -87,3 +94,48 @@ let ``loadFromPath leaves cartridge unchanged when save file is missing`` () =
     match SaveRam.loadFromPath savePath (makeCartridge ()) with
     | Error message -> Assert.Fail message
     | Ok cartridge -> Assert.True(CartridgeMemory.hasBatteryBackedRam cartridge)
+
+[<Fact>]
+let ``saveForRom writes RTC data next to save RAM`` () =
+    let romPath = tempPath "game.gb"
+
+    let cartridge =
+        makeRtcCartridge ()
+        |> CartridgeMemory.advanceRtcSeconds 42
+
+    match SaveRam.saveForRom romPath cartridge with
+    | Error message -> Assert.Fail message
+    | Ok wrote ->
+        Assert.True wrote
+        Assert.True(File.Exists(Path.ChangeExtension(romPath, ".rtc")))
+
+[<Fact>]
+let ``loadForRom imports RTC data`` () =
+    let romPath = tempPath "game.gb"
+
+    let cartridge =
+        makeRtcCartridge ()
+        |> CartridgeMemory.advanceRtcSeconds 42
+
+    match SaveRam.saveForRom romPath cartridge with
+    | Error message -> Assert.Fail message
+    | Ok _ ->
+        match SaveRam.loadForRom romPath (makeRtcCartridge ()) with
+        | Error message -> Assert.Fail message
+        | Ok loaded ->
+            let readable =
+                loaded
+                |> CartridgeMemory.writeByte 0x0000us 0x0Auy
+                |> CartridgeMemory.writeByte 0x4000us 0x08uy
+
+            Assert.Equal(42uy, CartridgeMemory.readByte 0xA000us readable)
+
+[<Fact>]
+let ``loadRtcFromPath reports corrupt RTC files as errors`` () =
+    let rtcPath = tempPath "game.rtc"
+    Directory.CreateDirectory(Path.GetDirectoryName rtcPath) |> ignore
+    File.WriteAllBytes(rtcPath, [| 0uy; 1uy; 2uy |])
+
+    match SaveRam.loadRtcFromPath rtcPath (makeRtcCartridge ()) with
+    | Ok _ -> Assert.Fail "Expected corrupt RTC file to fail."
+    | Error message -> Assert.Contains("RTC data", message)
