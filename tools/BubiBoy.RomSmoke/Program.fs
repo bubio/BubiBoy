@@ -116,6 +116,7 @@ Examples:
     let private describeStopReason reason =
         match reason with
         | Emulator.StepLimitReached -> "STEP_LIMIT"
+        | Emulator.FrameCompleted -> "FRAME_COMPLETED"
         | Emulator.Halted -> "HALTED"
         | Emulator.UnsupportedOpcode(opcode, pc) -> $"UNSUPPORTED_OPCODE opcode=0x{opcode:X2} pc=0x{pc:X4}"
 

@@ -62,11 +62,11 @@ Deliverable: basic DMG test ROMs execute far enough to report pass/fail through 
 
 ## Phase 3: Video Path
 
-- Implement LCD control/status registers and PPU mode timing.
-- Render background, window, and sprites for DMG mode.
-- Expose a stable framebuffer from the core.
-- Build a simple Avalonia viewport that displays frames.
-- Add frame stepping and throttling in the app layer.
+- [x] Implement LCD control/status registers and PPU mode timing.
+- [x] Render background, window, and sprites for DMG mode.
+- [x] Expose a stable framebuffer from the core.
+- [x] Build a simple Avalonia viewport that displays frames.
+- [x] Add frame stepping and throttling in the app layer.
 
 Deliverable: simple DMG games and visual test ROMs render recognizable output.
 

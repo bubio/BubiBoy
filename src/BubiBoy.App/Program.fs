@@ -4,6 +4,7 @@ open System
 open Avalonia
 open Avalonia.Controls
 open Avalonia.Controls.ApplicationLifetimes
+open Avalonia.Input
 open Avalonia.Layout
 open Avalonia.Media
 open Avalonia.Media.Imaging
@@ -11,6 +12,7 @@ open Avalonia.Platform
 open Avalonia.Platform.Storage
 open Avalonia.Styling
 open Avalonia.Themes.Fluent
+open Avalonia.Threading
 open BubiBoy.Core
 open BubiBoy.IO
 open System.Runtime.InteropServices
@@ -46,6 +48,7 @@ module private DebugDisplay =
     let private formatStopReason reason =
         match reason with
         | Emulator.StepLimitReached -> "step limit reached"
+        | Emulator.FrameCompleted -> "frame completed"
         | Emulator.Halted -> "CPU halted"
         | Emulator.UnsupportedOpcode(opcode, pc) -> $"unsupported opcode 0x{opcode:X2} at PC 0x{pc:X4}"
 
@@ -53,6 +56,11 @@ module private DebugDisplay =
         let registers = result.Session.Cpu.Registers
 
         $"Run stopped: {formatStopReason result.StopReason}\nSteps: {result.Session.Steps}    Cycles: {result.Session.TotalCycles}\nPC: 0x{registers.PC:X4}    SP: 0x{registers.SP:X4}\nA: 0x{registers.A:X2}  F: 0x{registers.F:X2}  B: 0x{registers.B:X2}  C: 0x{registers.C:X2}  D: 0x{registers.D:X2}  E: 0x{registers.E:X2}  H: 0x{registers.H:X2}  L: 0x{registers.L:X2}"
+
+    let formatFrameResult (result: Emulator.FrameResult) =
+        let registers = result.Session.Cpu.Registers
+
+        $"Frame stopped: {formatStopReason result.StopReason}\nSteps: {result.Session.Steps}    Cycles: {result.Session.TotalCycles}\nPC: 0x{registers.PC:X4}    SP: 0x{registers.SP:X4}\nA: 0x{registers.A:X2}  F: 0x{registers.F:X2}  B: 0x{registers.B:X2}  C: 0x{registers.C:X2}  D: 0x{registers.D:X2}  E: 0x{registers.E:X2}  H: 0x{registers.H:X2}  L: 0x{registers.L:X2}"
 
 module private FramebufferBitmap =
     let private toBgraBytes (pixels: uint32[]) =
@@ -100,6 +108,7 @@ type MainWindow() as this =
         this.MinWidth <- 480.0
         this.MinHeight <- 360.0
         this.Background <- SolidColorBrush(Color.Parse("#F3F6FA"))
+        this.Focusable <- true
 
         let title =
             TextBlock(
@@ -138,6 +147,8 @@ type MainWindow() as this =
         framebuffer.Child <- framebufferImage
 
         let mutable loadedRom: RomFile.LoadedRom option = None
+        let mutable currentSession: Emulator.Session option = None
+        let mutable isRunning = false
 
         let openButton =
             Button(
@@ -150,14 +161,26 @@ type MainWindow() as this =
                 BorderThickness = Thickness(1.0)
             )
 
-        let runButton =
+        let stepFrameButton =
             Button(
-                Content = "Run 2000 steps",
+                Content = "Step Frame",
                 HorizontalAlignment = HorizontalAlignment.Center,
                 Padding = Thickness(18.0, 8.0),
                 Background = SolidColorBrush(Color.Parse("#17202B")),
                 Foreground = Brushes.White,
                 BorderBrush = SolidColorBrush(Color.Parse("#17202B")),
+                BorderThickness = Thickness(1.0),
+                IsEnabled = false
+            )
+
+        let startStopButton =
+            Button(
+                Content = "Start",
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Padding = Thickness(18.0, 8.0),
+                Background = SolidColorBrush(Color.Parse("#FFFFFF")),
+                Foreground = SolidColorBrush(Color.Parse("#17202B")),
+                BorderBrush = SolidColorBrush(Color.Parse("#AAB8C8")),
                 BorderThickness = Thickness(1.0),
                 IsEnabled = false
             )
@@ -196,6 +219,74 @@ type MainWindow() as this =
                 MimeTypes = [| "application/octet-stream" |]
             )
 
+        let stopRunning () =
+            isRunning <- false
+            startStopButton.Content <- "Start"
+
+        let updateFrame (result: Emulator.FrameResult) =
+            currentSession <- Some result.Session
+            framebufferImage.Source <- FramebufferBitmap.create result.Framebuffer
+            debugDetails.Text <- DebugDisplay.formatFrameResult result
+
+            match result.StopReason with
+            | Emulator.FrameCompleted -> ()
+            | _ -> stopRunning ()
+
+        let runOneFrame () =
+            match currentSession with
+            | None ->
+                debugDetails.Text <- "Load a ROM before running frames."
+                stopRunning ()
+            | Some session ->
+                session
+                |> Emulator.runFrame 20_000
+                |> updateFrame
+
+        let frameTimer = DispatcherTimer()
+        frameTimer.Interval <- TimeSpan.FromMilliseconds(1000.0 / 60.0)
+        frameTimer.Tick.Add(fun _ ->
+            if isRunning then
+                runOneFrame ())
+        frameTimer.Start()
+
+        let buttonRow =
+            StackPanel(
+                Orientation = Orientation.Horizontal,
+                Spacing = 10.0,
+                HorizontalAlignment = HorizontalAlignment.Center
+            )
+
+        buttonRow.Children.Add openButton |> ignore
+        buttonRow.Children.Add stepFrameButton |> ignore
+        buttonRow.Children.Add startStopButton |> ignore
+
+        let mapKey key =
+            match key with
+            | Key.Z -> Some Joypad.A
+            | Key.X -> Some Joypad.B
+            | Key.Space -> Some Joypad.Select
+            | Key.Enter -> Some Joypad.Start
+            | Key.Right -> Some Joypad.Right
+            | Key.Left -> Some Joypad.Left
+            | Key.Up -> Some Joypad.Up
+            | Key.Down -> Some Joypad.Down
+            | _ -> None
+
+        let updateButtonState key pressed =
+            match currentSession, mapKey key with
+            | Some session, Some button ->
+                currentSession <- Some { session with Bus = Bus.setButton button pressed session.Bus }
+                true
+            | _ -> false
+
+        this.KeyDown.Add(fun args ->
+            if updateButtonState args.Key true then
+                args.Handled <- true)
+
+        this.KeyUp.Add(fun args ->
+            if updateButtonState args.Key false then
+                args.Handled <- true)
+
         openButton.Click.Add(fun _ ->
             async {
                 let options =
@@ -219,34 +310,34 @@ type MainWindow() as this =
                         | Ok loaded ->
                             let header = loaded.Header
                             loadedRom <- Some loaded
-                            runButton.IsEnabled <- true
+                            currentSession <- Emulator.createSession loaded.Bytes |> Result.toOption
+                            stepFrameButton.IsEnabled <- currentSession.IsSome
+                            startStopButton.IsEnabled <- currentSession.IsSome
+                            stopRunning ()
                             framebufferImage.Source <- FramebufferBitmap.create (Video.blankFrame ())
 
                             status.Text <- $"Loaded {IO.Path.GetFileName loaded.Path}"
                             romDetails.Text <-
                                 $"Title: {header.Title}\nCGB: {header.CgbSupport}\nSGB: {header.SgbSupport}\nCartridge: {header.CartridgeKind} (0x{header.CartridgeTypeCode:X2})\nROM: {HeaderDisplay.formatRomSize header.RomSizeCode} (0x{header.RomSizeCode:X2})\nRAM: {HeaderDisplay.formatRamSize header.RamSizeCode} (0x{header.RamSizeCode:X2})"
-                            debugDetails.Text <- "Ready to run CPU debug steps."
+                            debugDetails.Text <- "Ready to run frames."
                         | Error message ->
                             loadedRom <- None
-                            runButton.IsEnabled <- false
+                            currentSession <- None
+                            stepFrameButton.IsEnabled <- false
+                            startStopButton.IsEnabled <- false
+                            stopRunning ()
                             status.Text <- "Could not load ROM."
                             romDetails.Text <- message
-                            debugDetails.Text <- "CPU debug run is available after loading a ROM."
+                            debugDetails.Text <- "Frame stepping is available after loading a ROM."
             }
             |> Async.StartImmediate)
 
-        runButton.Click.Add(fun _ ->
-            match loadedRom with
-            | None ->
-                debugDetails.Text <- "Load a ROM before running CPU steps."
-            | Some rom ->
-                match Emulator.createSession rom.Bytes with
-                | Error message ->
-                    debugDetails.Text <- message
-                | Ok session ->
-                    let result = Emulator.run 2000 session
-                    framebufferImage.Source <- FramebufferBitmap.create (Video.renderFrame result.Session.Bus)
-                    debugDetails.Text <- DebugDisplay.formatRunResult result)
+        stepFrameButton.Click.Add(fun _ -> runOneFrame ())
+
+        startStopButton.Click.Add(fun _ ->
+            isRunning <- not isRunning
+            startStopButton.Content <- if isRunning then "Stop" else "Start"
+            this.Focus() |> ignore)
 
         let panel =
             StackPanel(
@@ -260,8 +351,7 @@ type MainWindow() as this =
         panel.Children.Add title |> ignore
         panel.Children.Add subtitle |> ignore
         panel.Children.Add framebuffer |> ignore
-        panel.Children.Add openButton |> ignore
-        panel.Children.Add runButton |> ignore
+        panel.Children.Add buttonRow |> ignore
         panel.Children.Add status |> ignore
         panel.Children.Add romDetails |> ignore
         panel.Children.Add debugDetails |> ignore

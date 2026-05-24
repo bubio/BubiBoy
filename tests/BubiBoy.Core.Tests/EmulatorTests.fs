@@ -1,0 +1,47 @@
+module BubiBoy.Core.Tests.EmulatorTests
+
+open BubiBoy.Core
+open Xunit
+
+let private makeRomWithProgram (program: byte[]) =
+    let rom = Array.zeroCreate<byte> (2 * 16 * 1024)
+    rom[0x0147] <- 0x00uy
+    rom[0x0148] <- 0x00uy
+    rom[0x0149] <- 0x00uy
+
+    program
+    |> Array.iteri (fun index value -> rom[0x0100 + index] <- value)
+
+    rom
+
+let private createSession program =
+    match makeRomWithProgram program |> Emulator.createSession with
+    | Ok session -> session
+    | Error message -> failwith message
+
+[<Fact>]
+let ``runFrame advances until one hardware frame elapses`` () =
+    let result = createSession [| 0x00uy |] |> Emulator.runFrame 20_000
+
+    Assert.Equal(Emulator.FrameCompleted, result.StopReason)
+    Assert.True(result.Session.TotalCycles >= int64 Hardware.CyclesPerFrame)
+    Assert.Equal(17_556, result.Session.Steps)
+    Assert.Equal(Video.FramebufferPixels, result.Framebuffer.Length)
+
+[<Fact>]
+let ``runFrame stops at step limit before frame completion`` () =
+    let result = createSession [| 0x00uy |] |> Emulator.runFrame 10
+
+    Assert.Equal(Emulator.StepLimitReached, result.StopReason)
+    Assert.Equal(10, result.Session.Steps)
+    Assert.Equal(40L, result.Session.TotalCycles)
+    Assert.Equal(Video.FramebufferPixels, result.Framebuffer.Length)
+
+[<Fact>]
+let ``runFrame reports unsupported opcode with current framebuffer`` () =
+    let result = createSession [| 0xD3uy |] |> Emulator.runFrame 20_000
+
+    Assert.Equal(Emulator.UnsupportedOpcode(0xD3uy, 0x0100us), result.StopReason)
+    Assert.Equal(0, result.Session.Steps)
+    Assert.Equal(0L, result.Session.TotalCycles)
+    Assert.Equal(Video.FramebufferPixels, result.Framebuffer.Length)

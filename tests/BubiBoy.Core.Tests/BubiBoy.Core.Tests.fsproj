@@ -10,6 +10,7 @@
     <Compile Include="CartridgeMemoryTests.fs" />
     <Compile Include="BusTests.fs" />
     <Compile Include="VideoTests.fs" />
+    <Compile Include="EmulatorTests.fs" />
     <Compile Include="CpuTests.fs" />
     <Compile Include="TimerTests.fs" />
     <Compile Include="JoypadTests.fs" />
