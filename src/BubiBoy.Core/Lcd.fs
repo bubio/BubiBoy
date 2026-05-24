@@ -49,6 +49,13 @@ module Lcd =
             Mode = OamSearch
             StatSignal = false }
 
+    let disabled state =
+        { state with
+            Line = 0uy
+            DotCounter = 0
+            Mode = HBlank
+            StatSignal = false }
+
     let tick cycles state =
         let totalDots = state.DotCounter + cycles
         let advancedLines = totalDots / CyclesPerLine

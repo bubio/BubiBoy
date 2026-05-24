@@ -187,6 +187,17 @@ let ``VRAM is inaccessible during LCD transfer mode`` () =
     Assert.Equal(0x42uy, Bus.readByte 0x8000us written)
 
 [<Fact>]
+let ``VRAM is accessible during transfer mode when LCD is disabled`` () =
+    let disabledTransfer =
+        makeBus ()
+        |> Bus.tick 80
+        |> Bus.writeByte 0xFF40us 0x00uy
+
+    let written = Bus.writeByte 0x8000us 0x42uy disabledTransfer
+
+    Assert.Equal(0x42uy, Bus.readByte 0x8000us written)
+
+[<Fact>]
 let ``OAM is accessible only during HBlank and VBlank`` () =
     let oamSearch = makeBus ()
     let blocked = Bus.writeByte 0xFE00us 0x42uy oamSearch
@@ -195,3 +206,23 @@ let ``OAM is accessible only during HBlank and VBlank`` () =
 
     Assert.Equal(0xFFuy, Bus.readByte 0xFE00us blocked)
     Assert.Equal(0x42uy, Bus.readByte 0xFE00us written)
+
+[<Fact>]
+let ``OAM is accessible during OAM search when LCD is disabled`` () =
+    let disabledOamSearch =
+        makeBus ()
+        |> Bus.writeByte 0xFF40us 0x00uy
+
+    let written = Bus.writeByte 0xFE00us 0x42uy disabledOamSearch
+
+    Assert.Equal(0x42uy, Bus.readByte 0xFE00us written)
+
+[<Fact>]
+let ``disabled LCD holds LY at zero and reports HBlank mode`` () =
+    let disabled =
+        makeBus ()
+        |> Bus.writeByte 0xFF40us 0x00uy
+        |> Bus.tick (Lcd.CyclesPerLine * 20)
+
+    Assert.Equal(0uy, Bus.readByte 0xFF44us disabled)
+    Assert.Equal(0x04uy, Bus.readByte 0xFF41us disabled &&& 0x07uy)
