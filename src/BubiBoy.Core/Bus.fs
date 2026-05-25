@@ -12,6 +12,7 @@ module Bus =
               Timer: Timer.State
               Lcd: Lcd.State
               Joypad: Joypad.State
+              Apu: Apu.State
               InterruptEnable: byte }
 
     [<Literal>]
@@ -73,6 +74,7 @@ module Bus =
           Timer = Timer.initial
           Lcd = Lcd.initial
           Joypad = Joypad.initial
+          Apu = Apu.initial
           InterruptEnable = 0uy }
 
     let private unusableRead = 0xFFuy
@@ -97,6 +99,12 @@ module Bus =
 
     let rawOamByte index memory =
         memory.Oam[index]
+
+    let pendingAudioSamples memory =
+        Apu.pendingSamples memory.Apu
+
+    let drainAudioSamples memory =
+        Apu.pendingSamples memory.Apu, { memory with Apu = Apu.clearPendingSamples memory.Apu }
 
     let withIoByte index value memory =
         let next = Array.copy memory.Io
@@ -196,60 +204,52 @@ module Bus =
             if vramBlocked memory then
                 memory
             else
-                let next = Array.copy memory.Vram
-                next[addr - 0x8000] <- value
-                { memory with Vram = next }
+                memory.Vram[addr - 0x8000] <- value
+                memory
         | addr when addr >= 0xA000 && addr <= 0xBFFF ->
             { memory with Cartridge = CartridgeMemory.writeByte (uint16 addr) value memory.Cartridge }
         | addr when addr >= 0xC000 && addr <= 0xDFFF ->
-            let next = Array.copy memory.Wram
-            next[addr - 0xC000] <- value
-            { memory with Wram = next }
+            memory.Wram[addr - 0xC000] <- value
+            memory
         | addr when addr >= 0xE000 && addr <= 0xFDFF ->
-            let next = Array.copy memory.Wram
-            next[addr - 0xE000] <- value
-            { memory with Wram = next }
+            memory.Wram[addr - 0xE000] <- value
+            memory
         | addr when addr >= 0xFE00 && addr <= 0xFE9F ->
             if oamBlocked memory then
                 memory
             else
-                let next = Array.copy memory.Oam
-                next[addr - 0xFE00] <- value
-                { memory with Oam = next }
+                memory.Oam[addr - 0xFE00] <- value
+                memory
         | addr when addr >= 0xFEA0 && addr <= 0xFEFF ->
             memory
         | 0xFF00 ->
             { memory with Joypad = Joypad.writeP1 value memory.Joypad }
         | 0xFF04 ->
-            let next = Array.copy memory.Io
-            next[0x04] <- 0uy
-            { memory with Io = next; Timer = Timer.resetDiv memory.Timer }
+            memory.Io[0x04] <- 0uy
+            { memory with Timer = Timer.resetDiv memory.Timer }
         | 0xFF41 ->
-            let next = Array.copy memory.Io
-            next[0x41] <- value &&& 0xF8uy
-            { memory with Io = next }
+            memory.Io[0x41] <- value &&& 0xF8uy
+            memory
         | 0xFF44 ->
-            let next = Array.copy memory.Io
-            next[0x44] <- 0uy
-            { memory with Io = next; Lcd = Lcd.resetLine memory.Lcd }
+            memory.Io[0x44] <- 0uy
+            { memory with Lcd = Lcd.resetLine memory.Lcd }
         | 0xFF46 ->
             let sourceBase = uint16 value <<< 8
-            let nextOam = Array.copy memory.Oam
 
             for offset in 0 .. OamSize - 1 do
-                nextOam[offset] <- readByte (sourceBase + uint16 offset) memory
+                memory.Oam[offset] <- readByte (sourceBase + uint16 offset) memory
 
-            let nextIo = Array.copy memory.Io
-            nextIo[0x46] <- value
-            { memory with Io = nextIo; Oam = nextOam }
+            memory.Io[0x46] <- value
+            memory
+        | addr when addr >= 0xFF10 && addr <= 0xFF26 ->
+            let nextIo, apu = Apu.writeRegister (addr - 0xFF00) value memory.Io memory.Apu
+            { memory with Io = nextIo; Apu = apu }
         | addr when addr >= 0xFF00 && addr <= 0xFF7F ->
-            let next = Array.copy memory.Io
-            next[addr - 0xFF00] <- value
-            { memory with Io = next }
+            memory.Io[addr - 0xFF00] <- value
+            memory
         | addr when addr >= 0xFF80 && addr <= 0xFFFE ->
-            let next = Array.copy memory.Hram
-            next[addr - 0xFF80] <- value
-            { memory with Hram = next }
+            memory.Hram[addr - 0xFF80] <- value
+            memory
         | 0xFFFF ->
             { memory with InterruptEnable = value }
         | _ ->
@@ -285,19 +285,21 @@ module Bus =
         if statSignal && not memory.Lcd.StatSignal then
             interruptFlags <- Interrupt.request Interrupt.LcdStatBit interruptFlags
 
-        let nextIo = Array.copy memory.Io
-        nextIo[0x04] <- timerResult.Registers.Div
-        nextIo[0x05] <- timerResult.Registers.Tima
-        nextIo[0x06] <- timerResult.Registers.Tma
-        nextIo[0x07] <- timerResult.Registers.Tac
-        nextIo[0x0F] <- interruptFlags
-        nextIo[0x41] <- stat { memory with Lcd = lcd; Io = nextIo }
-        nextIo[0x44] <- lcd.Line
+        memory.Io[0x04] <- timerResult.Registers.Div
+        memory.Io[0x05] <- timerResult.Registers.Tima
+        memory.Io[0x06] <- timerResult.Registers.Tma
+        memory.Io[0x07] <- timerResult.Registers.Tac
+        memory.Io[0x0F] <- interruptFlags
+        memory.Io[0x41] <- stat { memory with Lcd = lcd }
+        memory.Io[0x44] <- lcd.Line
+
+        let apu = Apu.tick cycles memory.Io memory.Apu
+        memory.Io[0x26] <- Apu.statusRegister memory.Io apu
 
         { memory with
             Timer = timerResult.State
             Lcd = { lcd with StatSignal = statSignal }
-            Io = nextIo }
+            Apu = apu }
 
     let setButton button pressed memory =
         let wasPressed = Set.contains button memory.Joypad.Pressed

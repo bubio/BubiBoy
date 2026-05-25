@@ -21,6 +21,7 @@ module Emulator =
     type FrameResult =
         { Session: Session
           Framebuffer: uint32[]
+          AudioSamples: Apu.Sample[]
           StopReason: StopReason }
 
     let createSession rom =
@@ -102,6 +103,9 @@ module Emulator =
                 | Cpu.UnsupportedOpcode(opcode, pc) ->
                     stopReason <- Some(UnsupportedOpcode(opcode, pc))
 
-        { Session = current
+        let audioSamples, bus = Bus.drainAudioSamples current.Bus
+
+        { Session = { current with Bus = bus }
           Framebuffer = current.Framebuffer
+          AudioSamples = audioSamples
           StopReason = stopReason.Value }

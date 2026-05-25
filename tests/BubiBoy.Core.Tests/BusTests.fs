@@ -38,10 +38,12 @@ let ``writeByte stores WRAM and echo RAM consistently`` () =
     let bus = makeBus ()
 
     let withWram = Bus.writeByte 0xC123us 0x42uy bus
-    let withEcho = Bus.writeByte 0xE123us 0x24uy withWram
 
     Assert.Equal(0x42uy, Bus.readByte 0xC123us withWram)
     Assert.Equal(0x42uy, Bus.readByte 0xE123us withWram)
+
+    let withEcho = Bus.writeByte 0xE123us 0x24uy withWram
+
     Assert.Equal(0x24uy, Bus.readByte 0xC123us withEcho)
     Assert.Equal(0x24uy, Bus.readByte 0xE123us withEcho)
 
@@ -156,10 +158,11 @@ let ``LCD STAT interrupt is requested only on signal rising edge`` () =
         |> Bus.writeByte 0xFF41us 0x08uy
 
     let hblank = Bus.tick 252 bus
+    let requested = Bus.readByte 0xFF0Fus hblank &&& Interrupt.LcdStatBit
     let acknowledged = Bus.writeByte 0xFF0Fus 0x00uy hblank
     let stillHblank = Bus.tick 4 acknowledged
 
-    Assert.Equal(Interrupt.LcdStatBit, Bus.readByte 0xFF0Fus hblank &&& Interrupt.LcdStatBit)
+    Assert.Equal(Interrupt.LcdStatBit, requested)
     Assert.Equal(0uy, Bus.readByte 0xFF0Fus stillHblank &&& Interrupt.LcdStatBit)
 
 [<Fact>]

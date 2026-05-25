@@ -88,6 +88,22 @@ Deliverable: common DMG cartridges load, run, and persist saves.
 
 Deliverable: audible DMG playback with acceptable latency and no UI dependency in the core.
 
+Current progress:
+
+- [x] Added a deterministic core APU state machine with pulse channel triggering, frame sequencer,
+  length counters, envelopes, sweep, stereo mixing, and reusable-buffer sample accumulation/draining.
+- [x] Routed audio register writes through the bus so trigger bits behave as write-only events instead of
+  retriggering every tick.
+- [x] Exposed per-frame audio samples from `Emulator.runFrame` without adding UI or native-audio
+  dependencies to `BubiBoy.Core`.
+- [x] Added initial wave channel, noise channel, and NR52 channel status behavior.
+- [x] Added a bounded audio host buffer with underrun padding, latency-bounding overflow behavior, and
+  app-side sample submission.
+- [x] Added PCM16 stereo conversion and WAV writing helpers for deterministic audio diagnostics.
+- [x] Added a thin miniaudio native wrapper boundary and managed P/Invoke device with buffered fallback.
+- [ ] Improve APU edge cases against dedicated audio test ROMs.
+- [ ] Package and load the miniaudio native library automatically for macOS, Linux, and Windows.
+
 ## Phase 6: Game Boy Color
 
 - Add CGB mode detection and hardware state.

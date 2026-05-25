@@ -13,6 +13,7 @@
     <Compile Include="Timer.fs" />
     <Compile Include="Lcd.fs" />
     <Compile Include="Joypad.fs" />
+    <Compile Include="Apu.fs" />
     <Compile Include="Bus.fs" />
     <Compile Include="Cpu.fs" />
     <Compile Include="Video.fs" />

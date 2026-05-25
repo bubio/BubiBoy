@@ -6,6 +6,7 @@ Record every external emulator, document, test ROM, or asset consulted for BubiB
 | --- | --- | --- | --- | --- |
 | Fame Boy | `/Users/seiji/dev/_Emu/Original/fame-boy` | MIT | Do not redistribute its bundled ROMs or assets from this repository. | Consulted for F# emulator structure, post-boot IO register defaults, LCD STAT edge behavior, and OAM DMA behavior. Implementation in BubiBoy remains independently written. |
 | Mooneye Test Suite | https://github.com/Gekkio/mooneye-test-suite and https://gekkio.fi/files/mooneye-test-suite/mts-20240926-1737-443f6e1/ | MIT | Redistributed subset is allowed under MIT. Vendored files are under `tests/BubiBoy.TestRoms/roms/mooneye/` with the upstream `LICENSE`. | Used as executable acceptance ROMs for Phase 2 CPU validation. Current vendored subset: `acceptance/instr/daa.gb` and `acceptance/bits/reg_f.gb`. |
+| miniaudio 0.11.25 | https://github.com/mackron/miniaudio/tree/0.11.25 and https://miniaud.io/ | Public domain or MIT-0 | Vendored header and license are under `native/miniaudio.h` and `native/miniaudio-LICENSE`. | Used as the native audio output backend through a narrow C wrapper and F# P/Invoke layer. |
 
 ## Rules
 

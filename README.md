@@ -43,10 +43,16 @@ See [docs/rom-smoke.md](docs/rom-smoke.md).
 dotnet run --project src/BubiBoy.App/BubiBoy.App.fsproj
 ```
 
+For performance testing, use Release builds. Debug builds are not representative for emulator speed:
+
+```sh
+dotnet run -c Release --project src/BubiBoy.App/BubiBoy.App.fsproj
+```
+
 In constrained local environments, set `DOTNET_CLI_HOME` to a writable directory inside the repository:
 
 ```sh
-DOTNET_CLI_HOME="$PWD/.dotnet-cli-home" dotnet run --project src/BubiBoy.App/BubiBoy.App.fsproj
+DOTNET_CLI_HOME="$PWD/.dotnet-cli-home" dotnet run -c Release --project src/BubiBoy.App/BubiBoy.App.fsproj
 ```
 
 ## License

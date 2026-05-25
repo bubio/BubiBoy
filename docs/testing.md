@@ -14,6 +14,14 @@ Use focused filters while developing:
 dotnet test BubiBoy.slnx --filter CpuTests
 ```
 
+Use Release when measuring emulator speed or audio stability:
+
+```sh
+dotnet run -c Release --project src/BubiBoy.App/BubiBoy.App.fsproj
+```
+
+Debug FPS is useful for development only and should not be used as a performance baseline.
+
 ## Scope
 
 - Unit tests should cover small hardware behaviors directly.

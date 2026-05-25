@@ -3,3 +3,4 @@ obj/
 .dotnet-cli-home/
 .DS_Store
 TestResults/
+native/build/

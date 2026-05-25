@@ -6,15 +6,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Include="CartridgeHeaderTests.fs" />
-    <Compile Include="CartridgeMemoryTests.fs" />
-    <Compile Include="BusTests.fs" />
-    <Compile Include="ApuTests.fs" />
-    <Compile Include="VideoTests.fs" />
-    <Compile Include="EmulatorTests.fs" />
-    <Compile Include="CpuTests.fs" />
-    <Compile Include="TimerTests.fs" />
-    <Compile Include="JoypadTests.fs" />
+    <Compile Include="AudioHostTests.fs" />
   </ItemGroup>
 
   <ItemGroup>
@@ -25,6 +17,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\BubiBoy.Audio\BubiBoy.Audio.fsproj" />
     <ProjectReference Include="..\..\src\BubiBoy.Core\BubiBoy.Core.fsproj" />
   </ItemGroup>
 

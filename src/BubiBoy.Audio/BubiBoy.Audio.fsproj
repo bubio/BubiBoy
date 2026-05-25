@@ -7,10 +7,26 @@
 
   <ItemGroup>
     <Compile Include="AudioHost.fs" />
+    <Compile Include="Miniaudio.fs" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\BubiBoy.Core\BubiBoy.Core.fsproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\native\build\libbubi_miniaudio.dylib"
+          Link="libbubi_miniaudio.dylib"
+          CopyToOutputDirectory="PreserveNewest"
+          Condition="Exists('..\..\native\build\libbubi_miniaudio.dylib')" />
+    <None Include="..\..\native\build\libbubi_miniaudio.so"
+          Link="libbubi_miniaudio.so"
+          CopyToOutputDirectory="PreserveNewest"
+          Condition="Exists('..\..\native\build\libbubi_miniaudio.so')" />
+    <None Include="..\..\native\build\bubi_miniaudio.dll"
+          Link="bubi_miniaudio.dll"
+          CopyToOutputDirectory="PreserveNewest"
+          Condition="Exists('..\..\native\build\bubi_miniaudio.dll')" />
   </ItemGroup>
 
 </Project>
