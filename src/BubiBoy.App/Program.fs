@@ -170,12 +170,11 @@ type MainWindow() as this =
         let mutable lastFpsSample = DateTime.UtcNow
         let sessionGate = obj ()
         let perfGate = obj ()
-        let nominalFrameMilliseconds = 1000.0 * float Hardware.CyclesPerFrame / float Hardware.DmgClockHz
         let audioFramesPerVideoFrame =
             int (Math.Round(float AudioHost.defaultFormat.SampleRate * float Hardware.CyclesPerFrame / float Hardware.DmgClockHz))
 
-        let audioBufferLowWatermarkFrames = audioFramesPerVideoFrame * 12
-        let audioBufferHighWatermarkFrames = audioFramesPerVideoFrame * 24
+        let audioBufferLowWatermarkFrames = audioFramesPerVideoFrame * 4
+        let audioBufferTargetFrames = audioFramesPerVideoFrame * 8
         let audioDevice =
             match Miniaudio.tryCreateDevice AudioHost.defaultFormat AudioHost.defaultFormat.SampleRate with
             | Ok device -> device :> AudioHost.AudioDevice
@@ -339,23 +338,45 @@ type MainWindow() as this =
             audioOutput.Enqueue result.AudioSamples |> ignore
             result
 
-        let waitForAudioHeadroom (token: CancellationToken) =
+        let waitForAudioDemand (token: CancellationToken) =
             let mutable waiting = true
+            let mutable diagnostics = audioOutput.Diagnostics()
 
             while waiting && not token.IsCancellationRequested do
-                let diagnostics = audioOutput.Diagnostics()
+                diagnostics <- audioOutput.Diagnostics()
 
-                if (not diagnostics.IsRunning) || diagnostics.BufferedFrames <= audioBufferHighWatermarkFrames then
+                if (not diagnostics.IsRunning) || diagnostics.BufferedFrames <= audioBufferLowWatermarkFrames then
                     waiting <- false
                 else
                     Thread.Sleep 1
 
-        let paceFrame elapsedMilliseconds bufferedFrames =
-            if bufferedFrames >= audioBufferLowWatermarkFrames then
-                let remaining = nominalFrameMilliseconds - elapsedMilliseconds
+            diagnostics
 
-                if remaining >= 1.0 then
-                    Thread.Sleep(TimeSpan.FromMilliseconds remaining)
+        let fillAudioLead (token: CancellationToken) (session: Emulator.Session) (initialDiagnostics: AudioHost.AudioDiagnostics) =
+            let stopwatch = Stopwatch.StartNew()
+            let mutable current = session
+            let mutable latest = None
+            let mutable diagnostics = initialDiagnostics
+            let mutable framesGenerated = 0
+            let mutable keepGoing = diagnostics.IsRunning
+
+            while
+                keepGoing
+                && not token.IsCancellationRequested
+                && diagnostics.BufferedFrames < audioBufferTargetFrames do
+                let result = enqueueFrameAudio current
+                current <- result.Session
+                latest <- Some result
+                framesGenerated <- framesGenerated + 1
+                keepGoing <- result.StopReason = Emulator.FrameCompleted
+                diagnostics <- audioOutput.Diagnostics()
+
+            stopwatch.Stop()
+
+            if framesGenerated > 0 then
+                recordFrameTime(stopwatch.Elapsed.TotalMilliseconds / float framesGenerated)
+
+            current, latest, keepGoing
 
         let startEmulationLoop () =
             let cts = new CancellationTokenSource()
@@ -371,30 +392,25 @@ type MainWindow() as this =
                             match session with
                             | None -> Thread.Sleep 1
                             | Some session ->
-                                waitForAudioHeadroom token
-                                let stopwatch = Stopwatch.StartNew()
-                                let result = Emulator.runFrame 20_000 session
-                                stopwatch.Stop()
+                                let diagnostics = waitForAudioDemand token
 
-                                recordEmulatedFrame ()
-                                recordFrameTime stopwatch.Elapsed.TotalMilliseconds
-                                audioOutput.Enqueue result.AudioSamples |> ignore
+                                if diagnostics.IsRunning && not token.IsCancellationRequested then
+                                    let current, latest, keepGoing = fillAudioLead token session diagnostics
 
-                                lock sessionGate (fun () ->
-                                    currentSession <- Some result.Session
-                                    latestFrame <- Some result)
+                                    lock sessionGate (fun () ->
+                                        currentSession <- Some current
+                                        latest |> Option.iter (fun frame -> latestFrame <- Some frame))
 
-                                if result.StopReason <> Emulator.FrameCompleted then
-                                    token.ThrowIfCancellationRequested()
-                                    cts.Cancel()
-                                    Dispatcher.UIThread.Post(fun () -> stopRunning ())
-
-                                let diagnostics = audioOutput.Diagnostics()
-
-                                if diagnostics.BufferedFrames > AudioHost.defaultFormat.SampleRate / 2 then
+                                    if not keepGoing then
+                                        token.ThrowIfCancellationRequested()
+                                        cts.Cancel()
+                                        Dispatcher.UIThread.Post(fun () -> stopRunning ())
+                                elif not token.IsCancellationRequested then
                                     Thread.Sleep 1
 
-                                paceFrame stopwatch.Elapsed.TotalMilliseconds diagnostics.BufferedFrames),
+                                if token.IsCancellationRequested then
+                                    token.ThrowIfCancellationRequested()
+                            ),
                     token
                 )
 
@@ -417,22 +433,13 @@ type MainWindow() as this =
                 recordDisplayedFrame ()
                 updateFrame result
 
-        let primeAudioBuffer frameCount =
+        let primeAudioBuffer () =
             let session = lock sessionGate (fun () -> currentSession)
 
             match session with
             | None -> ()
             | Some session ->
-                let mutable current = session
-                let mutable frames = frameCount
-                let mutable keepGoing = true
-
-                while frames > 0 && keepGoing do
-                    let result = enqueueFrameAudio current
-                    current <- result.Session
-                    keepGoing <- result.StopReason = Emulator.FrameCompleted
-                    frames <- frames - 1
-
+                let current, _, _ = fillAudioLead CancellationToken.None session (audioOutput.Diagnostics())
                 lock sessionGate (fun () -> currentSession <- Some current)
 
         let frameTimer = DispatcherTimer()
@@ -571,12 +578,12 @@ type MainWindow() as this =
 
             if isRunning then
                 resetPerformance ()
-                primeAudioBuffer 16
                 audioOutput.Start()
+                primeAudioBuffer ()
                 startEmulationLoop ()
             else
                 saveCurrentRam ()
-                audioOutput.Stop()
+                stopRunning ()
 
             startStopButton.Content <- if isRunning then "Stop" else "Start"
             this.Focus() |> ignore)
