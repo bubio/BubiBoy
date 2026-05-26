@@ -208,6 +208,27 @@ let ``powering off APU clears channels and pending samples`` () =
     Assert.Empty(Apu.pendingSamples offState)
 
 [<Fact>]
+let ``powering off APU clears audio registers`` () =
+    let io, state = triggerPulse1 0uy 0x80uy 0xF0uy 0x00uy 0x80uy
+
+    let offIo, _ = write 0x26 0x00uy (io, state)
+
+    for index in 0x10..0x25 do
+        Assert.Equal(0x00uy, offIo[index])
+
+    Assert.Equal(0x00uy, offIo[0x26])
+
+[<Fact>]
+let ``powered off APU ignores audio register writes`` () =
+    let io = emptyIo ()
+    io[0x26] <- 0x00uy
+
+    let nextIo, nextState = write 0x12 0xF0uy (io, Apu.initial)
+
+    Assert.Equal(0x00uy, nextIo[0x12])
+    Assert.Equal(Apu.initial, nextState)
+
+[<Fact>]
 let ``bus clears pulse trigger bit after write`` () =
     let rom = Array.zeroCreate<byte> (2 * 16 * 1024)
     rom[0x0147] <- 0x00uy
@@ -253,6 +274,31 @@ let ``NR52 channel status clears when length disables pulse`` () =
     let advanced = Bus.tick 8192 bus
 
     Assert.Equal(0x00uy, Bus.readByte 0xFF26us advanced &&& 0x01uy)
+
+[<Fact>]
+let ``writing DIV clocks APU frame sequencer on divider bit twelve falling edge`` () =
+    let rom = Array.zeroCreate<byte> (2 * 16 * 1024)
+    rom[0x0147] <- 0x00uy
+    rom[0x0148] <- 0x00uy
+    rom[0x0149] <- 0x00uy
+
+    let cartridge =
+        match CartridgeMemory.create rom with
+        | Ok cartridge -> cartridge
+        | Error message -> failwith message
+
+    let bus =
+        Bus.create cartridge
+        |> Bus.writeByte 0xFF26us 0x80uy
+        |> Bus.writeByte 0xFF11us 0x3Fuy
+        |> Bus.writeByte 0xFF12us 0xF0uy
+        |> Bus.writeByte 0xFF13us 0x00uy
+        |> Bus.writeByte 0xFF14us 0xC0uy
+        |> Bus.tick 4096
+
+    let reset = Bus.writeByte 0xFF04us 0x00uy bus
+
+    Assert.Equal(0x00uy, Bus.readByte 0xFF26us reset &&& 0x01uy)
 
 [<Fact>]
 let ``runFrame returns generated audio and drains session buffer`` () =

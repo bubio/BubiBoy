@@ -101,8 +101,15 @@ Current progress:
   app-side sample submission.
 - [x] Added PCM16 stereo conversion and WAV writing helpers for deterministic audio diagnostics.
 - [x] Added a thin miniaudio native wrapper boundary and managed P/Invoke device with buffered fallback.
+- [x] Added RID-aware miniaudio native library probing and build/publish item wiring for runtime-native
+  artifact layouts.
+- [x] Tightened NR52 power-off behavior so audio registers clear and powered-off channel writes are ignored.
+- [x] Added CI native audio builds for macOS, Linux, and Windows, with loader availability checked by tests.
+- [x] Uploaded CI-built miniaudio runtime artifacts for release packaging follow-up.
+- [x] Added a Phase 5 audio audit documenting completed work, licensing constraints, and close criteria.
+- [x] Added an external APU ROM harness that captures serial pass/fail output without vendoring ROMs.
+- [x] Fixed DIV writes so a reset while DIV bit 12 is high clocks the APU frame sequencer.
 - [ ] Improve APU edge cases against dedicated audio test ROMs.
-- [ ] Package and load the miniaudio native library automatically for macOS, Linux, and Windows.
 
 ## Phase 6: Game Boy Color
 

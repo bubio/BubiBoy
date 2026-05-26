@@ -73,6 +73,7 @@ module Apu =
     type State =
         { FrameSequencerStep: int
           FrameSequencerCycles: int
+          SkipNextFrameSequencerClock: bool
           SampleCycles: int64
           Pulse1: PulseChannel
           Pulse2: PulseChannel
@@ -120,6 +121,7 @@ module Apu =
     let initial =
         { FrameSequencerStep = 0
           FrameSequencerCycles = 0
+          SkipNextFrameSequencerClock = false
           SampleCycles = 0L
           Pulse1 = emptyPulse
           Pulse2 = emptyPulse
@@ -289,43 +291,60 @@ module Apu =
         | 0x23 -> value &&& 0x7Fuy
         | _ -> value
 
-    let writeRegister index value (io: byte[]) (state: State) : byte[] * State =
+    let private clearPoweredOffRegisters (io: byte[]) =
         let nextIo = Array.copy io
-        nextIo[index] <- clearTriggerBit index value
 
-        let nextState =
-            match index with
-            | 0x14 ->
-                applyRegisters nextIo
-                    { state with
-                        Pulse1 = updatePulseFromRegisters true (bitSet 7 value) nextIo[0x10] nextIo[0x11] nextIo[0x12] nextIo[0x13] value state.Pulse1 }
-            | 0x19 ->
-                applyRegisters nextIo
-                    { state with
-                        Pulse2 = updatePulseFromRegisters false (bitSet 7 value) 0uy nextIo[0x16] nextIo[0x17] nextIo[0x18] value state.Pulse2 }
-            | 0x1E ->
-                applyRegisters nextIo
-                    { state with
-                        Wave = updateWaveFromRegisters (bitSet 7 value) nextIo[0x1A] nextIo[0x1B] nextIo[0x1C] nextIo[0x1D] value state.Wave }
-            | 0x23 ->
-                applyRegisters nextIo
-                    { state with
-                        Noise = updateNoiseFromRegisters (bitSet 7 value) nextIo[0x20] nextIo[0x21] nextIo[0x22] value state.Noise }
-            | _ -> applyRegisters nextIo state
+        for index in 0x10..0x25 do
+            nextIo[index] <- 0uy
 
-        nextIo[0x26] <-
-            if nextIo[0x26] &&& 0x80uy = 0uy then
-                0uy
-            else
-                let channelBits =
-                    (if nextState.Pulse1.Enabled then 0x01uy else 0uy)
-                    ||| (if nextState.Pulse2.Enabled then 0x02uy else 0uy)
-                    ||| (if nextState.Wave.Enabled then 0x04uy else 0uy)
-                    ||| (if nextState.Noise.Enabled then 0x08uy else 0uy)
+        nextIo[0x26] <- 0uy
+        nextIo
 
-                0xF0uy ||| channelBits
+    let private audioRegister index =
+        index >= 0x10 && index <= 0x25
 
-        nextIo, nextState
+    let writeRegister index value (io: byte[]) (state: State) : byte[] * State =
+        if index = 0x26 && value &&& 0x80uy = 0uy then
+            clearPoweredOffRegisters io, initial
+        elif index <> 0x26 && audioRegister index && io[0x26] &&& 0x80uy = 0uy then
+            Array.copy io, state
+        else
+            let nextIo = Array.copy io
+            nextIo[index] <- clearTriggerBit index value
+
+            let nextState =
+                match index with
+                | 0x14 ->
+                    applyRegisters nextIo
+                        { state with
+                            Pulse1 = updatePulseFromRegisters true (bitSet 7 value) nextIo[0x10] nextIo[0x11] nextIo[0x12] nextIo[0x13] value state.Pulse1 }
+                | 0x19 ->
+                    applyRegisters nextIo
+                        { state with
+                            Pulse2 = updatePulseFromRegisters false (bitSet 7 value) 0uy nextIo[0x16] nextIo[0x17] nextIo[0x18] value state.Pulse2 }
+                | 0x1E ->
+                    applyRegisters nextIo
+                        { state with
+                            Wave = updateWaveFromRegisters (bitSet 7 value) nextIo[0x1A] nextIo[0x1B] nextIo[0x1C] nextIo[0x1D] value state.Wave }
+                | 0x23 ->
+                    applyRegisters nextIo
+                        { state with
+                            Noise = updateNoiseFromRegisters (bitSet 7 value) nextIo[0x20] nextIo[0x21] nextIo[0x22] value state.Noise }
+                | _ -> applyRegisters nextIo state
+
+            nextIo[0x26] <-
+                if nextIo[0x26] &&& 0x80uy = 0uy then
+                    0uy
+                else
+                    let channelBits =
+                        (if nextState.Pulse1.Enabled then 0x01uy else 0uy)
+                        ||| (if nextState.Pulse2.Enabled then 0x02uy else 0uy)
+                        ||| (if nextState.Wave.Enabled then 0x04uy else 0uy)
+                        ||| (if nextState.Noise.Enabled then 0x08uy else 0uy)
+
+                    0xF0uy ||| channelBits
+
+            nextIo, nextState
 
     let statusRegister (io: byte[]) (state: State) =
         if io[0x26] &&& 0x80uy = 0uy then
@@ -462,6 +481,27 @@ module Apu =
                 let noise = if shouldClockLength then clockLengthNoise state.Noise else state.Noise
                 { noise with Envelope = if shouldClockEnvelope then clockEnvelope noise.Envelope else noise.Envelope } }
 
+    let private clockDivApuEvent (state: State) =
+        if state.SkipNextFrameSequencerClock then
+            { state with SkipNextFrameSequencerClock = false }
+        else
+            clockFrameSequencer state
+
+    let skipNextFrameSequencerClock (state: State) =
+        { state with SkipNextFrameSequencerClock = true }
+
+    let resetDiv divider (io: byte[]) (state: State) =
+        if io[0x26] &&& 0x80uy = 0uy then
+            initial
+        else
+            let clocked =
+                if divider &&& 0x1000us <> 0us then
+                    clockDivApuEvent state
+                else
+                    state
+
+            { clocked with FrameSequencerCycles = 0 }
+
     let private dutyPatterns =
         [| [| 0; 0; 0; 0; 0; 0; 0; 1 |]
            [| 1; 0; 0; 0; 0; 0; 0; 1 |]
@@ -582,7 +622,7 @@ module Apu =
 
             while frameCycles >= FrameSequencerPeriodCycles do
                 frameCycles <- frameCycles - FrameSequencerPeriodCycles
-                current <- clockFrameSequencer current
+                current <- clockDivApuEvent current
 
             current <-
                 { current with

@@ -18,15 +18,25 @@
     <None Include="..\..\native\build\libbubi_miniaudio.dylib"
           Link="libbubi_miniaudio.dylib"
           CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest"
           Condition="Exists('..\..\native\build\libbubi_miniaudio.dylib')" />
     <None Include="..\..\native\build\libbubi_miniaudio.so"
           Link="libbubi_miniaudio.so"
           CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest"
           Condition="Exists('..\..\native\build\libbubi_miniaudio.so')" />
     <None Include="..\..\native\build\bubi_miniaudio.dll"
           Link="bubi_miniaudio.dll"
           CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest"
           Condition="Exists('..\..\native\build\bubi_miniaudio.dll')" />
+    <None Include="..\..\native\build\runtimes\**\*.*"
+          Link="runtimes\%(RecursiveDir)%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest"
+          Pack="true"
+          PackagePath="runtimes/%(RecursiveDir)%(Filename)%(Extension)"
+          Condition="Exists('..\..\native\build\runtimes')" />
   </ItemGroup>
 
 </Project>

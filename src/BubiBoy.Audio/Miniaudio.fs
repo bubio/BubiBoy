@@ -38,6 +38,30 @@ module Miniaudio =
     let private nativeLibraryCandidates () =
         let baseDirectory = AppContext.BaseDirectory
         let currentDirectory = Environment.CurrentDirectory
+        let currentRid = RuntimeInformation.RuntimeIdentifier
+        let platformRid =
+            let architecture =
+                match RuntimeInformation.OSArchitecture with
+                | Architecture.Arm64 -> "arm64"
+                | Architecture.Arm -> "arm"
+                | Architecture.X64 -> "x64"
+                | Architecture.X86 -> "x86"
+                | _ -> RuntimeInformation.OSArchitecture.ToString().ToLowerInvariant()
+
+            if RuntimeInformation.IsOSPlatform(OSPlatform.OSX) then
+                $"osx-{architecture}"
+            elif RuntimeInformation.IsOSPlatform(OSPlatform.Linux) then
+                $"linux-{architecture}"
+            elif RuntimeInformation.IsOSPlatform(OSPlatform.Windows) then
+                $"win-{architecture}"
+            else
+                currentRid
+
+        let runtimeIds =
+            [| currentRid; platformRid |]
+            |> Array.filter (String.IsNullOrWhiteSpace >> not)
+            |> Array.distinct
+
         let names =
             [| LibraryName
                "libbubi_miniaudio.dylib"
@@ -45,6 +69,9 @@ module Miniaudio =
                "bubi_miniaudio.dll" |]
 
         [| for name in names do
+               for runtimeId in runtimeIds do
+                   yield Path.Combine(baseDirectory, "runtimes", runtimeId, "native", name)
+                   yield Path.Combine(currentDirectory, "runtimes", runtimeId, "native", name)
                yield Path.Combine(baseDirectory, name)
                yield Path.Combine(currentDirectory, name)
                yield name |]

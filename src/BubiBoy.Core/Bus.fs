@@ -226,7 +226,12 @@ module Bus =
             { memory with Joypad = Joypad.writeP1 value memory.Joypad }
         | 0xFF04 ->
             memory.Io[0x04] <- 0uy
-            { memory with Timer = Timer.resetDiv memory.Timer }
+            let apu = Apu.resetDiv memory.Timer.Divider memory.Io memory.Apu
+            memory.Io[0x26] <- Apu.statusRegister memory.Io apu
+
+            { memory with
+                Timer = Timer.resetDiv memory.Timer
+                Apu = apu }
         | 0xFF41 ->
             memory.Io[0x41] <- value &&& 0xF8uy
             memory
@@ -242,7 +247,16 @@ module Bus =
             memory.Io[0x46] <- value
             memory
         | addr when addr >= 0xFF10 && addr <= 0xFF26 ->
+            let wasApuPowered = memory.Io[0x26] &&& 0x80uy <> 0uy
             let nextIo, apu = Apu.writeRegister (addr - 0xFF00) value memory.Io memory.Apu
+            let isApuPowered = nextIo[0x26] &&& 0x80uy <> 0uy
+            let dividerApuBitHigh = memory.Timer.Divider &&& 0x1000us <> 0us
+            let apu =
+                if addr = 0xFF26 && not wasApuPowered && isApuPowered && dividerApuBitHigh then
+                    Apu.skipNextFrameSequencerClock apu
+                else
+                    apu
+
             { memory with Io = nextIo; Apu = apu }
         | addr when addr >= 0xFF00 && addr <= 0xFF7F ->
             memory.Io[addr - 0xFF00] <- value

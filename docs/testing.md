@@ -37,6 +37,16 @@ For private local ROM collections, use the smoke runner documented in [rom-smoke
 
 Phase 2 CPU validation is tracked in [phase2-audit.md](phase2-audit.md). Redistributable test ROMs live under `tests/BubiBoy.TestRoms/roms/` with upstream license files.
 
+Phase 5 audio status is tracked in [phase5-audio-audit.md](phase5-audio-audit.md). Dedicated APU test ROMs
+with unclear redistribution terms should stay outside the repository and be recorded as external validation
+only.
+
+External APU ROMs that report over serial can be checked without committing the ROMs:
+
+```sh
+BUBIBOY_APU_TEST_ROMS="/path/to/01-registers.gb:/path/to/02-len ctr.gb" dotnet test tests/BubiBoy.TestRoms/BubiBoy.TestRoms.fsproj --filter ExternalApuTests
+```
+
 ## Style
 
 - Prefer readable test names that describe hardware behavior.

@@ -24,6 +24,10 @@ cmake -S native -B native/build -DCMAKE_C_FLAGS="-I/path/to/miniaudio"
 cmake --build native/build
 ```
 
+CI builds the wrapper on macOS, Linux, and Windows before running managed tests. The workflow copies the
+result into `native/build/runtimes/<rid>/native`, then sets `BUBIBOY_EXPECT_NATIVE_AUDIO=1` so the audio
+tests assert that the managed loader can find the native library without requiring a real playback device.
+
 Then place the built library where .NET can load it:
 
 - macOS: `libbubi_miniaudio.dylib`
@@ -36,6 +40,19 @@ is sufficient.
 When `native/build` contains one of the expected library names, `BubiBoy.Audio.fsproj` copies it to its
 own output directory. App/test output may still need a rebuild after the native build so the project
 reference can copy the asset forward.
+
+RID-specific output is also supported. Place native libraries under the standard .NET layout and they will
+be copied to build and publish output:
+
+```text
+native/build/runtimes/osx-arm64/native/libbubi_miniaudio.dylib
+native/build/runtimes/osx-x64/native/libbubi_miniaudio.dylib
+native/build/runtimes/linux-x64/native/libbubi_miniaudio.so
+native/build/runtimes/win-x64/native/bubi_miniaudio.dll
+```
+
+The managed loader probes both the application directory and `runtimes/<rid>/native` for the current
+runtime identifier before falling back to the platform library search path.
 
 To verify the native output path without loading a ROM:
 
