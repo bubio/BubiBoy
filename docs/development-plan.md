@@ -81,10 +81,10 @@ Deliverable: common DMG cartridges load, run, and persist saves.
 
 ## Phase 5: Audio
 
-- Implement APU channel state, frame sequencer, envelopes, sweep, length counters, and mixer behavior.
-- Keep sample generation deterministic in the core.
-- Add miniaudio output through a thin host layer.
-- Handle underrun, latency configuration, pause/resume, and device changes.
+- [x] Implement APU channel state, frame sequencer, envelopes, sweep, length counters, and mixer behavior.
+- [x] Keep sample generation deterministic in the core.
+- [x] Add miniaudio output through a thin host layer.
+- [x] Handle underrun, latency configuration, pause/resume, and device changes.
 
 Deliverable: audible DMG playback with acceptable latency and no UI dependency in the core.
 
@@ -109,7 +109,13 @@ Current progress:
 - [x] Added a Phase 5 audio audit documenting completed work, licensing constraints, and close criteria.
 - [x] Added an external APU ROM harness that captures serial pass/fail output without vendoring ROMs.
 - [x] Fixed DIV writes so a reset while DIV bit 12 is high clocks the APU frame sequencer.
-- [ ] Improve APU edge cases against dedicated audio test ROMs.
+- [x] Closed Phase 5 with the remaining cycle-exact APU gap recorded in [phase5-audio-audit.md](phase5-audio-audit.md).
+
+Known follow-up:
+
+- SameSuite `same-suite/apu/div_write_trigger_10.gb` still fails. This is a cycle-exact APU/DIV startup
+  edge case and should be handled as a focused compatibility task rather than blocking the Phase 5
+  audible-playback milestone.
 
 ## Phase 6: Game Boy Color
 

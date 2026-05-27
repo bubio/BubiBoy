@@ -14,7 +14,19 @@ This audit reconciles the Phase 5 audio plan with the current implementation sta
 - `tests/BubiBoy.TestRoms` can run external APU ROMs configured with `BUBIBOY_APU_TEST_ROMS` and checks
   serial output for pass/fail without vendoring unclear-license ROMs.
 
-## Remaining
+## Closure Decision
+
+Phase 5 is closed as of 2026-05-27.
+
+The milestone deliverable is met: BubiBoy has deterministic core sample generation, app-side audio
+submission, a miniaudio-backed host layer with managed fallback, latency/underrun handling, CI native
+audio builds for macOS/Linux/Windows, and an external-ROM validation path that does not vendor
+unclear-license ROMs.
+
+One dedicated APU timing ROM still fails. That remaining issue is a cycle-exact DIV/APU startup edge case,
+not a blocker for the Phase 5 audible-playback milestone. Track it as a focused compatibility follow-up.
+
+## Known Follow-Up
 
 Dedicated APU test ROM validation is not complete. Blargg's `dmg_sound` ROMs are useful behavioral
 references, but their redistribution status is mixed or unclear, so they must not be committed to this
@@ -39,13 +51,5 @@ Latest external validation:
 | --- | --- | --- | --- | --- |
 | 2026-05-26 | `same-suite/apu/div_write_trigger.gb` from `c-sp/game-boy-test-roms` v7.0 | Downloaded to `/tmp`, not vendored | Passed | Passing after wiring DIV writes to the APU frame sequencer. |
 | 2026-05-26 | `same-suite/apu/div_write_trigger_10.gb` from `c-sp/game-boy-test-roms` v7.0 | Downloaded to `/tmp`, not vendored | Failed | Serial output was `42 42 42 42 42 42` after 427,462 steps. SameSuite source describes this as the edge where starting APU while DIV bit 4 is set skips the first DIV-APU event. |
-
-## Close Criteria
-
-Phase 5 can close after one of these is true:
-
-- a redistributable dedicated APU test ROM is added with license provenance and passes in CI; or
-- an external-ROM APU validation command is documented and run locally, with the tested ROM name, source,
-  license status, and result recorded in this audit.
 
 If Blargg `dmg_sound` is used locally, record it as an external reference only. Do not vendor the ROMs.
