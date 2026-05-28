@@ -17,6 +17,14 @@ let private makeBus () =
     | Ok cartridge -> Bus.create cartridge
     | Error message -> failwith message
 
+let private makeCgbBus () =
+    let rom = makeRom ()
+    rom[0x0143] <- 0xC0uy
+
+    match rom |> CartridgeMemory.create with
+    | Ok cartridge -> Bus.create cartridge
+    | Error message -> failwith message
+
 [<Fact>]
 let ``readByte delegates ROM area to cartridge`` () =
     let bus = makeBus ()
@@ -199,6 +207,83 @@ let ``VRAM is accessible during transfer mode when LCD is disabled`` () =
     let written = Bus.writeByte 0x8000us 0x42uy disabledTransfer
 
     Assert.Equal(0x42uy, Bus.readByte 0x8000us written)
+
+[<Fact>]
+let ``CGB VRAM bank register selects independent VRAM banks`` () =
+    let bus =
+        makeCgbBus ()
+        |> Bus.writeByte 0xFF40us 0x00uy
+        |> Bus.writeByte 0x8000us 0x11uy
+        |> Bus.writeByte 0xFF4Fus 0x01uy
+        |> Bus.writeByte 0x8000us 0x22uy
+
+    Assert.Equal(0x22uy, Bus.readByte 0x8000us bus)
+    let bank0 = Bus.writeByte 0xFF4Fus 0x00uy bus
+    Assert.Equal(0x11uy, Bus.readByte 0x8000us bank0)
+
+[<Fact>]
+let ``CGB WRAM bank register selects switchable bank at D000`` () =
+    let bus =
+        makeCgbBus ()
+        |> Bus.writeByte 0xD000us 0x11uy
+        |> Bus.writeByte 0xFF70us 0x02uy
+        |> Bus.writeByte 0xD000us 0x22uy
+
+    Assert.Equal(0x22uy, Bus.readByte 0xD000us bus)
+    let bank1 = Bus.writeByte 0xFF70us 0x01uy bus
+    Assert.Equal(0x11uy, Bus.readByte 0xD000us bank1)
+
+[<Fact>]
+let ``CGB palette data ports auto increment index`` () =
+    let bus =
+        makeCgbBus ()
+        |> Bus.writeByte 0xFF68us 0x80uy
+        |> Bus.writeByte 0xFF69us 0x1Fuy
+        |> Bus.writeByte 0xFF69us 0x00uy
+
+    Assert.Equal(0xC2uy, Bus.readByte 0xFF68us bus)
+    let readBack = Bus.writeByte 0xFF68us 0x00uy bus
+    Assert.Equal(0x1Fuy, Bus.readByte 0xFF69us readBack)
+
+[<Fact>]
+let ``CGB object priority mode register stores low bit`` () =
+    let bus = makeCgbBus () |> Bus.writeByte 0xFF6Cus 0x01uy
+
+    Assert.Equal(0xFFuy, Bus.readByte 0xFF6Cus bus)
+
+    let cgbPriority = Bus.writeByte 0xFF6Cus 0x00uy bus
+
+    Assert.Equal(0xFEuy, Bus.readByte 0xFF6Cus cgbPriority)
+
+[<Fact>]
+let ``CGB double speed keeps timer running at CPU speed while LCD uses hardware speed`` () =
+    let doubleSpeed =
+        makeCgbBus ()
+        |> Bus.writeByte 0xFF4Dus 0x01uy
+        |> Bus.stop
+        |> Bus.writeByte 0xFF05us 0x10uy
+        |> Bus.writeByte 0xFF07us 0x05uy
+        |> Bus.tick 16
+
+    Assert.Equal(0x11uy, Bus.readByte 0xFF05us doubleSpeed)
+    Assert.Equal(0uy, Bus.readByte 0xFF44us doubleSpeed)
+
+[<Fact>]
+let ``CGB general DMA copies selected source block into selected VRAM bank`` () =
+    let source =
+        makeCgbBus ()
+        |> Bus.writeByte 0xFF40us 0x00uy
+        |> Bus.writeByte 0xC000us 0x42uy
+        |> Bus.writeByte 0xFF4Fus 0x01uy
+        |> Bus.writeByte 0xFF51us 0xC0uy
+        |> Bus.writeByte 0xFF52us 0x00uy
+        |> Bus.writeByte 0xFF53us 0x00uy
+        |> Bus.writeByte 0xFF54us 0x00uy
+
+    let copied = Bus.writeByte 0xFF55us 0x00uy source
+
+    Assert.Equal(0xFFuy, Bus.readByte 0xFF55us copied)
+    Assert.Equal(0x42uy, Bus.readByte 0x8000us copied)
 
 [<Fact>]
 let ``OAM is accessible only during HBlank and VBlank`` () =

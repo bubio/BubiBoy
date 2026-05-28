@@ -19,6 +19,14 @@ let private createSession program =
     | Ok session -> session
     | Error message -> failwith message
 
+let private createCgbSession program =
+    let rom = makeRomWithProgram program
+    rom[0x0143] <- 0xC0uy
+
+    match Emulator.createSession rom with
+    | Ok session -> session
+    | Error message -> failwith message
+
 let private withIo index value (bus: Bus.Memory) =
     Bus.withIoByte index value bus
 
@@ -33,6 +41,14 @@ let ``runFrame advances until one hardware frame elapses`` () =
     Assert.True(result.Session.TotalCycles >= int64 Hardware.CyclesPerFrame)
     Assert.Equal(17_556, result.Session.Steps)
     Assert.Equal(Video.FramebufferPixels, result.Framebuffer.Length)
+
+[<Fact>]
+let ``createSession starts CGB cartridges in CGB post boot state`` () =
+    let session = createCgbSession [| 0x00uy |]
+
+    Assert.Equal(Hardware.Cgb, Bus.mode session.Bus)
+    Assert.Equal(0x11uy, session.Cpu.Registers.A)
+    Assert.Equal(0x80uy, session.Cpu.Registers.F)
 
 [<Fact>]
 let ``runFrame returns scanline framebuffer captured during the frame`` () =

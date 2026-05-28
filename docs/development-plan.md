@@ -119,10 +119,16 @@ Known follow-up:
 
 ## Phase 6: Game Boy Color
 
-- Add CGB mode detection and hardware state.
-- Implement VRAM banks, WRAM banks, CGB palettes, HDMA/GDMA, speed switching, and CGB-specific registers.
-- Extend PPU rendering for CGB attributes and palettes.
+- [x] Add CGB mode detection and hardware state.
+- [x] Implement initial VRAM banks, WRAM banks, CGB palettes, HDMA/GDMA, speed switching, and CGB-specific registers.
+- [x] Extend PPU rendering for CGB background/window/sprite attributes and palettes.
 - Add CGB compatibility tests and known-title smoke tests where legally available.
+
+Progress note:
+
+- Dragon Quest III - Soshite Densetsu e... (Japan).gbc reaches 2,000,000 smoke-test steps without
+  unsupported opcodes, bad program counters, or load errors. Remaining work is accuracy-oriented CGB
+  compatibility testing and visual validation against known-good hardware captures.
 
 Deliverable: representative CGB titles boot and render with correct palette behavior.
 

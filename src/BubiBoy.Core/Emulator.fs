@@ -28,11 +28,22 @@ module Emulator =
         rom
         |> CartridgeMemory.create
         |> Result.map (fun cartridge ->
-            { Cpu = Cpu.initialState
-              Bus = Bus.create cartridge
+            let bus = Bus.create cartridge
+            let cpu =
+                match Bus.mode bus with
+                | Hardware.Cgb ->
+                    { Cpu.initialState with
+                        Registers =
+                            { Cpu.initialRegisters with
+                                A = 0x11uy
+                                F = 0x80uy } }
+                | Hardware.Dmg -> Cpu.initialState
+
+            { Bus = bus
               Framebuffer = Video.blankFrame ()
               TotalCycles = 0L
-              Steps = 0 })
+              Steps = 0
+              Cpu = cpu })
 
     let private lcdEnabled (bus: Bus.Memory) =
         Bus.readByte 0xFF40us bus &&& 0x80uy <> 0uy
@@ -53,16 +64,15 @@ module Emulator =
         let bus = Bus.tick result.Cycles result.Bus
         let framebuffer =
             if shouldRenderScanline beforeBus bus then
-                let next = Array.copy session.Framebuffer
-                Video.renderScanline (int (Bus.lcdState beforeBus).Line) bus next
-                next
+                Video.renderScanline (int (Bus.lcdState beforeBus).Line) bus session.Framebuffer
+                session.Framebuffer
             else
                 session.Framebuffer
 
         { Cpu = result.Cpu
           Bus = bus
           Framebuffer = framebuffer
-          TotalCycles = session.TotalCycles + int64 result.Cycles
+          TotalCycles = session.TotalCycles + int64 (Bus.hardwareCyclesForCpuCycles result.Cycles beforeBus)
           Steps = session.Steps + 1 }
 
     let run maxSteps session =

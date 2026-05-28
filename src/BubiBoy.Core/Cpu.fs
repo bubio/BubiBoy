@@ -511,7 +511,13 @@ module Cpu =
                   Bus = bus
                   Cycles = 12 }
             | 0x10uy ->
-                { Cpu = { cpu with Halted = true; Registers = { registers with PC = registers.PC + 2us } }
+                let speedSwitchPrepared = Bus.readByte 0xFF4Dus bus &&& 0x01uy <> 0uy
+                let bus = Bus.stop bus
+
+                { Cpu =
+                    { cpu with
+                        Halted = not speedSwitchPrepared
+                        Registers = { registers with PC = registers.PC + 2us } }
                   Bus = bus
                   Cycles = 4 }
             | 0x12uy ->

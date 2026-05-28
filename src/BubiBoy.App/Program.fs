@@ -1,7 +1,9 @@
 namespace BubiBoy.App
 
 open System
+open System.Collections.Generic
 open System.Diagnostics
+open System.IO
 open System.Threading
 open System.Threading.Tasks
 open Avalonia
@@ -20,6 +22,65 @@ open BubiBoy.Audio
 open BubiBoy.Core
 open BubiBoy.IO
 open System.Runtime.InteropServices
+
+module private PerfTrace =
+    type Trace =
+        { Writer: StreamWriter
+          DisplayWriter: StreamWriter
+          Gate: obj
+          Stopwatch: Stopwatch }
+
+    let createFromEnvironment () =
+        let path = Environment.GetEnvironmentVariable("BUBIBOY_PERF_LOG")
+
+        if String.IsNullOrWhiteSpace path then
+            None
+        else
+            try
+                let writer = new StreamWriter(File.Open(path, FileMode.Create, FileAccess.Write, FileShare.Read))
+                writer.WriteLine("timeMs,frame,frameMs,steps,cycles,pc,stop,acceptedAudio,enqueueDropped,bufferBefore,bufferAfter,underrunAfter,droppedAfter,gc0,gc1,gc2")
+                writer.Flush()
+                let displayPath = Path.ChangeExtension(path, ".display.csv")
+                let displayWriter = new StreamWriter(File.Open(displayPath, FileMode.Create, FileAccess.Write, FileShare.Read))
+                displayWriter.WriteLine("timeMs,tick,displayMs,tickDeltaMs,displayedFrame,queueBefore,queueAfter,bufferedAudio,underrun,dropped,gc0,gc1,gc2")
+                displayWriter.Flush()
+
+                Some
+                    { Writer = writer
+                      DisplayWriter = displayWriter
+                      Gate = obj ()
+                      Stopwatch = Stopwatch.StartNew() }
+            with ex ->
+                eprintfn $"Could not create BUBIBOY_PERF_LOG '{path}': {ex.Message}"
+                None
+
+    let writeFrame trace frame frameMs steps cycles pc stop acceptedAudio enqueueDropped bufferBefore bufferAfter underrunAfter droppedAfter =
+        match trace with
+        | None -> ()
+        | Some trace ->
+            lock trace.Gate (fun () ->
+                trace.Writer.WriteLine(
+                    $"{trace.Stopwatch.Elapsed.TotalMilliseconds:F3},{frame},{frameMs:F3},{steps},{cycles},0x{pc:X4},{stop},{acceptedAudio},{enqueueDropped},{bufferBefore},{bufferAfter},{underrunAfter},{droppedAfter},{GC.CollectionCount 0},{GC.CollectionCount 1},{GC.CollectionCount 2}"
+                )
+                trace.Writer.Flush())
+
+    let writeDisplay trace tick displayMs tickDeltaMs displayedFrame queueBefore queueAfter bufferedAudio underrun dropped =
+        match trace with
+        | None -> ()
+        | Some trace ->
+            lock trace.Gate (fun () ->
+                trace.DisplayWriter.WriteLine(
+                    $"{trace.Stopwatch.Elapsed.TotalMilliseconds:F3},{tick},{displayMs:F3},{tickDeltaMs:F3},{displayedFrame},{queueBefore},{queueAfter},{bufferedAudio},{underrun},{dropped},{GC.CollectionCount 0},{GC.CollectionCount 1},{GC.CollectionCount 2}"
+                )
+                trace.DisplayWriter.Flush())
+
+    let close trace =
+        match trace with
+        | None -> ()
+        | Some trace ->
+            lock trace.Gate (fun () ->
+                trace.Writer.Dispose()
+                trace.DisplayWriter.Dispose())
 
 module private HeaderDisplay =
     let private formatByteSize bytes =
@@ -73,9 +134,7 @@ module private DebugDisplay =
         $"FPS: display {displayFps:F1}    emu {emulationFps:F1}    frame {frameMilliseconds:F2} ms"
 
 module private FramebufferBitmap =
-    let private toBgraBytes (pixels: uint32[]) =
-        let bytes = Array.zeroCreate<byte> (pixels.Length * 4)
-
+    let private copyToBgraBytes (pixels: uint32[]) (bytes: byte[]) : unit =
         for index in 0 .. pixels.Length - 1 do
             let color = pixels[index]
             let offset = index * 4
@@ -84,18 +143,8 @@ module private FramebufferBitmap =
             bytes[offset + 2] <- byte ((color >>> 16) &&& 0x000000FFu)
             bytes[offset + 3] <- byte ((color >>> 24) &&& 0x000000FFu)
 
-        bytes
-
-    let create (pixels: uint32[]) =
-        let bitmap =
-            new WriteableBitmap(
-                PixelSize(Hardware.ScreenWidth, Hardware.ScreenHeight),
-                Vector(96.0, 96.0),
-                PixelFormat.Bgra8888,
-                AlphaFormat.Premul
-            )
-
-        let bytes = toBgraBytes pixels
+    let writeInto (pixels: uint32[]) (bitmap: WriteableBitmap) (bytes: byte[]) : unit =
+        copyToBgraBytes pixels bytes
 
         use locked = bitmap.Lock()
         let rowBytes = Hardware.ScreenWidth * 4
@@ -106,6 +155,17 @@ module private FramebufferBitmap =
             for y in 0 .. Hardware.ScreenHeight - 1 do
                 Marshal.Copy(bytes, y * rowBytes, IntPtr.Add(locked.Address, y * locked.RowBytes), rowBytes)
 
+    let create (pixels: uint32[]) : WriteableBitmap =
+        let bitmap =
+            new WriteableBitmap(
+                PixelSize(Hardware.ScreenWidth, Hardware.ScreenHeight),
+                Vector(96.0, 96.0),
+                PixelFormat.Bgra8888,
+                AlphaFormat.Premul
+            )
+
+        let bytes = Array.zeroCreate<byte> (pixels.Length * 4)
+        writeInto pixels bitmap bytes
         bitmap
 
 type MainWindow() as this =
@@ -158,7 +218,7 @@ type MainWindow() as this =
 
         let mutable loadedRom: RomFile.LoadedRom option = None
         let mutable currentSession: Emulator.Session option = None
-        let mutable latestFrame: Emulator.FrameResult option = None
+        let pendingFrames = Queue<Emulator.FrameResult>()
         let mutable emulationLoop: CancellationTokenSource option = None
         let mutable isRunning = false
         let mutable lastSaveStatus: string option = None
@@ -168,13 +228,18 @@ type MainWindow() as this =
         let mutable measuredEmulationFps = 0.0
         let mutable lastFrameMilliseconds = 0.0
         let mutable lastFpsSample = DateTime.UtcNow
+        let mutable generatedFrameCounter = 0
+        let mutable displayTickCounter = 0
+        let mutable displayedFrameCounter = 0
+        let mutable lastDisplayTickMs = 0.0
         let sessionGate = obj ()
         let perfGate = obj ()
+        let perfTrace = PerfTrace.createFromEnvironment ()
         let audioFramesPerVideoFrame =
             int (Math.Round(float AudioHost.defaultFormat.SampleRate * float Hardware.CyclesPerFrame / float Hardware.DmgClockHz))
 
-        let audioBufferLowWatermarkFrames = audioFramesPerVideoFrame * 4
-        let audioBufferTargetFrames = audioFramesPerVideoFrame * 8
+        let maxStepsPerFrame = 250_000
+        let audioBufferTargetFrames = audioFramesPerVideoFrame * 16
         let audioDevice =
             match Miniaudio.tryCreateDevice AudioHost.defaultFormat AudioHost.defaultFormat.SampleRate with
             | Ok device -> device :> AudioHost.AudioDevice
@@ -333,24 +398,39 @@ type MainWindow() as this =
             | _ -> stopRunning ()
 
         let enqueueFrameAudio (session: Emulator.Session) =
-            let result = Emulator.runFrame 20_000 session
+            let diagnosticsBefore = audioOutput.Diagnostics()
+            let beforeSteps = session.Steps
+            let beforeCycles = session.TotalCycles
+            let stopwatch = Stopwatch.StartNew()
+            let result = Emulator.runFrame maxStepsPerFrame session
+            stopwatch.Stop()
             recordEmulatedFrame ()
-            audioOutput.Enqueue result.AudioSamples |> ignore
+            let writeResult = audioOutput.Enqueue result.AudioSamples
+            let diagnosticsAfter = audioOutput.Diagnostics()
+            let frame = Interlocked.Increment(&generatedFrameCounter)
+
+            PerfTrace.writeFrame
+                perfTrace
+                frame
+                stopwatch.Elapsed.TotalMilliseconds
+                (result.Session.Steps - beforeSteps)
+                (result.Session.TotalCycles - beforeCycles)
+                result.Session.Cpu.Registers.PC
+                result.StopReason
+                writeResult.AcceptedFrames
+                writeResult.DroppedFrames
+                diagnosticsBefore.BufferedFrames
+                diagnosticsAfter.BufferedFrames
+                diagnosticsAfter.UnderrunFrames
+                diagnosticsAfter.DroppedFrames
+
+            lock sessionGate (fun () ->
+                pendingFrames.Enqueue result
+
+                while pendingFrames.Count > 30 do
+                    pendingFrames.Dequeue() |> ignore)
+
             result
-
-        let waitForAudioDemand (token: CancellationToken) =
-            let mutable waiting = true
-            let mutable diagnostics = audioOutput.Diagnostics()
-
-            while waiting && not token.IsCancellationRequested do
-                diagnostics <- audioOutput.Diagnostics()
-
-                if (not diagnostics.IsRunning) || diagnostics.BufferedFrames <= audioBufferLowWatermarkFrames then
-                    waiting <- false
-                else
-                    Thread.Sleep 1
-
-            diagnostics
 
         let fillAudioLead (token: CancellationToken) (session: Emulator.Session) (initialDiagnostics: AudioHost.AudioDiagnostics) =
             let stopwatch = Stopwatch.StartNew()
@@ -392,19 +472,20 @@ type MainWindow() as this =
                             match session with
                             | None -> Thread.Sleep 1
                             | Some session ->
-                                let diagnostics = waitForAudioDemand token
+                                let diagnostics = audioOutput.Diagnostics()
 
                                 if diagnostics.IsRunning && not token.IsCancellationRequested then
-                                    let current, latest, keepGoing = fillAudioLead token session diagnostics
+                                    if diagnostics.BufferedFrames < audioBufferTargetFrames then
+                                        let result = enqueueFrameAudio session
 
-                                    lock sessionGate (fun () ->
-                                        currentSession <- Some current
-                                        latest |> Option.iter (fun frame -> latestFrame <- Some frame))
+                                        lock sessionGate (fun () -> currentSession <- Some result.Session)
 
-                                    if not keepGoing then
-                                        token.ThrowIfCancellationRequested()
-                                        cts.Cancel()
-                                        Dispatcher.UIThread.Post(fun () -> stopRunning ())
+                                        if result.StopReason <> Emulator.FrameCompleted then
+                                            token.ThrowIfCancellationRequested()
+                                            cts.Cancel()
+                                            Dispatcher.UIThread.Post(fun () -> stopRunning ())
+                                    else
+                                        Thread.Sleep 1
                                 elif not token.IsCancellationRequested then
                                     Thread.Sleep 1
 
@@ -425,7 +506,7 @@ type MainWindow() as this =
                 stopRunning ()
             | Some session ->
                 let stopwatch = Stopwatch.StartNew()
-                let result = Emulator.runFrame 20_000 session
+                let result = Emulator.runFrame maxStepsPerFrame session
                 stopwatch.Stop()
                 recordEmulatedFrame ()
                 lock sessionGate (fun () -> currentSession <- Some result.Session)
@@ -446,18 +527,56 @@ type MainWindow() as this =
         frameTimer.Interval <- TimeSpan.FromMilliseconds(1000.0 * float Hardware.CyclesPerFrame / float Hardware.DmgClockHz)
         frameTimer.Tick.Add(fun _ ->
             if isRunning then
+                let tick = displayTickCounter + 1
+                displayTickCounter <- tick
+                let tickNow =
+                    match perfTrace with
+                    | None -> 0.0
+                    | Some trace -> trace.Stopwatch.Elapsed.TotalMilliseconds
+
+                let tickDelta =
+                    if lastDisplayTickMs = 0.0 then
+                        0.0
+                    else
+                        tickNow - lastDisplayTickMs
+
+                lastDisplayTickMs <- tickNow
+                let stopwatch = Stopwatch.StartNew()
+                let mutable queueBefore = 0
+                let mutable queueAfter = 0
                 let frame =
                     lock sessionGate (fun () ->
-                        let frame = latestFrame
-                        latestFrame <- None
-                        frame)
+                        queueBefore <- pendingFrames.Count
+                        if pendingFrames.Count > 0 then
+                            let frame = pendingFrames.Dequeue()
+                            queueAfter <- pendingFrames.Count
+                            Some frame
+                        else
+                            queueAfter <- 0
+                            None)
 
                 match frame with
                 | Some result ->
+                    displayedFrameCounter <- displayedFrameCounter + 1
                     recordDisplayedFrame ()
                     updateFrame result
                 | None ->
-                    debugDetails.Text <- formatRuntimeDiagnostics ())
+                    debugDetails.Text <- formatRuntimeDiagnostics ()
+
+                stopwatch.Stop()
+                let diagnostics = audioOutput.Diagnostics()
+
+                PerfTrace.writeDisplay
+                    perfTrace
+                    tick
+                    stopwatch.Elapsed.TotalMilliseconds
+                    tickDelta
+                    displayedFrameCounter
+                    queueBefore
+                    queueAfter
+                    diagnostics.BufferedFrames
+                    diagnostics.UnderrunFrames
+                    diagnostics.DroppedFrames)
         frameTimer.Start()
 
         let buttonRow =
@@ -538,7 +657,7 @@ type MainWindow() as this =
                             loadedRom <- Some loaded
                             lock sessionGate (fun () ->
                                 currentSession <- session
-                                latestFrame <- None)
+                                pendingFrames.Clear())
 
                             stepFrameButton.IsEnabled <- session.IsSome
                             startStopButton.IsEnabled <- session.IsSome
@@ -560,7 +679,7 @@ type MainWindow() as this =
                             loadedRom <- None
                             lock sessionGate (fun () ->
                                 currentSession <- None
-                                latestFrame <- None)
+                                pendingFrames.Clear())
 
                             stepFrameButton.IsEnabled <- false
                             startStopButton.IsEnabled <- false
@@ -589,6 +708,7 @@ type MainWindow() as this =
             this.Focus() |> ignore)
 
         this.Closing.Add(fun _ -> saveCurrentRam ())
+        this.Closed.Add(fun _ -> PerfTrace.close perfTrace)
 
         let panel =
             StackPanel(

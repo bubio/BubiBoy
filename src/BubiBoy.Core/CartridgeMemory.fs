@@ -322,6 +322,9 @@ module CartridgeMemory =
     let hasBatteryBackedRam image =
         hasBattery image.Header.CartridgeKind && image.Ram.Length > 0
 
+    let header image =
+        image.Header
+
     let bankDebug image =
         match image.Mbc with
         | NoMbc -> NoBanking

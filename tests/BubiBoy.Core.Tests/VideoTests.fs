@@ -15,11 +15,22 @@ let private makeBus () =
     | Ok cartridge -> Bus.create cartridge
     | Error message -> failwith message
 
+let private makeCgbBus () =
+    let rom = makeRom ()
+    rom[0x0143] <- 0xC0uy
+
+    match rom |> CartridgeMemory.create with
+    | Ok cartridge -> Bus.create cartridge
+    | Error message -> failwith message
+
 let private withIo index value (bus: Bus.Memory) =
     Bus.withIoByte index value bus
 
 let private withVram address value (bus: Bus.Memory) =
     Bus.withVramByte address value bus
+
+let private withVramBank bank address value (bus: Bus.Memory) =
+    Bus.withVramBankByte bank address value bus
 
 let private withOam index value (bus: Bus.Memory) =
     Bus.withOamByte index value bus
@@ -49,6 +60,23 @@ let ``background renders unsigned tile data through BGP`` () =
 
     Assert.Equal(Video.DmgColors[1], pixel 0 0 framebuffer)
     Assert.Equal(Video.DmgColors[0], pixel 1 0 framebuffer)
+
+[<Fact>]
+let ``CGB background uses tile attributes and color palettes`` () =
+    let framebuffer =
+        makeCgbBus ()
+        |> Bus.writeByte 0xFF68us 0x92uy
+        |> Bus.writeByte 0xFF69us 0x1Fuy
+        |> Bus.writeByte 0xFF69us 0x00uy
+        |> withIo 0x40 0x91uy
+        |> withVramBank 0 0x9800 0x01uy
+        |> withVramBank 1 0x9800 0x0Auy
+        |> withVramBank 1 0x8010 0x80uy
+        |> withVramBank 1 0x8011 0x00uy
+        |> Video.renderFrame
+
+    Assert.Equal(0xFFFF0000u, pixel 0 0 framebuffer)
+    Assert.Equal(0xFF000000u, pixel 1 0 framebuffer)
 
 [<Fact>]
 let ``background supports signed tile data area`` () =
@@ -195,6 +223,33 @@ let ``sprites with smaller x coordinate win over later OAM entries`` () =
         |> Video.renderFrame
 
     Assert.Equal(Video.DmgColors[2], pixel 1 0 framebuffer)
+
+[<Fact>]
+let ``CGB sprites prioritize lower OAM index over smaller x coordinate`` () =
+    let framebuffer =
+        makeCgbBus ()
+        |> Bus.writeByte 0xFF6Aus 0x82uy
+        |> Bus.writeByte 0xFF6Bus 0x1Fuy
+        |> Bus.writeByte 0xFF6Bus 0x00uy
+        |> Bus.writeByte 0xFF6Aus 0x84uy
+        |> Bus.writeByte 0xFF6Bus 0xE0uy
+        |> Bus.writeByte 0xFF6Bus 0x03uy
+        |> withIo 0x40 0x93uy
+        |> withVram 0x8010 0x80uy
+        |> withVram 0x8011 0x00uy
+        |> withVram 0x8020 0x00uy
+        |> withVram 0x8021 0x40uy
+        |> withOam 0 16uy
+        |> withOam 1 9uy
+        |> withOam 2 1uy
+        |> withOam 3 0uy
+        |> withOam 4 16uy
+        |> withOam 5 8uy
+        |> withOam 6 2uy
+        |> withOam 7 0uy
+        |> Video.renderFrame
+
+    Assert.Equal(0xFFFF0000u, pixel 1 0 framebuffer)
 
 [<Fact>]
 let ``only first ten OAM sprites on a scanline are rendered`` () =

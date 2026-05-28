@@ -19,6 +19,14 @@ let private makeBus program =
     | Ok cartridge -> Bus.create cartridge
     | Error message -> failwith message
 
+let private makeCgbBus program =
+    let rom = makeRomWithProgram program
+    rom[0x0143] <- 0xC0uy
+
+    match rom |> CartridgeMemory.create with
+    | Ok cartridge -> Bus.create cartridge
+    | Error message -> failwith message
+
 [<Fact>]
 let ``NOP advances PC and consumes four cycles`` () =
     let bus = makeBus [| 0x00uy |]
@@ -184,6 +192,18 @@ let ``STOP enters low-power wait and advances over padding byte`` () =
     Assert.True(result.Cpu.Halted)
     Assert.Equal(0x0102us, result.Cpu.Registers.PC)
     Assert.Equal(4, result.Cycles)
+
+[<Fact>]
+let ``CGB STOP performs prepared speed switch without halting`` () =
+    let bus =
+        makeCgbBus [| 0x10uy; 0x00uy |]
+        |> Bus.writeByte 0xFF4Dus 0x01uy
+
+    let result = Cpu.step Cpu.initialState bus
+
+    Assert.False(result.Cpu.Halted)
+    Assert.Equal(0x0102us, result.Cpu.Registers.PC)
+    Assert.Equal(0xFEuy, Bus.readByte 0xFF4Dus result.Bus)
 
 [<Fact>]
 let ``LD A DE reads through bus`` () =
