@@ -3,6 +3,7 @@ namespace BubiBoy.Core
 module Cpu =
     exception UnsupportedOpcode of opcode: byte * pc: uint16
 
+    [<Struct>]
     type Registers =
         { A: byte
           F: byte
@@ -15,6 +16,7 @@ module Cpu =
           SP: uint16
           PC: uint16 }
 
+    [<Struct>]
     type State =
         { Registers: Registers
           Halted: bool

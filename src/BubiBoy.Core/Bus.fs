@@ -203,15 +203,15 @@ module Bus =
            | Lcd.VBlank -> false
            | _ -> true
 
-    let private stat memory =
+    let private stat memory (lcd: Lcd.State) =
         let raw = memory.Io[0x41] &&& 0xF8uy
         let coincidence =
-            if memory.Lcd.Line = memory.Io[0x45] then
+            if lcd.Line = memory.Io[0x45] then
                 0x04uy
             else
                 0uy
 
-        raw ||| coincidence ||| Lcd.modeBits memory.Lcd.Mode
+        raw ||| coincidence ||| Lcd.modeBits lcd.Mode
 
     let private statInterruptSignal (memory: Memory) (lcd: Lcd.State) =
         let statRegister = memory.Io[0x41] &&& 0xF8uy
@@ -320,7 +320,7 @@ module Bus =
         | 0xFF04 ->
             Timer.div memory.Timer
         | 0xFF41 ->
-            stat memory
+            stat memory memory.Lcd
         | 0xFF44 ->
             memory.Lcd.Line
         | 0xFF4D when isCgb memory ->
@@ -516,7 +516,7 @@ module Bus =
         memory.Io[0x06] <- timerResult.Registers.Tma
         memory.Io[0x07] <- timerResult.Registers.Tac
         memory.Io[0x0F] <- interruptFlags
-        memory.Io[0x41] <- stat { memory with Lcd = lcd }
+        memory.Io[0x41] <- stat memory lcd
         memory.Io[0x44] <- lcd.Line
 
         let apu = Apu.tick hardwareCycles memory.Io memory.Apu

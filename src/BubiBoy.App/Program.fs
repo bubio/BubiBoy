@@ -155,18 +155,15 @@ module private FramebufferBitmap =
             for y in 0 .. Hardware.ScreenHeight - 1 do
                 Marshal.Copy(bytes, y * rowBytes, IntPtr.Add(locked.Address, y * locked.RowBytes), rowBytes)
 
-    let create (pixels: uint32[]) : WriteableBitmap =
-        let bitmap =
-            new WriteableBitmap(
-                PixelSize(Hardware.ScreenWidth, Hardware.ScreenHeight),
-                Vector(96.0, 96.0),
-                PixelFormat.Bgra8888,
-                AlphaFormat.Premul
-            )
-
-        let bytes = Array.zeroCreate<byte> (pixels.Length * 4)
-        writeInto pixels bitmap bytes
-        bitmap
+    /// Creates the single, reusable display bitmap. The pixel buffer is written into
+    /// it in place each frame via writeInto, so no per-frame bitmap is ever allocated.
+    let createBitmap () : WriteableBitmap =
+        new WriteableBitmap(
+            PixelSize(Hardware.ScreenWidth, Hardware.ScreenHeight),
+            Vector(96.0, 96.0),
+            PixelFormat.Bgra8888,
+            AlphaFormat.Premul
+        )
 
 type MainWindow() as this =
     inherit Window()
@@ -174,9 +171,9 @@ type MainWindow() as this =
     do
         this.Title <- "BubiBoy"
         this.Width <- 640.0
-        this.Height <- 620.0
+        this.Height <- 660.0
         this.MinWidth <- 480.0
-        this.MinHeight <- 560.0
+        this.MinHeight <- 600.0
         this.Background <- SolidColorBrush(Color.Parse("#F3F6FA"))
         this.Focusable <- true
 
@@ -206,15 +203,27 @@ type MainWindow() as this =
                 VerticalAlignment = VerticalAlignment.Center
             )
 
+        // A single display bitmap and BGRA scratch buffer are reused for every frame;
+        // writeInto blits the emulator framebuffer into them in place (no per-frame
+        // WriteableBitmap or 100 KiB byte[] allocation).
+        let displayBitmap = FramebufferBitmap.createBitmap ()
+        let displayBytes = Array.zeroCreate<byte> (Hardware.ScreenWidth * Hardware.ScreenHeight * 4)
+        FramebufferBitmap.writeInto (Video.blankFrame ()) displayBitmap displayBytes
+
         let framebufferImage =
             Image(
                 Width = float Hardware.ScreenWidth * 2.0,
                 Height = float Hardware.ScreenHeight * 2.0,
                 Stretch = Stretch.Fill,
-                Source = FramebufferBitmap.create (Video.blankFrame ())
+                Source = displayBitmap
             )
 
         framebuffer.Child <- framebufferImage
+
+        // Writes pixels into the persistent bitmap and asks Avalonia to repaint it.
+        let presentFrame (pixels: uint32[]) =
+            FramebufferBitmap.writeInto pixels displayBitmap displayBytes
+            framebufferImage.InvalidateVisual()
 
         let mutable loadedRom: RomFile.LoadedRom option = None
         let mutable currentSession: Emulator.Session option = None
@@ -232,8 +241,10 @@ type MainWindow() as this =
         let mutable displayTickCounter = 0
         let mutable displayedFrameCounter = 0
         let mutable lastDisplayTickMs = 0.0
+        let mutable outputVolume = 0.5f
         let sessionGate = obj ()
         let perfGate = obj ()
+        let volumeGate = obj ()
         let perfTrace = PerfTrace.createFromEnvironment ()
         let audioFramesPerVideoFrame =
             int (Math.Round(float AudioHost.defaultFormat.SampleRate * float Hardware.CyclesPerFrame / float Hardware.DmgClockHz))
@@ -246,6 +257,25 @@ type MainWindow() as this =
             | Error _ -> AudioHost.createBufferedDevice AudioHost.defaultFormat.SampleRate :> AudioHost.AudioDevice
 
         let audioOutput = audioDevice
+
+        let createSessionForRom (rom: RomFile.LoadedRom) =
+            Emulator.createSession rom.Bytes
+            |> Result.bind (fun session ->
+                SaveRam.loadForRom rom.Path (Bus.cartridge session.Bus)
+                |> Result.map (fun cartridge ->
+                    { session with Bus = Bus.withCartridge cartridge session.Bus }))
+
+        let applyVolume (samples: Apu.Sample[]) =
+            let volume = lock volumeGate (fun () -> outputVolume)
+
+            if volume <> 1.0f then
+                // samples is a freshly drained buffer owned by this frame result, so we
+                // scale it in place instead of allocating a new array each frame.
+                for index in 0 .. samples.Length - 1 do
+                    let sample = samples[index]
+                    samples[index] <- { Left = sample.Left * volume; Right = sample.Right * volume }
+
+            samples
 
         let openButton =
             Button(
@@ -280,6 +310,35 @@ type MainWindow() as this =
                 BorderBrush = SolidColorBrush(Color.Parse("#AAB8C8")),
                 BorderThickness = Thickness(1.0),
                 IsEnabled = false
+            )
+
+        let resetButton =
+            Button(
+                Content = "Reset",
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Padding = Thickness(18.0, 8.0),
+                Background = SolidColorBrush(Color.Parse("#FFFFFF")),
+                Foreground = SolidColorBrush(Color.Parse("#17202B")),
+                BorderBrush = SolidColorBrush(Color.Parse("#AAB8C8")),
+                BorderThickness = Thickness(1.0),
+                IsEnabled = false
+            )
+
+        let volumeLabel =
+            TextBlock(
+                Text = "Volume 50%",
+                FontSize = 13.0,
+                Foreground = SolidColorBrush(Color.Parse("#425166")),
+                VerticalAlignment = VerticalAlignment.Center
+            )
+
+        let volumeSlider =
+            Slider(
+                Minimum = 0.0,
+                Maximum = 100.0,
+                Value = 50.0,
+                Width = 180.0,
+                VerticalAlignment = VerticalAlignment.Center
             )
 
         let status =
@@ -386,7 +445,7 @@ type MainWindow() as this =
             $"{DebugDisplay.formatPerformance displayFps emulationFps frameMilliseconds}\n{DebugDisplay.formatAudioDiagnostics (audioOutput.Diagnostics())}"
 
         let updateFrame (result: Emulator.FrameResult) =
-            framebufferImage.Source <- FramebufferBitmap.create result.Framebuffer
+            presentFrame result.Framebuffer
             debugDetails.Text <-
                 if isRunning then
                     formatRuntimeDiagnostics ()
@@ -405,7 +464,7 @@ type MainWindow() as this =
             let result = Emulator.runFrame maxStepsPerFrame session
             stopwatch.Stop()
             recordEmulatedFrame ()
-            let writeResult = audioOutput.Enqueue result.AudioSamples
+            let writeResult = audioOutput.Enqueue(applyVolume result.AudioSamples)
             let diagnosticsAfter = audioOutput.Diagnostics()
             let frame = Interlocked.Increment(&generatedFrameCounter)
 
@@ -523,6 +582,50 @@ type MainWindow() as this =
                 let current, _, _ = fillAudioLead CancellationToken.None session (audioOutput.Diagnostics())
                 lock sessionGate (fun () -> currentSession <- Some current)
 
+        let resetCurrentRom () =
+            match loadedRom with
+            | None ->
+                status.Text <- "Load a ROM before resetting."
+            | Some rom ->
+                let wasRunning = isRunning
+                saveCurrentRam ()
+                stopRunning ()
+
+                let sessionResult = createSessionForRom rom
+                let session = sessionResult |> Result.toOption
+
+                lock sessionGate (fun () ->
+                    currentSession <- session
+                    pendingFrames.Clear())
+
+                resetPerformance ()
+                presentFrame (Video.blankFrame ())
+                stepFrameButton.IsEnabled <- session.IsSome
+                startStopButton.IsEnabled <- session.IsSome
+                resetButton.IsEnabled <- session.IsSome
+
+                status.Text <-
+                    match sessionResult with
+                    | Ok _ -> $"Reset {IO.Path.GetFileName rom.Path}"
+                    | Error message -> $"Could not reset ROM: {message}"
+
+                debugDetails.Text <-
+                    match sessionResult with
+                    | Ok _ -> "Reset complete."
+                    | Error message -> message
+
+                if wasRunning && session.IsSome then
+                    isRunning <- true
+                    resetPerformance ()
+                    audioOutput.Start()
+                    primeAudioBuffer ()
+                    startEmulationLoop ()
+                    startStopButton.Content <- "Stop"
+                else
+                    startStopButton.Content <- "Start"
+
+                this.Focus() |> ignore
+
         let frameTimer = DispatcherTimer()
         frameTimer.Interval <- TimeSpan.FromMilliseconds(1000.0 * float Hardware.CyclesPerFrame / float Hardware.DmgClockHz)
         frameTimer.Tick.Add(fun _ ->
@@ -589,6 +692,17 @@ type MainWindow() as this =
         buttonRow.Children.Add openButton |> ignore
         buttonRow.Children.Add stepFrameButton |> ignore
         buttonRow.Children.Add startStopButton |> ignore
+        buttonRow.Children.Add resetButton |> ignore
+
+        let volumeRow =
+            StackPanel(
+                Orientation = Orientation.Horizontal,
+                Spacing = 10.0,
+                HorizontalAlignment = HorizontalAlignment.Center
+            )
+
+        volumeRow.Children.Add volumeLabel |> ignore
+        volumeRow.Children.Add volumeSlider |> ignore
 
         let mapKey key =
             match key with
@@ -646,13 +760,7 @@ type MainWindow() as this =
                         match RomFile.load path with
                         | Ok loaded ->
                             let header = loaded.Header
-                            let sessionResult =
-                                Emulator.createSession loaded.Bytes
-                                |> Result.bind (fun session ->
-                                    SaveRam.loadForRom loaded.Path (Bus.cartridge session.Bus)
-                                    |> Result.map (fun cartridge ->
-                                        { session with Bus = Bus.withCartridge cartridge session.Bus }))
-
+                            let sessionResult = createSessionForRom loaded
                             let session = sessionResult |> Result.toOption
                             loadedRom <- Some loaded
                             lock sessionGate (fun () ->
@@ -661,8 +769,9 @@ type MainWindow() as this =
 
                             stepFrameButton.IsEnabled <- session.IsSome
                             startStopButton.IsEnabled <- session.IsSome
+                            resetButton.IsEnabled <- session.IsSome
                             stopRunning ()
-                            framebufferImage.Source <- FramebufferBitmap.create (Video.blankFrame ())
+                            presentFrame (Video.blankFrame ())
 
                             status.Text <-
                                 match sessionResult, lastSaveStatus with
@@ -683,6 +792,7 @@ type MainWindow() as this =
 
                             stepFrameButton.IsEnabled <- false
                             startStopButton.IsEnabled <- false
+                            resetButton.IsEnabled <- false
                             stopRunning ()
                             status.Text <- "Could not load ROM."
                             romDetails.Text <- message
@@ -691,6 +801,14 @@ type MainWindow() as this =
             |> Async.StartImmediate)
 
         stepFrameButton.Click.Add(fun _ -> runOneFrame ())
+        resetButton.Click.Add(fun _ -> resetCurrentRom ())
+
+        volumeSlider.PropertyChanged.Add(fun args ->
+            if args.Property = Slider.ValueProperty then
+                let value = Math.Clamp(volumeSlider.Value, 0.0, 100.0)
+                let percent = int (Math.Round value)
+                lock volumeGate (fun () -> outputVolume <- single (value / 100.0))
+                volumeLabel.Text <- $"Volume {percent}%%")
 
         startStopButton.Click.Add(fun _ ->
             isRunning <- not isRunning
@@ -723,6 +841,7 @@ type MainWindow() as this =
         panel.Children.Add subtitle |> ignore
         panel.Children.Add framebuffer |> ignore
         panel.Children.Add buttonRow |> ignore
+        panel.Children.Add volumeRow |> ignore
         panel.Children.Add status |> ignore
         panel.Children.Add romDetails |> ignore
         panel.Children.Add debugDetails |> ignore

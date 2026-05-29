@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <!-- BenchmarkDotNet spawns optimized child processes; keep this project release-shaped. -->
+    <TieredCompilation>true</TieredCompilation>
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="SyntheticRom.fs" />
+    <Compile Include="EmulatorBenchmarks.fs" />
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" Version="0.14.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\BubiBoy.Core\BubiBoy.Core.fsproj" />
+  </ItemGroup>
+
+</Project>

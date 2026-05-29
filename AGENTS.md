@@ -36,7 +36,9 @@ The core must not depend on Avalonia or miniaudio.
 - Use classes sparingly, mainly when implementing framework interfaces or encapsulating mutable runtime
   objects that have clear ownership.
 - Keep mutation explicit and local. For hot paths such as CPU stepping, PPU rendering, and APU mixing,
-  mutation is acceptable when it is measured or plainly necessary.
+  mutation is acceptable when it is measured or plainly necessary. See `docs/performance.md` for the
+  benchmark harness and which optimizations (e.g. `[<Struct>]` conversions) were measured and kept or
+  rejected before changing hot-path code.
 - Avoid clever computation expressions or custom operators unless they materially simplify emulator logic.
 - Model hardware registers and flags with clear names and small helper functions.
 - Keep public APIs narrow. Expose frame stepping, state reset, input updates, and audio/video buffers

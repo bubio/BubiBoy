@@ -7,6 +7,7 @@ module Lcd =
         | OamSearch
         | Transfer
 
+    [<Struct>]
     type State =
         { Line: byte
           DotCounter: int

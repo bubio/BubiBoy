@@ -1,10 +1,12 @@
 namespace BubiBoy.Core
 
 module Timer =
+    [<Struct>]
     type State =
         { Divider: uint16
           TimaCounter: int }
 
+    [<Struct>]
     type Registers =
         { Div: byte
           Tima: byte
@@ -12,6 +14,7 @@ module Timer =
           Tac: byte
           InterruptFlags: byte }
 
+    [<Struct>]
     type TickResult =
         { State: State
           Registers: Registers }
