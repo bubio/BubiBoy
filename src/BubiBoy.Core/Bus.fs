@@ -134,6 +134,9 @@ module Bus =
     let cartridge memory =
         memory.Cartridge
 
+    let joypad memory =
+        memory.Joypad
+
     let mode memory =
         memory.Mode
 

@@ -245,6 +245,13 @@ type MainWindow() as this =
         let sessionGate = obj ()
         let perfGate = obj ()
         let volumeGate = obj ()
+        let inputGate = obj ()
+        // The authoritative set of currently-held buttons. Key events only update this
+        // (cheaply, under inputGate); the emulation thread reconciles it into the live
+        // session at the start of each frame. This keeps the emulation thread the sole
+        // mutator of the session, so a frame's write-back can no longer clobber a key
+        // press/release that arrived while that frame was running.
+        let mutable desiredButtons: Set<Joypad.Button> = Set.empty
         let perfTrace = PerfTrace.createFromEnvironment ()
         let audioFramesPerVideoFrame =
             int (Math.Round(float AudioHost.defaultFormat.SampleRate * float Hardware.CyclesPerFrame / float Hardware.DmgClockHz))
@@ -517,6 +524,31 @@ type MainWindow() as this =
 
             current, latest, keepGoing
 
+        // Reconciles the session's joypad with the latest user input. Runs on whichever
+        // thread is about to advance the session, so the session stays single-writer.
+        // Bus.setButton only raises the joypad interrupt on a fresh press, so re-applying
+        // an unchanged set is a no-op and held buttons never re-trigger.
+        let allJoypadButtons =
+            [ Joypad.Right; Joypad.Left; Joypad.Up; Joypad.Down
+              Joypad.A; Joypad.B; Joypad.Select; Joypad.Start ]
+
+        let applyInput (session: Emulator.Session) =
+            let desired = lock inputGate (fun () -> desiredButtons)
+
+            if desired = (Bus.joypad session.Bus).Pressed then
+                session
+            else
+                let bus =
+                    allJoypadButtons
+                    |> List.fold
+                        (fun bus button ->
+                            let want = Set.contains button desired
+                            let have = Set.contains button (Bus.joypad bus).Pressed
+                            if want = have then bus else Bus.setButton button want bus)
+                        session.Bus
+
+                { session with Bus = bus }
+
         let startEmulationLoop () =
             let cts = new CancellationTokenSource()
             let token = cts.Token
@@ -535,7 +567,7 @@ type MainWindow() as this =
 
                                 if diagnostics.IsRunning && not token.IsCancellationRequested then
                                     if diagnostics.BufferedFrames < audioBufferTargetFrames then
-                                        let result = enqueueFrameAudio session
+                                        let result = enqueueFrameAudio (applyInput session)
 
                                         lock sessionGate (fun () -> currentSession <- Some result.Session)
 
@@ -565,7 +597,7 @@ type MainWindow() as this =
                 stopRunning ()
             | Some session ->
                 let stopwatch = Stopwatch.StartNew()
-                let result = Emulator.runFrame maxStepsPerFrame session
+                let result = Emulator.runFrame maxStepsPerFrame (applyInput session)
                 stopwatch.Stop()
                 recordEmulatedFrame ()
                 lock sessionGate (fun () -> currentSession <- Some result.Session)
@@ -579,7 +611,7 @@ type MainWindow() as this =
             match session with
             | None -> ()
             | Some session ->
-                let current, _, _ = fillAudioLead CancellationToken.None session (audioOutput.Diagnostics())
+                let current, _, _ = fillAudioLead CancellationToken.None (applyInput session) (audioOutput.Diagnostics())
                 lock sessionGate (fun () -> currentSession <- Some current)
 
         let resetCurrentRom () =
@@ -719,13 +751,17 @@ type MainWindow() as this =
         let updateButtonState key pressed =
             match mapKey key with
             | Some button ->
-                lock sessionGate (fun () ->
-                    match currentSession with
-                    | Some session ->
-                        currentSession <- Some { session with Bus = Bus.setButton button pressed session.Bus }
-                        true
-                    | None -> false)
+                // Only record intent here; the emulation thread reconciles it into the
+                // session via applyInput. Recording the latest state (rather than queuing
+                // edits) means a press immediately followed by a release can never be lost.
+                lock inputGate (fun () ->
+                    desiredButtons <-
+                        if pressed then
+                            desiredButtons.Add button
+                        else
+                            desiredButtons.Remove button)
 
+                true
             | _ -> false
 
         this.KeyDown.Add(fun args ->
