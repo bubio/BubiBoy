@@ -193,8 +193,8 @@ type MainWindow() as this =
 
         let volumeIcon =
             Path(
-                Width = 18.0,
-                Height = 18.0,
+                Width = 14.4,
+                Height = 14.4,
                 Data =
                     Geometry.Parse(
                         "M2,8 L6,8 L11,3 L11,21 L6,16 L2,16 Z M14,8 C15.4,9.3 16.2,10.7 16.2,12 C16.2,13.3 15.4,14.7 14,16 L15.5,17.6 C17.4,15.8 18.5,14 18.5,12 C18.5,10 17.4,8.2 15.5,6.4 Z"
@@ -206,27 +206,90 @@ type MainWindow() as this =
 
         ToolTip.SetTip(volumeIcon, "Volume")
 
+        let volumeIconHost =
+            Border(
+                Width = 14.4,
+                Height = 24.0,
+                Child = volumeIcon,
+                VerticalAlignment = VerticalAlignment.Center,
+                HorizontalAlignment = HorizontalAlignment.Center
+            )
+
+        let volumeSliderWidth = 88.0
+        let volumeSliderHeight = 24.0
+        let volumeThumbSize = 12.0
+        let volumeTrackHeight = 4.0
+        let volumeTrackLeft = volumeThumbSize / 2.0
+        let volumeTrackWidth = volumeSliderWidth - volumeThumbSize
+
         let volumeSlider =
-            Slider(
-                Minimum = 0.0,
-                Maximum = 100.0,
-                Value = float appSettings.VolumePercent,
-                Width = 104.0,
+            Canvas(
+                Width = volumeSliderWidth,
+                Height = volumeSliderHeight,
+                Background = Brushes.Transparent,
+                Cursor = new Cursor(StandardCursorType.Hand),
+                Focusable = true,
+                ClipToBounds = false,
                 VerticalAlignment = VerticalAlignment.Center
             )
+
+        let volumeTrack =
+            Border(
+                Width = volumeTrackWidth,
+                Height = volumeTrackHeight,
+                Background = SolidColorBrush(Color.Parse("#CBD2DC")),
+                CornerRadius = CornerRadius(volumeTrackHeight / 2.0)
+            )
+
+        let volumeFill =
+            Border(
+                Height = volumeTrackHeight,
+                Background = SolidColorBrush(Color.Parse("#178BFF")),
+                CornerRadius = CornerRadius(volumeTrackHeight / 2.0)
+            )
+
+        let volumeThumb =
+            Ellipse(
+                Width = volumeThumbSize,
+                Height = volumeThumbSize,
+                Fill = SolidColorBrush(Color.Parse("#178BFF"))
+            )
+
+        let volumeTrackTop = (volumeSliderHeight - volumeTrackHeight) / 2.0
+        let volumeThumbTop = (volumeSliderHeight - volumeThumbSize) / 2.0
+
+        Canvas.SetLeft(volumeTrack, volumeTrackLeft)
+        Canvas.SetTop(volumeTrack, volumeTrackTop)
+        Canvas.SetLeft(volumeFill, volumeTrackLeft)
+        Canvas.SetTop(volumeFill, volumeTrackTop)
+        Canvas.SetTop(volumeThumb, volumeThumbTop)
+        volumeSlider.Children.Add volumeTrack |> ignore
+        volumeSlider.Children.Add volumeFill |> ignore
+        volumeSlider.Children.Add volumeThumb |> ignore
+
+        let updateVolumeSliderVisual percent =
+            let clamped = Math.Clamp(percent, 0, 100)
+            let fraction = float clamped / 100.0
+            let centerX = volumeTrackLeft + volumeTrackWidth * fraction
+            volumeFill.Width <- volumeTrackWidth * fraction
+            Canvas.SetLeft(volumeThumb, centerX - volumeThumbSize / 2.0)
+
+        updateVolumeSliderVisual appSettings.VolumePercent
 
         ToolTip.SetTip(volumeSlider, "Volume")
 
         let volumeHost =
-            StackPanel(
-                Orientation = Orientation.Horizontal,
-                Spacing = 8.0,
-                Margin = Thickness(8.0, 0.0),
+            Grid(
+                ColumnDefinitions = ColumnDefinitions("14.4,8,88"),
+                Width = 110.4,
+                Height = 24.0,
                 VerticalAlignment = VerticalAlignment.Center,
                 HorizontalAlignment = HorizontalAlignment.Right
             )
 
-        volumeHost.Children.Add volumeIcon |> ignore
+        Grid.SetColumn(volumeIconHost, 0)
+        Grid.SetColumn(volumeSlider, 2)
+        volumeHost.Children.Add volumeIconHost |> ignore
         volumeHost.Children.Add volumeSlider |> ignore
 
         let statusBar =
@@ -235,14 +298,21 @@ type MainWindow() as this =
                 Background = SolidColorBrush(Color.Parse("#F8F9FB")),
                 BorderBrush = SolidColorBrush(Color.Parse("#C8CED8")),
                 BorderThickness = Thickness(0.0, 1.0, 0.0, 0.0),
+                Padding = Thickness(6.0, 0.0, 16.0, 0.0),
                 IsVisible = not isFloating
             )
 
         let statusGrid =
-            Grid(ColumnDefinitions = ColumnDefinitions("Auto,*,Auto"), Margin = Thickness(6.0, 0.0))
+            Grid(
+                ColumnDefinitions = ColumnDefinitions("Auto,*,Auto"),
+                RowDefinitions = RowDefinitions("32"),
+                VerticalAlignment = VerticalAlignment.Center
+            )
 
         Grid.SetColumn(runIndicatorHost, 0)
         Grid.SetColumn(volumeHost, 2)
+        Grid.SetRow(runIndicatorHost, 0)
+        Grid.SetRow(volumeHost, 0)
         statusGrid.Children.Add runIndicatorHost |> ignore
         statusGrid.Children.Add volumeHost |> ignore
         statusBar.Child <- statusGrid
@@ -1045,14 +1115,60 @@ type MainWindow() as this =
             if updateButtonState args.Key false then
                 args.Handled <- true)
 
-        volumeSlider.PropertyChanged.Add(fun args ->
-            if args.Property = Slider.ValueProperty then
-                let value = Math.Clamp(volumeSlider.Value, 0.0, 100.0)
-                let percent = int (Math.Round value)
-                lock volumeGate (fun () -> outputVolume <- single (value / 100.0))
-                viewModel.VolumePercent <- percent
-                appSettings <- AppSettings.withVolumePercent percent appSettings
-                saveSettings ())
+        let setVolumePercent percent =
+            let clamped = Math.Clamp(percent, 0, 100)
+            lock volumeGate (fun () -> outputVolume <- single clamped / 100.0f)
+            viewModel.VolumePercent <- clamped
+            appSettings <- AppSettings.withVolumePercent clamped appSettings
+            updateVolumeSliderVisual clamped
+            saveSettings ()
+
+        let setVolumeFromPointer (args: PointerEventArgs) =
+            let position = args.GetPosition(volumeSlider)
+            let fraction = Math.Clamp((position.X - volumeTrackLeft) / volumeTrackWidth, 0.0, 1.0)
+            setVolumePercent (int (Math.Round(fraction * 100.0)))
+
+        let mutable isDraggingVolume = false
+
+        volumeSlider.PointerPressed.Add(fun args ->
+            isDraggingVolume <- true
+            volumeSlider.Focus() |> ignore
+            args.Pointer.Capture(volumeSlider) |> ignore
+            setVolumeFromPointer args
+            args.Handled <- true)
+
+        volumeSlider.PointerMoved.Add(fun args ->
+            if isDraggingVolume then
+                setVolumeFromPointer args
+                args.Handled <- true)
+
+        volumeSlider.PointerReleased.Add(fun args ->
+            if isDraggingVolume then
+                isDraggingVolume <- false
+                args.Pointer.Capture(null) |> ignore
+                setVolumeFromPointer args
+                args.Handled <- true)
+
+        volumeSlider.KeyDown.Add(fun args ->
+            let delta =
+                match args.Key with
+                | Key.Left | Key.Down -> Some -5
+                | Key.Right | Key.Up -> Some 5
+                | Key.Home -> Some -100
+                | Key.End -> Some 100
+                | _ -> None
+
+            match delta with
+            | Some change ->
+                let next =
+                    match args.Key with
+                    | Key.Home -> 0
+                    | Key.End -> 100
+                    | _ -> viewModel.VolumePercent + change
+
+                setVolumePercent next
+                args.Handled <- true
+            | None -> ())
 
         this.Closing.Add(fun _ ->
             saveCurrentRam ()
