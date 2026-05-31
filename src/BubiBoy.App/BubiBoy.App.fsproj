@@ -3,9 +3,19 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>BubiBoy</AssemblyName>
+    <Product>BubiBoy</Product>
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="AboutWindow.fs" />
+    <Compile Include="PerfTrace.fs" />
+    <Compile Include="DisplayHelpers.fs" />
+    <Compile Include="InputMapping.fs" />
+    <Compile Include="RomSession.fs" />
+    <Compile Include="MainWindowViewModel.fs" />
+    <Compile Include="MainWindow.fs" />
+    <Compile Include="App.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
 
