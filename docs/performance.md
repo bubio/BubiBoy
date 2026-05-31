@@ -62,6 +62,9 @@ Measured cumulative effect on an Apple M4, .NET 10, Release:
   and BGRA scratch buffer are created once and written in place each frame via `writeInto` +
   `InvalidateVisual()`, instead of allocating a new bitmap and ~100 KB byte array every frame.
   `applyVolume` scales the freshly drained sample buffer in place instead of `Array.map`.
+- **Video scanline scratch reuse** (`Video.fs`): the emulator step path uses a thread-local
+  `RenderScratch` for sprite collection and background shade/priority arrays, avoiding three small
+  array allocations on each rendered scanline without adding fields to `Emulator.Session`.
 
 ## Measured and rejected
 
@@ -74,6 +77,10 @@ These were tried and reverted because the benchmark did not support them. Record
   flow by value through large/deep call sites — convert the leaf types, not the wide result wrapper.
 - **`inline` on tiny accessors** (`combineBytes`, `getHL`, `split16`, `preserveCarry`, …): no
   measurable effect — the JIT already inlines them. Not adopted; it only adds source noise.
+- **`Video.RenderScratch` in `Emulator.Session`: rejected.** It removed the same scanline scratch
+  arrays, but adding another reference field to `Session` increased every `Emulator.step` result
+  allocation. The thread-local scratch keeps the public session shape stable and measured better in
+  the short benchmark (`Emulator.runFrame` ~4.95 MB allocated, `Emulator.step` ~436 B allocated).
 
 ## Notes for future work
 
@@ -85,8 +92,5 @@ These were tried and reverted because the benchmark did not support them. Record
   the `{ memory with Lcd = lcd }` temporary did not change measured allocation for that reason. Only
   objects that *escape* — returned from a step and threaded through `Session` — cost heap. Focus
   allocation work on escaping values.
-- **Deferred high-risk levers** if more throughput is needed: making `Bus.Memory`'s scalar fields
-  mutable to drop the per-step record copy, and threading the Video scratch buffers (sprite/shade/
-  priority arrays) through `Session` to stop allocating them per scanline. The latter was skipped here
-  because it changes the `Session` and `renderScanline` signatures that tests construct/call directly,
-  for a modest gen0-only saving.
+- **Deferred high-risk lever** if more throughput is needed: making `Bus.Memory`'s scalar fields
+  mutable to drop the per-step record copy.

@@ -64,7 +64,7 @@ module Emulator =
         let bus = Bus.tick result.Cycles result.Bus
         let framebuffer =
             if shouldRenderScanline beforeBus bus then
-                Video.renderScanline (int (Bus.lcdState beforeBus).Line) bus session.Framebuffer
+                Video.renderScanlineReusable (int (Bus.lcdState beforeBus).Line) bus session.Framebuffer
                 session.Framebuffer
             else
                 session.Framebuffer

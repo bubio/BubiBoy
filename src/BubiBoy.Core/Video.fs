@@ -82,6 +82,20 @@ module Video =
           Palette: int
           Priority: bool }
 
+    type RenderScratch =
+        private
+            { Sprites: Sprite[]
+              BackgroundShades: byte[]
+              BackgroundPriority: bool[] }
+
+    let createScratch () =
+        { Sprites = Array.zeroCreate<Sprite> 10
+          BackgroundShades = Array.zeroCreate<byte> Hardware.ScreenWidth
+          BackgroundPriority = Array.zeroCreate<bool> Hardware.ScreenWidth }
+
+    let private threadScratch =
+        new System.Threading.ThreadLocal<RenderScratch>(fun () -> createScratch ())
+
     let private coordinateSpritePriority memory =
         Bus.mode memory = Hardware.Dmg || io 0x6C memory &&& 0x01uy <> 0uy
 
@@ -188,10 +202,10 @@ module Video =
         else
             renderBackgroundPixel memory lcdc x y
 
-    let private renderSpriteLine (memory: Bus.Memory) lcdc y (backgroundShades: byte[]) (backgroundPriority: bool[]) (framebuffer: uint32[]) =
+    let private renderSpriteLine (memory: Bus.Memory) lcdc y (scratch: RenderScratch) (framebuffer: uint32[]) =
         if bitSet 1 lcdc then
             let spriteHeight = if bitSet 2 lcdc then 16 else 8
-            let sprites = Array.zeroCreate<Sprite> 10
+            let sprites = scratch.Sprites
             let count = collectLineSprites memory spriteHeight y sprites
 
             for spriteSlot in 0 .. count - 1 do
@@ -232,8 +246,8 @@ module Video =
 
                             if colorNumber <> 0 then
                                 let pixelIndex = y * Hardware.ScreenWidth + x
-                                let backgroundIsOpaque = backgroundShades[x] <> 0uy
-                                let backgroundWins = backgroundPriority[x] && backgroundIsOpaque
+                                let backgroundIsOpaque = scratch.BackgroundShades[x] <> 0uy
+                                let backgroundWins = scratch.BackgroundPriority[x] && backgroundIsOpaque
 
                                 if not backgroundWins && (not behindBackground || not backgroundIsOpaque) then
                                     framebuffer[pixelIndex] <-
@@ -242,40 +256,45 @@ module Video =
                                         else
                                             pixelColor palette colorNumber
 
-    let renderScanline y memory (framebuffer: uint32[]) =
+    let renderScanlineWithScratch y memory (framebuffer: uint32[]) scratch =
         let lcdc = io 0x40 memory
 
         if y >= 0 && y < Hardware.ScreenHeight then
             let lineStart = y * Hardware.ScreenWidth
 
             if bitSet 7 lcdc then
-                let backgroundShades = Array.zeroCreate<byte> Hardware.ScreenWidth
-                let backgroundPriority = Array.zeroCreate<bool> Hardware.ScreenWidth
                 let bgp = io 0x47 memory
 
                 for x in 0 .. Hardware.ScreenWidth - 1 do
                     let backgroundPixel = renderBackgroundOrWindowPixel memory lcdc x y
 
                     let pixelIndex = lineStart + x
-                    backgroundShades[x] <- byte backgroundPixel.ColorNumber
-                    backgroundPriority[x] <- backgroundPixel.Priority
+                    scratch.BackgroundShades[x] <- byte backgroundPixel.ColorNumber
+                    scratch.BackgroundPriority[x] <- backgroundPixel.Priority
                     framebuffer[pixelIndex] <-
                         if Bus.mode memory = Hardware.Cgb then
                             cgbColor Bus.rawBgPaletteByte backgroundPixel.Palette backgroundPixel.ColorNumber memory
                         else
                             pixelColor bgp backgroundPixel.ColorNumber
 
-                renderSpriteLine memory lcdc y backgroundShades backgroundPriority framebuffer
+                renderSpriteLine memory lcdc y scratch framebuffer
             else
                 for x in 0 .. Hardware.ScreenWidth - 1 do
                     framebuffer[lineStart + x] <- DmgColors[0]
 
+    let renderScanline y memory (framebuffer: uint32[]) =
+        renderScanlineWithScratch y memory framebuffer (createScratch ())
+
+    let renderScanlineReusable y memory (framebuffer: uint32[]) =
+        renderScanlineWithScratch y memory framebuffer threadScratch.Value
+
     let renderFrame memory =
         let lcdc = io 0x40 memory
         let framebuffer = blankFrame ()
+        let scratch = createScratch ()
 
         if bitSet 7 lcdc then
             for y in 0 .. Hardware.ScreenHeight - 1 do
-                renderScanline y memory framebuffer
+                renderScanlineWithScratch y memory framebuffer scratch
 
         framebuffer
