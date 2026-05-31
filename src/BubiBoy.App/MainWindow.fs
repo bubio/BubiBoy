@@ -123,7 +123,11 @@ type MainWindow() as this =
         this.DataContext <- viewModel
         let mutable selectedScale = appSettings.Scale
         let mutable isFloating = appSettings.IsFloating
-        let mutable outputVolume = single appSettings.VolumePercent / 100.0f
+        let volumeGainFromPercent percent =
+            let normalized = single (Math.Clamp(percent, 0, 100)) / 100.0f
+            normalized * normalized
+
+        let mutable outputVolume = volumeGainFromPercent appSettings.VolumePercent
         let sessionGate = obj ()
         let perfGate = obj ()
         let volumeGate = obj ()
@@ -1117,7 +1121,7 @@ type MainWindow() as this =
 
         let setVolumePercent percent =
             let clamped = Math.Clamp(percent, 0, 100)
-            lock volumeGate (fun () -> outputVolume <- single clamped / 100.0f)
+            lock volumeGate (fun () -> outputVolume <- volumeGainFromPercent clamped)
             viewModel.VolumePercent <- clamped
             appSettings <- AppSettings.withVolumePercent clamped appSettings
             updateVolumeSliderVisual clamped
