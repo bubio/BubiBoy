@@ -252,6 +252,49 @@ let ``CGB sprites prioritize lower OAM index over smaller x coordinate`` () =
     Assert.Equal(0xFFFF0000u, pixel 1 0 framebuffer)
 
 [<Fact>]
+let ``CGB sprite attributes select tile VRAM bank`` () =
+    let framebuffer =
+        makeCgbBus ()
+        |> Bus.writeByte 0xFF6Aus 0x82uy
+        |> Bus.writeByte 0xFF6Bus 0x1Fuy
+        |> Bus.writeByte 0xFF6Bus 0x00uy
+        |> withIo 0x40 0x93uy
+        |> withVramBank 1 0x8010 0x80uy
+        |> withVramBank 1 0x8011 0x00uy
+        |> withOam 0 16uy
+        |> withOam 1 8uy
+        |> withOam 2 1uy
+        |> withOam 3 0x08uy
+        |> Video.renderFrame
+
+    Assert.Equal(0xFFFF0000u, pixel 0 0 framebuffer)
+
+[<Fact>]
+let ``CGB background priority attribute hides sprite over nonzero background`` () =
+    let framebuffer =
+        makeCgbBus ()
+        |> Bus.writeByte 0xFF68us 0x82uy
+        |> Bus.writeByte 0xFF69us 0x00uy
+        |> Bus.writeByte 0xFF69us 0x7Cuy
+        |> Bus.writeByte 0xFF6Aus 0x82uy
+        |> Bus.writeByte 0xFF6Bus 0x1Fuy
+        |> Bus.writeByte 0xFF6Bus 0x00uy
+        |> withIo 0x40 0x93uy
+        |> withVramBank 0 0x9800 0x01uy
+        |> withVramBank 1 0x9800 0x80uy
+        |> withVramBank 0 0x8010 0x80uy
+        |> withVramBank 0 0x8011 0x00uy
+        |> withVramBank 0 0x8020 0x80uy
+        |> withVramBank 0 0x8021 0x00uy
+        |> withOam 0 16uy
+        |> withOam 1 8uy
+        |> withOam 2 2uy
+        |> withOam 3 0uy
+        |> Video.renderFrame
+
+    Assert.Equal(0xFF0000FFu, pixel 0 0 framebuffer)
+
+[<Fact>]
 let ``only first ten OAM sprites on a scanline are rendered`` () =
     let bus =
         makeBus ()
