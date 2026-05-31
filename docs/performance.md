@@ -86,6 +86,10 @@ These were tried and reverted because the benchmark did not support them. Record
   arrays, but adding another reference field to `Session` increased every `Emulator.step` result
   allocation. The thread-local scratch keeps the public session shape stable and measured better in
   the short benchmark (`Emulator.runFrame` ~4.95 MB allocated, `Emulator.step` ~436 B allocated).
+- **`[<Struct>]` on broad APU state/channel records: rejected.** Converting `Apu.State`,
+  `PendingSamples`, and channel/envelope records reduced little allocation and made copies much wider.
+  The short benchmark regressed to ~216 ns/426 B for `Emulator.step` and ~2.68 ms/4.83 MB for
+  `Emulator.runFrame`, so the APU records remain reference records for now.
 
 ## Notes for future work
 
