@@ -122,18 +122,19 @@ Known follow-up:
 - [x] Add CGB mode detection and hardware state.
 - [x] Implement initial VRAM banks, WRAM banks, CGB palettes, HDMA/GDMA, speed switching, and CGB-specific registers.
 - [x] Extend PPU rendering for CGB background/window/sprite attributes and palettes.
-- Add CGB compatibility tests and known-title smoke tests where legally available.
+- [x] Add CGB compatibility tests and known-title smoke tests where legally available.
 
 Progress note:
 
 - Dragon Quest III - Soshite Densetsu e... (Japan).gbc reaches 2,000,000 smoke-test steps without
-  unsupported opcodes, bad program counters, or load errors. Remaining work is accuracy-oriented CGB
-  compatibility testing and visual validation against known-good hardware captures.
+  unsupported opcodes, bad program counters, or load errors.
 - Added focused HBlank DMA regression coverage and an external CGB smoke-test harness driven by
   `BUBIBOY_CGB_SMOKE_ROMS`, so local legally available `.gbc` titles can be checked without committing
   copyrighted ROMs.
 - The external CGB smoke harness currently validates local Dragon Quest III and Wizardry I `.gbc`
   cartridges for 2,000,000 steps without early execution failures.
+- Closed Phase 6 with remaining pixel-perfect visual validation and broader CGB compatibility suites
+  recorded in [phase6-cgb-audit.md](phase6-cgb-audit.md).
 
 Deliverable: representative CGB titles boot and render with correct palette behavior.
 

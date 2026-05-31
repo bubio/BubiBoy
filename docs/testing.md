@@ -41,6 +41,9 @@ Phase 5 audio status is tracked in [phase5-audio-audit.md](phase5-audio-audit.md
 with unclear redistribution terms should stay outside the repository and be recorded as external validation
 only.
 
+Phase 6 CGB status is tracked in [phase6-cgb-audit.md](phase6-cgb-audit.md). Commercial `.gbc` smoke
+validation is external-only and must not add ROM files to the repository.
+
 External APU ROMs that report over serial can be checked without committing the ROMs:
 
 ```sh
