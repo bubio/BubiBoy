@@ -21,6 +21,10 @@ Primary source: https://docs.avaloniaui.net/docs/platform-specific-guides/macos
 6. The About item is not magic. Create a `NativeMenuItem` yourself, place it first in the application menu, and wire its `Click` event to show the app's About UI.
 7. Window menu items must have a `Click` handler or a `Command`; otherwise they may appear disabled.
 8. Use `Meta` for Command-key gestures (`Meta+O`, `Meta+Comma`, etc.).
+9. If the first item still says `About Avalonia`, the app is still using Avalonia's default application menu. Define a `NativeMenu` on the `Application` early enough to replace the default; do not try to fix this from the window menu.
+10. Remember that `CFBundleName` is the short app name macOS uses for the bold app menu and generated Quit item when bundled. Keep it at or under 15 characters; use `CFBundleDisplayName` for longer Finder/Dock names.
+11. A framework-dependent `.app` launched from Finder may not inherit shell `DOTNET_ROOT`, even when `dotnet` works in Terminal. For double-clickable release bundles, publish self-contained for the target RID.
+12. After self-contained publish, ad-hoc sign the `.app` (`codesign --force --deep --sign - MyApp.app`) for local LaunchServices execution. Validate with `open -W MyApp.app`; directly running `Contents/MacOS/MyApp` can take a different AppKit registration path.
 
 ## Code-First F# Pattern
 
@@ -52,7 +56,7 @@ module Program =
             .StartWithClassicDesktopLifetime(argv)
 ```
 
-`App.fs` owns `Application.Name`, theme setup, and the application menu:
+`App.fs` owns `Application.Name`, theme setup, and the application menu. In code-first apps, attach the application `NativeMenu` during `Initialize` so Avalonia does not keep the default menu with `About Avalonia`:
 
 ```fsharp
 type App() =
@@ -62,17 +66,23 @@ type App() =
         this.Name <- "My Application"
         this.Styles.Add(FluentTheme())
 
+        let appMenu = NativeMenu()
+        let aboutItem = NativeMenuItem("About My Application...")
+        aboutItem.Click.Add(fun _ ->
+            match this.ApplicationLifetime with
+            | :? IClassicDesktopStyleApplicationLifetime as desktop ->
+                match desktop.MainWindow with
+                | :? MainWindow as mainWindow -> mainWindow.ShowAbout()
+                | _ -> ()
+            | _ -> ())
+        appMenu.Items.Add aboutItem |> ignore
+        NativeMenu.SetMenu(this, appMenu)
+
     override this.OnFrameworkInitializationCompleted() =
         match this.ApplicationLifetime with
         | :? IClassicDesktopStyleApplicationLifetime as desktop ->
             let mainWindow = MainWindow()
             desktop.MainWindow <- mainWindow
-
-            let appMenu = NativeMenu()
-            let aboutItem = NativeMenuItem("About My Application...")
-            aboutItem.Click.Add(fun _ -> mainWindow.ShowAbout())
-            appMenu.Items.Add aboutItem |> ignore
-            NativeMenu.SetMenu(this, appMenu)
         | _ -> ()
 
         base.OnFrameworkInitializationCompleted()
@@ -105,7 +115,7 @@ Minimum identity keys to check:
 <string>com.example.myapp</string>
 ```
 
-`CFBundleName` is used for the menu bar and Quit item and should fit macOS's short-name expectations. Use `CFBundleDisplayName` for the Dock/Finder display name when the full name is longer.
+`CFBundleName` is used for the menu bar and Quit item and should fit macOS's 15-character short-name expectation. Use `CFBundleDisplayName` for the Dock/Finder display name when the full name is longer. `Window.Title` is independent and does not fix the application menu name.
 
 For development app-bundle behavior, the docs recommend an output layout like:
 
@@ -116,6 +126,16 @@ For development app-bundle behavior, the docs recommend an output layout like:
 ```
 
 Then place `Info.plist` in the `.app/Contents` directory.
+
+Avalonia's default desktop backend does not require `netX.0-macos` for normal windowing, menus, file dialogs, dock menus, clipboard, drag-and-drop, rendering, or accessibility. Use a macOS-specific TFM only when the app needs the full Apple API surface or native `NSView` hosting code; doing so requires building on macOS.
+
+For a double-clickable local release bundle, prefer self-contained publish and then sign:
+
+```bash
+dotnet publish src/MyApp/MyApp.fsproj -c Release -r osx-arm64 --self-contained true /p:PublishDir=bin/Release/osx-arm64/MyApp.app/Contents/MacOS/
+codesign --force --deep --sign - bin/Release/osx-arm64/MyApp.app
+open -W bin/Release/osx-arm64/MyApp.app
+```
 
 ## MVVM Direction
 

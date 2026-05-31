@@ -7,6 +7,12 @@
     <Product>BubiBoy</Product>
   </PropertyGroup>
 
+  <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('OSX'))">
+    <OutputPath>bin\$(Configuration)\$(Platform)\BubiBoy.app\Contents\MacOS\</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <UseAppHost>true</UseAppHost>
+  </PropertyGroup>
+
   <ItemGroup>
     <Compile Include="AboutWindow.fs" />
     <Compile Include="PerfTrace.fs" />
@@ -29,5 +35,24 @@
     <PackageReference Include="Avalonia.Desktop" Version="12.0.3" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="12.0.3" />
   </ItemGroup>
+
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('OSX'))">
+    <MacOSBundleInfoPlist Include="Platforms\macOS\Info.plist" />
+  </ItemGroup>
+
+  <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('OSX'))">
+    <MacOSBundleContentsDir Condition="'$(PublishDir)' != ''">$(PublishDir)..\</MacOSBundleContentsDir>
+    <MacOSBundleContentsDir Condition="'$(PublishDir)' == ''">$(OutputPath)..\</MacOSBundleContentsDir>
+    <MacOSBundleAppDir Condition="'$(PublishDir)' != ''">$(PublishDir)..\..</MacOSBundleAppDir>
+  </PropertyGroup>
+
+  <Target Name="CopyMacOSBundleInfoPlist" AfterTargets="Build;Publish" Condition="$([MSBuild]::IsOSPlatform('OSX'))">
+    <MakeDir Directories="$(MacOSBundleContentsDir)" />
+    <Copy SourceFiles="@(MacOSBundleInfoPlist)" DestinationFolder="$(MacOSBundleContentsDir)" />
+  </Target>
+
+  <Target Name="AdHocSignMacOSBundle" AfterTargets="Publish" Condition="$([MSBuild]::IsOSPlatform('OSX')) and '$(PublishDir)' != ''">
+    <Exec Command="codesign --force --deep --sign - &quot;$(MacOSBundleAppDir)&quot;" />
+  </Target>
 
 </Project>
