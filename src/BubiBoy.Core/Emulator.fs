@@ -7,6 +7,7 @@ module Emulator =
         | Halted
         | UnsupportedOpcode of opcode: byte * pc: uint16
 
+    [<Struct>]
     type Session =
         { Cpu: Cpu.State
           Bus: Bus.Memory

@@ -65,6 +65,11 @@ Measured cumulative effect on an Apple M4, .NET 10, Release:
 - **Video scanline scratch reuse** (`Video.fs`): the emulator step path uses a thread-local
   `RenderScratch` for sprite collection and background shade/priority arrays, avoiding three small
   array allocations on each rendered scanline without adding fields to `Emulator.Session`.
+- **`[<Struct>]` on `Emulator.Session`.** `Session` is the value threaded through every step and frame.
+  Making it a struct removed the per-step heap allocation for the session wrapper while keeping its
+  reference fields (`Bus`, `Framebuffer`) shared. In the short dev benchmark after the scanline scratch
+  reuse, this moved `Emulator.step` from ~436 B to ~372 B allocated and `Emulator.runFrame` from
+  ~4.95 MB to ~4.03 MB allocated.
 
 ## Measured and rejected
 
