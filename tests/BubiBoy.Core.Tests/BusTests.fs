@@ -286,6 +286,31 @@ let ``CGB general DMA copies selected source block into selected VRAM bank`` () 
     Assert.Equal(0x42uy, Bus.readByte 0x8000us copied)
 
 [<Fact>]
+let ``CGB HBlank DMA copies one block on each HBlank entry`` () =
+    let active =
+        makeCgbBus ()
+        |> Bus.writeByte 0xC000us 0x11uy
+        |> Bus.writeByte 0xC010us 0x22uy
+        |> Bus.writeByte 0xFF51us 0xC0uy
+        |> Bus.writeByte 0xFF52us 0x00uy
+        |> Bus.writeByte 0xFF53us 0x00uy
+        |> Bus.writeByte 0xFF54us 0x00uy
+        |> Bus.writeByte 0xFF55us 0x81uy
+
+    Assert.Equal(0x01uy, Bus.readByte 0xFF55us active)
+
+    let firstHBlank = Bus.tick 252 active
+
+    Assert.Equal(0x00uy, Bus.readByte 0xFF55us firstHBlank)
+    Assert.Equal(0x11uy, Bus.readByte 0x8000us firstHBlank)
+
+    let nextLineOam = Bus.tick 204 firstHBlank
+    let secondHBlank = Bus.tick 252 nextLineOam
+
+    Assert.Equal(0xFFuy, Bus.readByte 0xFF55us secondHBlank)
+    Assert.Equal(0x22uy, Bus.readByte 0x8010us secondHBlank)
+
+[<Fact>]
 let ``OAM is accessible only during HBlank and VBlank`` () =
     let oamSearch = makeBus ()
     let blocked = Bus.writeByte 0xFE00us 0x42uy oamSearch

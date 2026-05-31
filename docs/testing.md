@@ -47,6 +47,13 @@ External APU ROMs that report over serial can be checked without committing the 
 BUBIBOY_APU_TEST_ROMS="/path/to/01-registers.gb:/path/to/02-len ctr.gb" dotnet test tests/BubiBoy.TestRoms/BubiBoy.TestRoms.fsproj --filter ExternalApuTests
 ```
 
+External CGB smoke ROMs can be checked the same way. These ROMs must come from a local, legally
+available collection and must not be committed:
+
+```sh
+BUBIBOY_CGB_SMOKE_ROMS="/path/to/title.gbc:/path/to/another.gbc" BUBIBOY_CGB_SMOKE_STEPS=2000000 dotnet test tests/BubiBoy.TestRoms/BubiBoy.TestRoms.fsproj --filter ExternalCgbSmokeTests
+```
+
 ## Style
 
 - Prefer readable test names that describe hardware behavior.

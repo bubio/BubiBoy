@@ -129,6 +129,11 @@ Progress note:
 - Dragon Quest III - Soshite Densetsu e... (Japan).gbc reaches 2,000,000 smoke-test steps without
   unsupported opcodes, bad program counters, or load errors. Remaining work is accuracy-oriented CGB
   compatibility testing and visual validation against known-good hardware captures.
+- Added focused HBlank DMA regression coverage and an external CGB smoke-test harness driven by
+  `BUBIBOY_CGB_SMOKE_ROMS`, so local legally available `.gbc` titles can be checked without committing
+  copyrighted ROMs.
+- The external CGB smoke harness currently validates local Dragon Quest III and Wizardry I `.gbc`
+  cartridges for 2,000,000 steps without early execution failures.
 
 Deliverable: representative CGB titles boot and render with correct palette behavior.
 
