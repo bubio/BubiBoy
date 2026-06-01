@@ -9,6 +9,7 @@
     <Compile Include="AppSettings.fs" />
     <Compile Include="RomFile.fs" />
     <Compile Include="SaveRam.fs" />
+    <Compile Include="SaveStateFile.fs" />
   </ItemGroup>
 
   <ItemGroup>

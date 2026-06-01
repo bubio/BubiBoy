@@ -66,6 +66,7 @@ The core must not depend on Avalonia or miniaudio.
 
 ## Development Workflow
 
+- Respond to the user in Japanese unless the user explicitly requests another language.
 - Inspect the existing code before changing structure.
 - Keep changes small and cohesive.
 - Use `dotnet format` when available after code changes.
@@ -78,6 +79,8 @@ The core must not depend on Avalonia or miniaudio.
   `DOTNET_CLI_HOME=/Users/seiji/dev/_Emu/BubiBoy/.dotnet-cli-home dotnet publish src/BubiBoy.App/BubiBoy.App.fsproj -c Release -r osx-arm64`
   so it can be launched with `open src/BubiBoy.App/bin/Release/osx-arm64/BubiBoy.app`. The Debug/AnyCPU
   bundle may require a `DOTNET_ROOT` environment that `open` does not provide.
+- If that `dotnet publish` command hangs or produces no progress inside the Codex sandbox, rerun the
+  same command outside the sandbox with approval instead of treating the publish step as optional.
 - Do not mix unrelated refactors with emulator behavior changes.
 - Preserve cross-platform paths and avoid macOS-only assumptions outside explicitly platform-specific code.
 

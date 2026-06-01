@@ -51,6 +51,14 @@ module CartridgeMemory =
               RamBanks: int
               Mbc: MbcState }
 
+    type Snapshot =
+        { HeaderSnapshot: Cartridge.CartridgeHeader
+          RomLengthSnapshot: int
+          RomBanksSnapshot: int
+          RamSnapshot: byte[]
+          RamBanksSnapshot: int
+          MbcSnapshot: MbcState }
+
     type BankDebug =
         | NoBanking
         | Mbc1Debug of romBankLow5: int * bankHigh2: int * bankingMode: BankingMode * rom0Bank: int * romXBank: int
@@ -324,6 +332,38 @@ module CartridgeMemory =
 
     let header image =
         image.Header
+
+    let romLength image =
+        image.Rom.Length
+
+    let snapshot (image: CartridgeImage) : Snapshot =
+        { HeaderSnapshot = image.Header
+          RomLengthSnapshot = image.Rom.Length
+          RomBanksSnapshot = image.RomBanks
+          RamSnapshot = Array.copy image.Ram
+          RamBanksSnapshot = image.RamBanks
+          MbcSnapshot = image.Mbc }
+
+    let restoreSnapshot (snapshot: Snapshot) (image: CartridgeImage) =
+        if snapshot.RomLengthSnapshot <> image.Rom.Length then
+            Error $"ROM size mismatch: expected {snapshot.RomLengthSnapshot} bytes, got {image.Rom.Length} bytes."
+        elif snapshot.HeaderSnapshot.CartridgeTypeCode <> image.Header.CartridgeTypeCode
+             || snapshot.HeaderSnapshot.RomSizeCode <> image.Header.RomSizeCode
+             || snapshot.HeaderSnapshot.RamSizeCode <> image.Header.RamSizeCode
+             || snapshot.HeaderSnapshot.HeaderChecksum <> image.Header.HeaderChecksum
+             || snapshot.HeaderSnapshot.Title <> image.Header.Title then
+            Error "Save state ROM identity does not match the loaded cartridge."
+        elif isNull snapshot.RamSnapshot then
+            Error "Save state cartridge RAM is null."
+        elif snapshot.RamSnapshot.Length <> image.Ram.Length then
+            Error $"Save state RAM size mismatch: expected {image.Ram.Length} bytes, got {snapshot.RamSnapshot.Length} bytes."
+        else
+            Ok
+                { image with
+                    Ram = Array.copy snapshot.RamSnapshot
+                    RamBanks = snapshot.RamBanksSnapshot
+                    RomBanks = snapshot.RomBanksSnapshot
+                    Mbc = snapshot.MbcSnapshot }
 
     let bankDebug image =
         match image.Mbc with

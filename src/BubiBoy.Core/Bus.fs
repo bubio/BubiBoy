@@ -26,6 +26,30 @@ module Bus =
               Apu: Apu.State
               InterruptEnable: byte }
 
+    type Snapshot =
+        { CartridgeSnapshot: CartridgeMemory.Snapshot
+          ModeSnapshot: Hardware.GameBoyMode
+          VramSnapshot: byte[]
+          WramSnapshot: byte[]
+          OamSnapshot: byte[]
+          IoSnapshot: byte[]
+          HramSnapshot: byte[]
+          VramBankSnapshot: int
+          WramBankSnapshot: int
+          BgPaletteRamSnapshot: byte[]
+          ObjPaletteRamSnapshot: byte[]
+          DoubleSpeedSnapshot: bool
+          SpeedSwitchPreparedSnapshot: bool
+          HdmaSourceSnapshot: uint16
+          HdmaDestinationSnapshot: uint16
+          HdmaRemainingSnapshot: int
+          HdmaActiveSnapshot: bool
+          TimerSnapshot: Timer.State
+          LcdSnapshot: Lcd.State
+          JoypadSnapshot: Joypad.State
+          ApuSnapshot: Apu.StateSnapshot
+          InterruptEnableSnapshot: byte }
+
     [<Literal>]
     let VramBankSize = 8 * 1024
 
@@ -125,6 +149,71 @@ module Bus =
           Joypad = Joypad.initial
           Apu = Apu.initial
           InterruptEnable = 0uy }
+
+    let private validateArray name expected (bytes: byte[]) =
+        if isNull bytes then
+            Error $"{name} is null."
+        elif bytes.Length <> expected then
+            Error $"{name} size mismatch: expected {expected} bytes, got {bytes.Length} bytes."
+        else
+            Ok()
+
+    let snapshot (memory: Memory) : Snapshot =
+        { CartridgeSnapshot = CartridgeMemory.snapshot memory.Cartridge
+          ModeSnapshot = memory.Mode
+          VramSnapshot = Array.copy memory.Vram
+          WramSnapshot = Array.copy memory.Wram
+          OamSnapshot = Array.copy memory.Oam
+          IoSnapshot = Array.copy memory.Io
+          HramSnapshot = Array.copy memory.Hram
+          VramBankSnapshot = memory.VramBank
+          WramBankSnapshot = memory.WramBank
+          BgPaletteRamSnapshot = Array.copy memory.BgPaletteRam
+          ObjPaletteRamSnapshot = Array.copy memory.ObjPaletteRam
+          DoubleSpeedSnapshot = memory.DoubleSpeed
+          SpeedSwitchPreparedSnapshot = memory.SpeedSwitchPrepared
+          HdmaSourceSnapshot = memory.HdmaSource
+          HdmaDestinationSnapshot = memory.HdmaDestination
+          HdmaRemainingSnapshot = memory.HdmaRemaining
+          HdmaActiveSnapshot = memory.HdmaActive
+          TimerSnapshot = memory.Timer
+          LcdSnapshot = memory.Lcd
+          JoypadSnapshot = memory.Joypad
+          ApuSnapshot = Apu.snapshot memory.Apu
+          InterruptEnableSnapshot = memory.InterruptEnable }
+
+    let restoreSnapshot (snapshot: Snapshot) (current: Memory) =
+        validateArray "VRAM" VramSize snapshot.VramSnapshot
+        |> Result.bind (fun () -> validateArray "WRAM" WramSize snapshot.WramSnapshot)
+        |> Result.bind (fun () -> validateArray "OAM" OamSize snapshot.OamSnapshot)
+        |> Result.bind (fun () -> validateArray "IO" IoSize snapshot.IoSnapshot)
+        |> Result.bind (fun () -> validateArray "HRAM" HramSize snapshot.HramSnapshot)
+        |> Result.bind (fun () -> validateArray "CGB background palette RAM" 64 snapshot.BgPaletteRamSnapshot)
+        |> Result.bind (fun () -> validateArray "CGB object palette RAM" 64 snapshot.ObjPaletteRamSnapshot)
+        |> Result.bind (fun () -> CartridgeMemory.restoreSnapshot snapshot.CartridgeSnapshot current.Cartridge)
+        |> Result.map (fun cartridge ->
+            { Cartridge = cartridge
+              Mode = snapshot.ModeSnapshot
+              Vram = Array.copy snapshot.VramSnapshot
+              Wram = Array.copy snapshot.WramSnapshot
+              Oam = Array.copy snapshot.OamSnapshot
+              Io = Array.copy snapshot.IoSnapshot
+              Hram = Array.copy snapshot.HramSnapshot
+              VramBank = snapshot.VramBankSnapshot &&& 0x01
+              WramBank = if snapshot.WramBankSnapshot = 0 then 1 else snapshot.WramBankSnapshot &&& 0x07
+              BgPaletteRam = Array.copy snapshot.BgPaletteRamSnapshot
+              ObjPaletteRam = Array.copy snapshot.ObjPaletteRamSnapshot
+              DoubleSpeed = snapshot.DoubleSpeedSnapshot
+              SpeedSwitchPrepared = snapshot.SpeedSwitchPreparedSnapshot
+              HdmaSource = snapshot.HdmaSourceSnapshot
+              HdmaDestination = snapshot.HdmaDestinationSnapshot
+              HdmaRemaining = max 0 snapshot.HdmaRemainingSnapshot
+              HdmaActive = snapshot.HdmaActiveSnapshot
+              Timer = snapshot.TimerSnapshot
+              Lcd = snapshot.LcdSnapshot
+              Joypad = snapshot.JoypadSnapshot
+              Apu = Apu.restore snapshot.ApuSnapshot
+              InterruptEnable = snapshot.InterruptEnableSnapshot })
 
     let private unusableRead = 0xFFuy
 

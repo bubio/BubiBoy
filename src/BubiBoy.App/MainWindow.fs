@@ -781,6 +781,66 @@ type MainWindow() as this =
                     viewModel.RomDetails <- message
                     viewModel.DebugDetails <- "Frame stepping is available after loading a ROM."
 
+        let resumeAfterStateOperation wasRunning =
+            if wasRunning then
+                isRunning <- true
+                viewModel.IsRunning <- true
+                resetPerformance ()
+                audioOutput.Start()
+                primeAudioBuffer ()
+                startEmulationLoop ()
+            else
+                viewModel.IsRunning <- false
+
+            refreshMenus ()
+            this.Focus() |> ignore
+
+        let saveStateForCurrentRom () =
+            let wasRunning = isRunning
+            stopRunning ()
+
+            let session = lock sessionGate (fun () -> currentSession)
+
+            match loadedRom, session with
+            | Some rom, Some session ->
+                match SaveStateFile.saveForRom rom.Path session with
+                | Ok() ->
+                    showToast "Save state written."
+                    viewModel.DebugDetails <- "Save state written."
+                | Error message ->
+                    showToast $"Save state error: {message}"
+                    viewModel.DebugDetails <- message
+            | _ ->
+                showToast "Load a ROM before saving state."
+
+            resumeAfterStateOperation wasRunning
+
+        let loadStateForCurrentRom () =
+            let wasRunning = isRunning
+            stopRunning ()
+
+            let session = lock sessionGate (fun () -> currentSession)
+
+            match loadedRom, session with
+            | Some rom, Some session ->
+                match SaveStateFile.loadForRom rom.Path session with
+                | Ok restored ->
+                    lock sessionGate (fun () ->
+                        currentSession <- Some restored
+                        pendingFrames.Clear())
+                    resetPerformance ()
+                    presentFrame restored.Framebuffer
+                    showToast "Save state loaded."
+                    viewModel.DebugDetails <- "Save state loaded."
+                    updateSessionState ()
+                | Error message ->
+                    showToast $"Save state error: {message}"
+                    viewModel.DebugDetails <- message
+            | _ ->
+                showToast "Load a ROM before loading state."
+
+            resumeAfterStateOperation wasRunning
+
         let toggleRunPause () =
             if currentSession.IsNone then
                 showToast "Load a ROM before running."
@@ -939,6 +999,8 @@ type MainWindow() as this =
         let nativeClearRecentItem = nativePlainCommandItem "Clear Recent" viewModel.ClearRecentCommand
         let nativeRunPauseItem = nativeCommandItem "Run" Key.P platformModifier viewModel.RunPauseCommand
         let nativeResetItem = nativeCommandItem "Reset" Key.R platformModifier viewModel.ResetCommand
+        let nativeSaveStateItem = nativeItem "Save State" Key.S platformModifier saveStateForCurrentRom
+        let nativeLoadStateItem = nativeItem "Load State" Key.L platformModifier loadStateForCurrentRom
         let nativeInputMappingItem = nativePlain "Input Mapping..." openInputMapping
         let nativeFullscreenItem = nativeItem "Full Screen" Key.F platformModifier (fun () ->
             if isFloating then
@@ -962,6 +1024,8 @@ type MainWindow() as this =
         let clearRecentItem = plainCommandMenuItem "Clear Recent" viewModel.ClearRecentCommand
         let runPauseItem = commandMenuItem "Run" Key.P platformModifier viewModel.RunPauseCommand
         let resetMenuItem = commandMenuItem "Reset" Key.R platformModifier viewModel.ResetCommand
+        let saveStateItem = menuItem "Save State" Key.S platformModifier saveStateForCurrentRom
+        let loadStateItem = menuItem "Load State" Key.L platformModifier loadStateForCurrentRom
         let inputMappingItem = plainMenuItem "Input Mapping..." openInputMapping
         let fullscreenItem = menuItem "Full Screen" Key.F platformModifier (fun () ->
             if isFloating then
@@ -1010,6 +1074,10 @@ type MainWindow() as this =
             runPauseItem.IsEnabled <- viewModel.HasSession
             nativeResetItem.IsEnabled <- viewModel.HasLoadedRom
             resetMenuItem.IsEnabled <- viewModel.HasLoadedRom
+            nativeSaveStateItem.IsEnabled <- viewModel.HasSession
+            saveStateItem.IsEnabled <- viewModel.HasSession
+            nativeLoadStateItem.IsEnabled <- viewModel.HasSession
+            loadStateItem.IsEnabled <- viewModel.HasSession
             nativeFullscreenItem.IsChecked <- this.WindowState = WindowState.FullScreen
             fullscreenItem.IsChecked <- this.WindowState = WindowState.FullScreen
             nativeFloatingItem.IsChecked <- viewModel.IsFloating
@@ -1040,6 +1108,8 @@ type MainWindow() as this =
         let nativeEmulationSubmenu = NativeMenu()
         nativeEmulationSubmenu.Items.Add nativeRunPauseItem |> ignore
         nativeEmulationSubmenu.Items.Add nativeResetItem |> ignore
+        nativeEmulationSubmenu.Items.Add nativeSaveStateItem |> ignore
+        nativeEmulationSubmenu.Items.Add nativeLoadStateItem |> ignore
         nativeEmulationSubmenu.Items.Add(NativeMenuItemSeparator()) |> ignore
         nativeEmulationSubmenu.Items.Add nativeInputMappingItem |> ignore
         nativeEmulationMenu.Menu <- nativeEmulationSubmenu
@@ -1068,6 +1138,8 @@ type MainWindow() as this =
         let emulationMenu = MenuItem(Header = "Emulation")
         emulationMenu.Items.Add runPauseItem |> ignore
         emulationMenu.Items.Add resetMenuItem |> ignore
+        emulationMenu.Items.Add saveStateItem |> ignore
+        emulationMenu.Items.Add loadStateItem |> ignore
         emulationMenu.Items.Add(Separator()) |> ignore
         emulationMenu.Items.Add inputMappingItem |> ignore
         let viewMenu = MenuItem(Header = "View")

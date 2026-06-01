@@ -12,6 +12,7 @@
     <Compile Include="ApuTests.fs" />
     <Compile Include="VideoTests.fs" />
     <Compile Include="EmulatorTests.fs" />
+    <Compile Include="SaveStateTests.fs" />
     <Compile Include="CpuTests.fs" />
     <Compile Include="TimerTests.fs" />
     <Compile Include="JoypadTests.fs" />

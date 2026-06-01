@@ -18,6 +18,7 @@
     <Compile Include="Cpu.fs" />
     <Compile Include="Video.fs" />
     <Compile Include="Emulator.fs" />
+    <Compile Include="SaveState.fs" />
   </ItemGroup>
 
 </Project>

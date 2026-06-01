@@ -8,6 +8,7 @@
   <ItemGroup>
     <Compile Include="AppSettingsTests.fs" />
     <Compile Include="SaveRamTests.fs" />
+    <Compile Include="SaveStateFileTests.fs" />
   </ItemGroup>
 
   <ItemGroup>

@@ -81,9 +81,32 @@ module Apu =
           Noise: NoiseChannel
           PendingSamples: PendingSamples }
 
+    type PendingSamplesSnapshot =
+        { Samples: Sample[] }
+
+    type StateSnapshot =
+        { SnapshotFrameSequencerStep: int
+          SnapshotFrameSequencerCycles: int
+          SnapshotSkipNextFrameSequencerClock: bool
+          SnapshotSampleCycles: int64
+          SnapshotPulse1: PulseChannel
+          SnapshotPulse2: PulseChannel
+          SnapshotWave: WaveChannel
+          SnapshotNoise: NoiseChannel
+          SnapshotPendingSamples: PendingSamplesSnapshot }
+
     let private emptyPendingSamples () =
         { Buffer = Array.zeroCreate<Sample> 2048
           Count = 0 }
+
+    let private pendingSamplesFromSnapshot snapshot =
+        let samples = if isNull snapshot.Samples then Array.empty else snapshot.Samples
+        let capacity = max 2048 samples.Length
+        let buffer = Array.zeroCreate<Sample> capacity
+        System.Array.Copy(samples, buffer, samples.Length)
+
+        { Buffer = buffer
+          Count = samples.Length }
 
     let private appendSample sample pending =
         let buffer =
@@ -118,7 +141,7 @@ module Apu =
           Envelope = emptyEnvelope
           Sweep = None }
 
-    let initial =
+    let initial: State =
         { FrameSequencerStep = 0
           FrameSequencerCycles = 0
           SkipNextFrameSequencerClock = false
@@ -143,6 +166,28 @@ module Apu =
               Lfsr = 0x7FFFus
               Envelope = emptyEnvelope }
           PendingSamples = emptyPendingSamples () }
+
+    let snapshot (state: State) : StateSnapshot =
+        { SnapshotFrameSequencerStep = state.FrameSequencerStep
+          SnapshotFrameSequencerCycles = state.FrameSequencerCycles
+          SnapshotSkipNextFrameSequencerClock = state.SkipNextFrameSequencerClock
+          SnapshotSampleCycles = state.SampleCycles
+          SnapshotPulse1 = state.Pulse1
+          SnapshotPulse2 = state.Pulse2
+          SnapshotWave = state.Wave
+          SnapshotNoise = state.Noise
+          SnapshotPendingSamples = { Samples = state.PendingSamples.Buffer[0 .. state.PendingSamples.Count - 1] } }
+
+    let restore (snapshot: StateSnapshot) : State =
+        { FrameSequencerStep = snapshot.SnapshotFrameSequencerStep
+          FrameSequencerCycles = snapshot.SnapshotFrameSequencerCycles
+          SkipNextFrameSequencerClock = snapshot.SnapshotSkipNextFrameSequencerClock
+          SampleCycles = snapshot.SnapshotSampleCycles
+          Pulse1 = snapshot.SnapshotPulse1
+          Pulse2 = snapshot.SnapshotPulse2
+          Wave = snapshot.SnapshotWave
+          Noise = snapshot.SnapshotNoise
+          PendingSamples = pendingSamplesFromSnapshot snapshot.SnapshotPendingSamples }
 
     let private bitSet bit value =
         value &&& (1uy <<< bit) <> 0uy
