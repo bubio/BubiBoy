@@ -8,8 +8,13 @@
   </PropertyGroup>
 
   <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('OSX'))">
-    <OutputPath>bin\$(Configuration)\$(Platform)\BubiBoy.app\Contents\MacOS\</OutputPath>
+    <MacOSBundleOutputSegment Condition="'$(RuntimeIdentifier)' != ''">$(RuntimeIdentifier)</MacOSBundleOutputSegment>
+    <MacOSBundleOutputSegment Condition="'$(MacOSBundleOutputSegment)' == ''">$(Platform)</MacOSBundleOutputSegment>
+    <OutputPath>bin\$(Configuration)\$(MacOSBundleOutputSegment)\BubiBoy.app\Contents\MacOS\</OutputPath>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+    <PublishDir Condition="'$(RuntimeIdentifier)' != ''">$(OutputPath)</PublishDir>
+    <SelfContained Condition="'$(RuntimeIdentifier)' != ''">true</SelfContained>
     <UseAppHost>true</UseAppHost>
   </PropertyGroup>
 
@@ -43,7 +48,6 @@
   <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('OSX'))">
     <MacOSBundleContentsDir Condition="'$(PublishDir)' != ''">$(PublishDir)..\</MacOSBundleContentsDir>
     <MacOSBundleContentsDir Condition="'$(PublishDir)' == ''">$(OutputPath)..\</MacOSBundleContentsDir>
-    <MacOSBundleAppDir Condition="'$(PublishDir)' != ''">$(PublishDir)..\..</MacOSBundleAppDir>
   </PropertyGroup>
 
   <Target Name="CopyMacOSBundleInfoPlist" AfterTargets="Build;Publish" Condition="$([MSBuild]::IsOSPlatform('OSX'))">
@@ -52,6 +56,9 @@
   </Target>
 
   <Target Name="AdHocSignMacOSBundle" AfterTargets="Publish" Condition="$([MSBuild]::IsOSPlatform('OSX')) and '$(PublishDir)' != ''">
+    <PropertyGroup>
+      <MacOSBundleAppDir>$([System.IO.Path]::GetFullPath('$(PublishDir)..\..'))</MacOSBundleAppDir>
+    </PropertyGroup>
     <Exec Command="codesign --force --deep --sign - &quot;$(MacOSBundleAppDir)&quot;" />
   </Target>
 

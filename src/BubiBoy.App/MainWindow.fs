@@ -30,6 +30,7 @@ type MainWindow() as this =
         this.Height <- float Hardware.ScreenHeight * 2.0 + 32.0
         this.MinWidth <- float Hardware.ScreenWidth
         this.MinHeight <- float Hardware.ScreenHeight
+        this.CanResize <- false
         this.Background <- SolidColorBrush(Color.Parse("#F4F5F7"))
         this.Focusable <- true
 
@@ -400,6 +401,7 @@ type MainWindow() as this =
 
         let isMacOS = RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
         let mutable refreshMenus = fun () -> ()
+        let mutable updateContentRows = fun () -> ()
 
         let menuBar = Menu()
         menuBar.IsVisible <- not isMacOS && not isFloating
@@ -412,13 +414,17 @@ type MainWindow() as this =
                 this.WindowDecorations <- WindowDecorations.None
                 this.CanResize <- false
                 statusBar.IsVisible <- false
+                statusBar.Height <- 0.0
                 menuBar.IsVisible <- false
                 toast.IsVisible <- false
             else
                 this.WindowDecorations <- WindowDecorations.Full
-                this.CanResize <- true
+                this.CanResize <- false
                 statusBar.IsVisible <- true
+                statusBar.Height <- 32.0
                 menuBar.IsVisible <- not isMacOS
+
+            updateContentRows ()
 
         let applySelectedScale resizeWindow =
             let videoWidth = float Hardware.ScreenWidth * float selectedScale
@@ -1028,6 +1034,9 @@ type MainWindow() as this =
                 rebuildRecentMenus ()
                 updateMenuState ()
 
+        this.GetObservable(Window.WindowStateProperty).Subscribe(fun _ -> refreshMenus ())
+        |> ignore
+
         let nativeMenu = NativeMenu()
         let nativeFileMenu = NativeMenuItem("File")
         let nativeFileSubmenu = NativeMenu()
@@ -1181,6 +1190,16 @@ type MainWindow() as this =
 
         let contentGrid =
             Grid(RowDefinitions = RowDefinitions("Auto,*,Auto"))
+
+        updateContentRows <-
+            fun () ->
+                contentGrid.RowDefinitions <-
+                    if isFloating then
+                        RowDefinitions("0,*,0")
+                    else
+                        RowDefinitions("Auto,*,Auto")
+
+        updateContentRows ()
 
         let videoHost =
             Grid(Background = SolidColorBrush(Color.Parse("#F4F5F7")))
