@@ -23,6 +23,7 @@
     <Compile Include="PerfTrace.fs" />
     <Compile Include="DisplayHelpers.fs" />
     <Compile Include="InputMapping.fs" />
+    <Compile Include="InputMappingWindow.fs" />
     <Compile Include="RomSession.fs" />
     <Compile Include="MainWindowViewModel.fs" />
     <Compile Include="MainWindow.fs" />

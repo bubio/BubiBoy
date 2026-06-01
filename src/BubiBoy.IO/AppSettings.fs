@@ -1,15 +1,30 @@
 namespace BubiBoy.IO
 
 open System
+open System.Collections.Generic
 open System.IO
 open System.Text.Json
 
 module AppSettings =
     [<Literal>]
-    let CurrentVersion = 2
+    let CurrentVersion = 3
 
     [<Literal>]
     let MaxRecentRoms = 10
+
+    let KeyboardButtonOrder =
+        [ "Right"; "Left"; "Up"; "Down"; "A"; "B"; "Select"; "Start" ]
+
+    let defaultKeyboardMapping =
+        [ "Right", "Right"
+          "Left", "Left"
+          "Up", "Up"
+          "Down", "Down"
+          "A", "Z"
+          "B", "X"
+          "Select", "Back"
+          "Start", "Enter" ]
+        |> Map.ofList
 
     [<CLIMutable>]
     type SettingsFile =
@@ -17,19 +32,22 @@ module AppSettings =
           VolumePercent: int
           RecentRoms: string[]
           Scale: int
-          IsFloating: bool }
+          IsFloating: bool
+          KeyboardMapping: Dictionary<string, string> }
 
     type Settings =
         { VolumePercent: int
           RecentRoms: string list
           Scale: int
-          IsFloating: bool }
+          IsFloating: bool
+          KeyboardMapping: Map<string, string> }
 
     let defaults =
         { VolumePercent = 50
           RecentRoms = []
           Scale = 2
-          IsFloating = false }
+          IsFloating = false
+          KeyboardMapping = defaultKeyboardMapping }
 
     let private jsonOptions =
         JsonSerializerOptions(WriteIndented = true)
@@ -50,6 +68,40 @@ module AppSettings =
         else
             Some(Path.GetFullPath path)
 
+    let private normalizeKeyboardMapping (mapping: Map<string, string>) =
+        let input =
+            mapping
+            |> Map.toSeq
+            |> Seq.choose (fun (button, key) ->
+                if String.IsNullOrWhiteSpace button || String.IsNullOrWhiteSpace key then
+                    None
+                else
+                    Some(button.Trim(), key.Trim()))
+            |> Seq.fold
+                (fun (known: Map<string, string>) (button, key) ->
+                    match KeyboardButtonOrder |> List.tryFind (fun knownButton -> String.Equals(knownButton, button, StringComparison.OrdinalIgnoreCase)) with
+                    | Some knownButton -> known.Add(knownButton, key)
+                    | None -> known)
+                Map.empty
+
+        KeyboardButtonOrder
+        |> List.fold
+            (fun normalized button ->
+                let defaultKey = defaultKeyboardMapping[button]
+                let candidate = input |> Map.tryFind button |> Option.defaultValue defaultKey
+                let keysAssignedToOtherButtons =
+                    normalized
+                    |> Map.toSeq
+                    |> Seq.filter (fun (existingButton, _) -> existingButton <> button)
+                    |> Seq.map snd
+                    |> fun keys -> HashSet<string>(keys, StringComparer.OrdinalIgnoreCase)
+
+                if keysAssignedToOtherButtons.Contains candidate then
+                    normalized.Add(button, defaultKey)
+                else
+                    normalized.Add(button, candidate))
+            defaultKeyboardMapping
+
     let normalize settings =
         let recent =
             settings.RecentRoms
@@ -68,7 +120,8 @@ module AppSettings =
         { VolumePercent = Math.Clamp(settings.VolumePercent, 0, 100)
           RecentRoms = recent
           Scale = scale
-          IsFloating = settings.IsFloating }
+          IsFloating = settings.IsFloating
+          KeyboardMapping = normalizeKeyboardMapping settings.KeyboardMapping }
 
     let defaultPath () =
         let root =
@@ -98,9 +151,17 @@ module AppSettings =
 
                 if isNull (box file) then
                     raise (InvalidDataException "Settings file is empty.")
-                elif file.Version <> CurrentVersion && file.Version <> 1 then
+                elif file.Version <> CurrentVersion && file.Version <> 2 && file.Version <> 1 then
                     raise (InvalidDataException $"Unsupported settings version {file.Version}.")
                 else
+                    let keyboardMapping =
+                        if file.Version < 3 || isNull file.KeyboardMapping then
+                            defaultKeyboardMapping
+                        else
+                            file.KeyboardMapping
+                            |> Seq.map (fun pair -> pair.Key, pair.Value)
+                            |> Map.ofSeq
+
                     normalize
                         { VolumePercent = file.VolumePercent
                           RecentRoms =
@@ -117,7 +178,8 @@ module AppSettings =
                             if file.Version = 1 then
                                 defaults.IsFloating
                             else
-                                file.IsFloating })
+                                file.IsFloating
+                          KeyboardMapping = keyboardMapping })
 
     let saveToPath path settings =
         if String.IsNullOrWhiteSpace path then
@@ -129,7 +191,8 @@ module AppSettings =
                   VolumePercent = normalized.VolumePercent
                   RecentRoms = List.toArray normalized.RecentRoms
                   Scale = normalized.Scale
-                  IsFloating = normalized.IsFloating }
+                  IsFloating = normalized.IsFloating
+                  KeyboardMapping = Dictionary<string, string>(normalized.KeyboardMapping) }
 
             protect (fun () ->
                 let directory = Path.GetDirectoryName path
@@ -158,3 +221,6 @@ module AppSettings =
 
     let withFloating isFloating settings =
         normalize { settings with IsFloating = isFloating }
+
+    let withKeyboardMapping mapping settings =
+        normalize { settings with KeyboardMapping = mapping }

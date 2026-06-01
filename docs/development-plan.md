@@ -140,11 +140,27 @@ Deliverable: representative CGB titles boot and render with correct palette beha
 
 ## Phase 7: Product Quality
 
-- Add input mapping UI and persistent settings.
-- Add save-state support with versioned serialization.
-- Add pause, reset, ROM recent list, fullscreen, scaling, and basic diagnostics.
-- Add compatibility notes and a known-issues document.
-- Improve error messages for unsupported ROMs or invalid files.
+- [x] Add persistent settings for volume, scale, floating mode, and recent ROMs.
+- [x] Add pause, reset, frame step, ROM recent list, fullscreen, scaling, and basic diagnostics.
+- [x] Improve the macOS app bundle for routine local use: app identity, self-contained `osx-arm64`
+  publish output, ad-hoc signing, fixed arbitrary window resizing, and floating-mode layout.
+- [x] Add keyboard input mapping UI and persistent mappings.
+- [ ] Add save-state support with versioned serialization.
+- [ ] Add compatibility notes and a known-issues document.
+- [ ] Improve error messages for unsupported ROMs or invalid files.
+
+Progress note:
+
+- The desktop shell now supports routine ROM loading and emulator control workflows, including
+  open/recent ROMs, run/pause, reset, frame step, fullscreen, fixed scale selection, floating mode,
+  volume control, save-RAM persistence notifications, and basic cartridge/debug details.
+- Settings are stored through `BubiBoy.IO.AppSettings` with migration and normalization tests.
+- Keyboard input mappings are configurable from the Avalonia app through a compact list dialog, persisted
+  in versioned settings, normalized on load, and default to the original `Z`/`X`/arrow-key layout.
+- The Release `osx-arm64` `.app` publish path now updates `Contents/MacOS` directly, publishes
+  self-contained output, and ad-hoc signs the bundle so it can be launched with `open`.
+- Remaining Phase 7 work is save states, compatibility/known-issues documentation, and more polished
+  user-facing error messages.
 
 Deliverable: a usable desktop emulator for routine testing and play.
 

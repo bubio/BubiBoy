@@ -396,6 +396,20 @@ type MainWindow() as this =
             toastTimer.Stop()
             toast.IsVisible <- false)
 
+        let openInputMapping () =
+            task {
+                let! result = InputMappingWindow.Show(this, appSettings.KeyboardMapping)
+
+                match result with
+                | Some keyboardMapping ->
+                    appSettings <- AppSettings.withKeyboardMapping keyboardMapping appSettings
+                    lock inputGate (fun () -> desiredButtons <- Set.empty)
+                    saveSettings ()
+                    showToast "Input mapping saved."
+                | None -> ()
+            }
+            |> ignore
+
         settingsLoadError
         |> Option.iter (fun message -> showToast $"Settings error: {message}")
 
@@ -946,6 +960,7 @@ type MainWindow() as this =
         let nativeRunPauseItem = nativeCommandItem "Run" Key.Space KeyModifiers.None viewModel.RunPauseCommand
         let nativeStepFrameItem = nativeCommandItem "Step Frame" Key.F10 KeyModifiers.None viewModel.StepFrameCommand
         let nativeResetItem = nativeCommandItem "Reset" Key.R platformModifier viewModel.ResetCommand
+        let nativeInputMappingItem = nativePlain "Input Mapping..." openInputMapping
         let nativeFullscreenItem = nativeItem "Full Screen" Key.F platformModifier (fun () ->
             if isFloating then
                 setFloating false
@@ -969,6 +984,7 @@ type MainWindow() as this =
         let runPauseItem = commandMenuItem "Run" Key.Space KeyModifiers.None viewModel.RunPauseCommand
         let stepFrameItem = commandMenuItem "Step Frame" Key.F10 KeyModifiers.None viewModel.StepFrameCommand
         let resetMenuItem = commandMenuItem "Reset" Key.R platformModifier viewModel.ResetCommand
+        let inputMappingItem = plainMenuItem "Input Mapping..." openInputMapping
         let fullscreenItem = menuItem "Full Screen" Key.F platformModifier (fun () ->
             if isFloating then
                 setFloating false
@@ -1049,6 +1065,8 @@ type MainWindow() as this =
         nativeEmulationSubmenu.Items.Add nativeRunPauseItem |> ignore
         nativeEmulationSubmenu.Items.Add nativeStepFrameItem |> ignore
         nativeEmulationSubmenu.Items.Add nativeResetItem |> ignore
+        nativeEmulationSubmenu.Items.Add(NativeMenuItemSeparator()) |> ignore
+        nativeEmulationSubmenu.Items.Add nativeInputMappingItem |> ignore
         nativeEmulationMenu.Menu <- nativeEmulationSubmenu
         let nativeViewMenu = NativeMenuItem("View")
         let nativeViewSubmenu = NativeMenu()
@@ -1076,6 +1094,8 @@ type MainWindow() as this =
         emulationMenu.Items.Add runPauseItem |> ignore
         emulationMenu.Items.Add stepFrameItem |> ignore
         emulationMenu.Items.Add resetMenuItem |> ignore
+        emulationMenu.Items.Add(Separator()) |> ignore
+        emulationMenu.Items.Add inputMappingItem |> ignore
         let viewMenu = MenuItem(Header = "View")
 
         for _, item in scaleItems do
@@ -1102,7 +1122,7 @@ type MainWindow() as this =
                 command.Execute null
 
         let updateButtonState key pressed =
-            match InputMapping.mapKey key with
+            match InputMapping.mapKey appSettings.KeyboardMapping key with
             | Some button ->
                 // Only record intent here; the emulation thread reconciles it into the
                 // session via applyInput. Recording the latest state (rather than queuing
