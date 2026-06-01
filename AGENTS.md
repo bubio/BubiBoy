@@ -70,10 +70,14 @@ The core must not depend on Avalonia or miniaudio.
 - Keep changes small and cohesive.
 - Use `dotnet format` when available after code changes.
 - Run focused tests first, then broader `dotnet test` before finishing substantial work.
+- In Codex sandbox sessions on macOS, prefer the repository-local CLI home and disabled build servers for
+  repeatable verification:
+  `DOTNET_CLI_HOME=/Users/seiji/dev/_Emu/BubiBoy/.dotnet-cli-home dotnet build --disable-build-servers --no-restore`
+  followed by `DOTNET_CLI_HOME=/Users/seiji/dev/_Emu/BubiBoy/.dotnet-cli-home dotnet test --no-build`.
 - After Avalonia app changes on macOS, prepare the runnable self-contained bundle with
-  `dotnet publish src/BubiBoy.App/BubiBoy.App.fsproj -c Release -r osx-arm64` so it can be launched with
-  `open src/BubiBoy.App/bin/Release/osx-arm64/BubiBoy.app`. The Debug/AnyCPU bundle may require a
-  `DOTNET_ROOT` environment that `open` does not provide.
+  `DOTNET_CLI_HOME=/Users/seiji/dev/_Emu/BubiBoy/.dotnet-cli-home dotnet publish src/BubiBoy.App/BubiBoy.App.fsproj -c Release -r osx-arm64`
+  so it can be launched with `open src/BubiBoy.App/bin/Release/osx-arm64/BubiBoy.app`. The Debug/AnyCPU
+  bundle may require a `DOTNET_ROOT` environment that `open` does not provide.
 - Do not mix unrelated refactors with emulator behavior changes.
 - Preserve cross-platform paths and avoid macOS-only assumptions outside explicitly platform-specific code.
 

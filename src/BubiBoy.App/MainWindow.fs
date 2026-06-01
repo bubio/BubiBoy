@@ -105,7 +105,6 @@ type MainWindow() as this =
         let mutable appSettings = loadedSettings
         let mutable openRomHandler = fun () -> ()
         let mutable toggleRunPauseHandler = fun () -> ()
-        let mutable stepFrameHandler = fun () -> ()
         let mutable resetHandler = fun () -> ()
         let mutable clearRecentHandler = fun () -> ()
 
@@ -116,7 +115,6 @@ type MainWindow() as this =
                 appSettings.VolumePercent,
                 (fun () -> openRomHandler ()),
                 (fun () -> toggleRunPauseHandler ()),
-                (fun () -> stepFrameHandler ()),
                 (fun () -> resetHandler ()),
                 (fun () -> clearRecentHandler ())
             )
@@ -678,23 +676,6 @@ type MainWindow() as this =
 
             task.ContinueWith(fun (_: Task) -> cts.Dispose()) |> ignore
 
-        let runOneFrame () =
-            let session = lock sessionGate (fun () -> currentSession)
-
-            match session with
-            | None ->
-                viewModel.DebugDetails <- "Load a ROM before running frames."
-                stopRunning ()
-            | Some session ->
-                let stopwatch = Stopwatch.StartNew()
-                let result = Emulator.runFrame maxStepsPerFrame (applyInput session)
-                stopwatch.Stop()
-                recordEmulatedFrame ()
-                lock sessionGate (fun () -> currentSession <- Some result.Session)
-                recordFrameTime stopwatch.Elapsed.TotalMilliseconds
-                recordDisplayedFrame ()
-                updateFrame result
-
         let primeAudioBuffer () =
             let session = lock sessionGate (fun () -> currentSession)
 
@@ -845,7 +826,6 @@ type MainWindow() as this =
 
         openRomHandler <- openRomPicker
         toggleRunPauseHandler <- toggleRunPause
-        stepFrameHandler <- runOneFrame
         resetHandler <- resetCurrentRom
         clearRecentHandler <- clearRecentRoms
 
@@ -957,8 +937,7 @@ type MainWindow() as this =
         let nativeOpenRecentItem = NativeMenuItem("Open Recent")
         nativeOpenRecentItem.Menu <- nativeOpenRecentMenu
         let nativeClearRecentItem = nativePlainCommandItem "Clear Recent" viewModel.ClearRecentCommand
-        let nativeRunPauseItem = nativeCommandItem "Run" Key.Space KeyModifiers.None viewModel.RunPauseCommand
-        let nativeStepFrameItem = nativeCommandItem "Step Frame" Key.F10 KeyModifiers.None viewModel.StepFrameCommand
+        let nativeRunPauseItem = nativeCommandItem "Run" Key.P platformModifier viewModel.RunPauseCommand
         let nativeResetItem = nativeCommandItem "Reset" Key.R platformModifier viewModel.ResetCommand
         let nativeInputMappingItem = nativePlain "Input Mapping..." openInputMapping
         let nativeFullscreenItem = nativeItem "Full Screen" Key.F platformModifier (fun () ->
@@ -981,8 +960,7 @@ type MainWindow() as this =
 
         let openRecentMenu = MenuItem(Header = "Open Recent")
         let clearRecentItem = plainCommandMenuItem "Clear Recent" viewModel.ClearRecentCommand
-        let runPauseItem = commandMenuItem "Run" Key.Space KeyModifiers.None viewModel.RunPauseCommand
-        let stepFrameItem = commandMenuItem "Step Frame" Key.F10 KeyModifiers.None viewModel.StepFrameCommand
+        let runPauseItem = commandMenuItem "Run" Key.P platformModifier viewModel.RunPauseCommand
         let resetMenuItem = commandMenuItem "Reset" Key.R platformModifier viewModel.ResetCommand
         let inputMappingItem = plainMenuItem "Input Mapping..." openInputMapping
         let fullscreenItem = menuItem "Full Screen" Key.F platformModifier (fun () ->
@@ -1030,8 +1008,6 @@ type MainWindow() as this =
             runPauseItem.Header <- viewModel.RunPauseHeader
             nativeRunPauseItem.IsEnabled <- viewModel.HasSession
             runPauseItem.IsEnabled <- viewModel.HasSession
-            nativeStepFrameItem.IsEnabled <- viewModel.HasSession && not viewModel.IsRunning
-            stepFrameItem.IsEnabled <- viewModel.HasSession && not viewModel.IsRunning
             nativeResetItem.IsEnabled <- viewModel.HasLoadedRom
             resetMenuItem.IsEnabled <- viewModel.HasLoadedRom
             nativeFullscreenItem.IsChecked <- this.WindowState = WindowState.FullScreen
@@ -1063,7 +1039,6 @@ type MainWindow() as this =
         let nativeEmulationMenu = NativeMenuItem("Emulation")
         let nativeEmulationSubmenu = NativeMenu()
         nativeEmulationSubmenu.Items.Add nativeRunPauseItem |> ignore
-        nativeEmulationSubmenu.Items.Add nativeStepFrameItem |> ignore
         nativeEmulationSubmenu.Items.Add nativeResetItem |> ignore
         nativeEmulationSubmenu.Items.Add(NativeMenuItemSeparator()) |> ignore
         nativeEmulationSubmenu.Items.Add nativeInputMappingItem |> ignore
@@ -1092,7 +1067,6 @@ type MainWindow() as this =
         fileMenu.Items.Add(plainMenuItem "Quit" (fun () -> this.Close())) |> ignore
         let emulationMenu = MenuItem(Header = "Emulation")
         emulationMenu.Items.Add runPauseItem |> ignore
-        emulationMenu.Items.Add stepFrameItem |> ignore
         emulationMenu.Items.Add resetMenuItem |> ignore
         emulationMenu.Items.Add(Separator()) |> ignore
         emulationMenu.Items.Add inputMappingItem |> ignore
@@ -1138,7 +1112,7 @@ type MainWindow() as this =
             | _ -> false
 
         this.KeyDown.Add(fun args ->
-            if args.Key = Key.Space then
+            if args.Key = Key.P && args.KeyModifiers = platformModifier then
                 executeCommand viewModel.RunPauseCommand
                 args.Handled <- true
             elif updateButtonState args.Key true then

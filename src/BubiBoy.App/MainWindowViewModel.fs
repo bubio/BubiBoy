@@ -26,7 +26,6 @@ type MainWindowViewModel(
     initialVolumePercent: int,
     openRom: unit -> unit,
     toggleRunPause: unit -> unit,
-    stepFrame: unit -> unit,
     reset: unit -> unit,
     clearRecent: unit -> unit
 ) =
@@ -41,7 +40,6 @@ type MainWindowViewModel(
     let mutable volumePercent = initialVolumePercent
     let openRomCommand = RelayCommand(openRom)
     let runPauseCommand = RelayCommand(toggleRunPause, fun () -> hasSession)
-    let stepFrameCommand = RelayCommand(stepFrame, fun () -> hasSession && not isRunning)
     let resetCommand = RelayCommand(reset, fun () -> hasLoadedRom)
     let clearRecentCommand = RelayCommand(clearRecent)
 
@@ -69,14 +67,12 @@ type MainWindowViewModel(
         and set value =
             if setValue &isRunning value "IsRunning" then
                 notify "RunPauseHeader"
-                stepFrameCommand.RaiseCanExecuteChanged()
 
     member _.HasSession
         with get () = hasSession
         and set value =
             if setValue &hasSession value "HasSession" then
                 runPauseCommand.RaiseCanExecuteChanged()
-                stepFrameCommand.RaiseCanExecuteChanged()
 
     member _.HasLoadedRom
         with get () = hasLoadedRom
@@ -103,8 +99,6 @@ type MainWindowViewModel(
 
     member _.RunPauseCommand = runPauseCommand :> ICommand
 
-    member _.StepFrameCommand = stepFrameCommand :> ICommand
-
     member _.ResetCommand = resetCommand :> ICommand
 
     member _.ClearRecentCommand = clearRecentCommand :> ICommand
@@ -113,7 +107,6 @@ type MainWindowViewModel(
         let changedSession =
             if setValue &hasSession nextHasSession "HasSession" then
                 runPauseCommand.RaiseCanExecuteChanged()
-                stepFrameCommand.RaiseCanExecuteChanged()
                 true
             else
                 false
