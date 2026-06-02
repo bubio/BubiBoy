@@ -18,22 +18,22 @@
     <None Include="..\..\native\build\libbubi_miniaudio.dylib"
           Link="libbubi_miniaudio.dylib"
           CopyToOutputDirectory="PreserveNewest"
-          CopyToPublishDirectory="PreserveNewest"
-          Condition="Exists('..\..\native\build\libbubi_miniaudio.dylib')" />
+          CopyToPublishDirectory="Never"
+          Condition="Exists('..\..\native\build\libbubi_miniaudio.dylib') and ('$(RuntimeIdentifier)' == '' or $([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('osx-')))" />
     <None Include="..\..\native\build\libbubi_miniaudio.so"
           Link="libbubi_miniaudio.so"
           CopyToOutputDirectory="PreserveNewest"
-          CopyToPublishDirectory="PreserveNewest"
-          Condition="Exists('..\..\native\build\libbubi_miniaudio.so')" />
+          CopyToPublishDirectory="Never"
+          Condition="Exists('..\..\native\build\libbubi_miniaudio.so') and ('$(RuntimeIdentifier)' == '' or $([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('linux-')))" />
     <None Include="..\..\native\build\bubi_miniaudio.dll"
           Link="bubi_miniaudio.dll"
           CopyToOutputDirectory="PreserveNewest"
-          CopyToPublishDirectory="PreserveNewest"
-          Condition="Exists('..\..\native\build\bubi_miniaudio.dll')" />
+          CopyToPublishDirectory="Never"
+          Condition="Exists('..\..\native\build\bubi_miniaudio.dll') and ('$(RuntimeIdentifier)' == '' or $([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('win-')))" />
     <None Include="..\..\native\build\runtimes\**\*.*"
           Link="runtimes\%(RecursiveDir)%(Filename)%(Extension)"
           CopyToOutputDirectory="PreserveNewest"
-          CopyToPublishDirectory="PreserveNewest"
+          CopyToPublishDirectory="Never"
           Pack="true"
           PackagePath="runtimes/%(RecursiveDir)%(Filename)%(Extension)"
           Condition="Exists('..\..\native\build\runtimes')" />

@@ -29,9 +29,33 @@ dotnet run --project src/BubiBoy.App/BubiBoy.App.fsproj
 dotnet build
 ```
 
+## Publish
+
+Build the native audio wrapper first, then publish the Avalonia app for the target runtime.
+
+```sh
+cmake -S native -B native/build/cmake -DCMAKE_BUILD_TYPE=Release
+cmake --build native/build/cmake --config Release
+```
+
+The CI workflow publishes self-contained app artifacts for `osx-arm64`, `linux-x64`, and `win-x64`.
+For local publishing:
+
+```sh
+dotnet publish src/BubiBoy.App/BubiBoy.App.fsproj -c Release -r linux-x64 --self-contained true
+dotnet publish src/BubiBoy.App/BubiBoy.App.fsproj -c Release -r win-x64 --self-contained true
+```
+
+macOS publishes to `src/BubiBoy.App/bin/Release/<rid>/BubiBoy.app`. Linux and Windows publish to
+`src/BubiBoy.App/bin/Release/net10.0/<rid>/publish`.
+
+For packaged audio output, place the native wrapper in the published app under
+`runtimes/<rid>/native`. The CI workflow does this automatically for its artifacts.
+
 ## Requirements
 
 - .NET 10 SDK
+- CMake and a C compiler for native audio builds
 
 ## License
 

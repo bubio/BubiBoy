@@ -1,0 +1,91 @@
+name: CI Windows
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - "**/*.adoc"
+      - "**/*.md"
+      - "**/*.rst"
+      - "**/*.txt"
+      - "**/*LICENSE*"
+      - "docs/**"
+      - ".github/workflows/ci-linux.yml"
+      - ".github/workflows/ci-macos.yml"
+  pull_request:
+    paths-ignore:
+      - "**/*.adoc"
+      - "**/*.md"
+      - "**/*.rst"
+      - "**/*.txt"
+      - "**/*LICENSE*"
+      - "docs/**"
+      - ".github/workflows/ci-linux.yml"
+      - ".github/workflows/ci-macos.yml"
+  workflow_dispatch:
+
+jobs:
+  build-test-publish:
+    name: Build, test, and publish Windows
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.107
+
+      - name: Build native audio
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cmake -S native -B native/build/cmake -DCMAKE_BUILD_TYPE=Release
+          cmake --build native/build/cmake --config Release
+
+          rid="win-x64"
+          library="bubi_miniaudio.dll"
+          destination="native/build/runtimes/${rid}/native"
+          mkdir -p "${destination}"
+          cp "native/build/cmake/Release/${library}" "${destination}/${library}"
+
+      - name: Restore
+        run: dotnet restore BubiBoy.slnx
+
+      - name: Build
+        run: dotnet build BubiBoy.slnx --no-restore
+
+      - name: Test
+        env:
+          BUBIBOY_EXPECT_NATIVE_AUDIO: "1"
+        run: dotnet test BubiBoy.slnx --no-build
+
+      - name: Publish app
+        run: dotnet publish src/BubiBoy.App/BubiBoy.App.fsproj -c Release -r win-x64 --no-restore --self-contained true
+
+      - name: Copy native audio into published app
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          destination="src/BubiBoy.App/bin/Release/net10.0/win-x64/publish/runtimes/win-x64/native"
+          mkdir -p "${destination}"
+          cp native/build/runtimes/win-x64/native/* "${destination}/"
+
+      - name: Upload app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BubiBoy-win-x64
+          path: src/BubiBoy.App/bin/Release/net10.0/win-x64/publish
+          if-no-files-found: error
+
+      - name: Upload native audio artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bubi-miniaudio-win-x64
+          path: native/build/runtimes
+          if-no-files-found: error

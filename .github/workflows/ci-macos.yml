@@ -1,0 +1,113 @@
+name: CI macOS
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - "**/*.adoc"
+      - "**/*.md"
+      - "**/*.rst"
+      - "**/*.txt"
+      - "**/*LICENSE*"
+      - "docs/**"
+      - ".github/workflows/ci-linux.yml"
+      - ".github/workflows/ci-windows.yml"
+  pull_request:
+    paths-ignore:
+      - "**/*.adoc"
+      - "**/*.md"
+      - "**/*.rst"
+      - "**/*.txt"
+      - "**/*LICENSE*"
+      - "docs/**"
+      - ".github/workflows/ci-linux.yml"
+      - ".github/workflows/ci-windows.yml"
+  workflow_dispatch:
+
+jobs:
+  build-test-publish:
+    name: Build, test, and publish macOS
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.107
+
+      - name: Set publish runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          case "${RUNNER_ARCH}" in
+            ARM64)
+              rid="osx-arm64"
+              ;;
+            X64)
+              rid="osx-x64"
+              ;;
+            *)
+              echo "Unsupported macOS runner architecture: ${RUNNER_ARCH}" >&2
+              exit 1
+              ;;
+          esac
+
+          {
+            echo "BUBIBOY_PUBLISH_RID=${rid}"
+            echo "BUBIBOY_PUBLISH_PATH=src/BubiBoy.App/bin/Release/${rid}/BubiBoy.app"
+          } >> "${GITHUB_ENV}"
+
+      - name: Build native audio
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cmake -S native -B native/build/cmake -DCMAKE_BUILD_TYPE=Release
+          cmake --build native/build/cmake --config Release
+
+          library="libbubi_miniaudio.dylib"
+          destination="native/build/runtimes/${BUBIBOY_PUBLISH_RID}/native"
+          mkdir -p "${destination}"
+          cp "native/build/cmake/${library}" "${destination}/${library}"
+
+      - name: Restore
+        run: dotnet restore BubiBoy.slnx
+
+      - name: Build
+        run: dotnet build BubiBoy.slnx --no-restore
+
+      - name: Test
+        env:
+          BUBIBOY_EXPECT_NATIVE_AUDIO: "1"
+        run: dotnet test BubiBoy.slnx --no-build
+
+      - name: Publish app
+        run: dotnet publish src/BubiBoy.App/BubiBoy.App.fsproj -c Release -r ${{ env.BUBIBOY_PUBLISH_RID }} --no-restore --self-contained true
+
+      - name: Copy native audio into published app
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          destination="${BUBIBOY_PUBLISH_PATH}/Contents/MacOS/runtimes/${BUBIBOY_PUBLISH_RID}/native"
+          mkdir -p "${destination}"
+          cp native/build/runtimes/"${BUBIBOY_PUBLISH_RID}"/native/* "${destination}/"
+
+      - name: Upload app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BubiBoy-${{ env.BUBIBOY_PUBLISH_RID }}
+          path: ${{ env.BUBIBOY_PUBLISH_PATH }}
+          if-no-files-found: error
+
+      - name: Upload native audio artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bubi-miniaudio-${{ env.BUBIBOY_PUBLISH_RID }}
+          path: native/build/runtimes
+          if-no-files-found: error

@@ -3,11 +3,16 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
+    <RuntimeIdentifiers>osx-arm64;osx-x64;linux-x64;win-x64</RuntimeIdentifiers>
     <AssemblyName>BubiBoy</AssemblyName>
     <Product>BubiBoy</Product>
   </PropertyGroup>
 
-  <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('OSX'))">
+  <PropertyGroup>
+    <UseMacOSBundle Condition="$([MSBuild]::IsOSPlatform('OSX')) and ('$(RuntimeIdentifier)' == '' or $([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('osx-')))">true</UseMacOSBundle>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(UseMacOSBundle)' == 'true'">
     <MacOSBundleOutputSegment Condition="'$(RuntimeIdentifier)' != ''">$(RuntimeIdentifier)</MacOSBundleOutputSegment>
     <MacOSBundleOutputSegment Condition="'$(MacOSBundleOutputSegment)' == ''">$(Platform)</MacOSBundleOutputSegment>
     <OutputPath>bin\$(Configuration)\$(MacOSBundleOutputSegment)\BubiBoy.app\Contents\MacOS\</OutputPath>
@@ -42,21 +47,21 @@
     <PackageReference Include="Avalonia.Themes.Fluent" Version="12.0.3" />
   </ItemGroup>
 
-  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('OSX'))">
+  <ItemGroup Condition="'$(UseMacOSBundle)' == 'true'">
     <MacOSBundleInfoPlist Include="Platforms\macOS\Info.plist" />
   </ItemGroup>
 
-  <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('OSX'))">
+  <PropertyGroup Condition="'$(UseMacOSBundle)' == 'true'">
     <MacOSBundleContentsDir Condition="'$(PublishDir)' != ''">$(PublishDir)..\</MacOSBundleContentsDir>
     <MacOSBundleContentsDir Condition="'$(PublishDir)' == ''">$(OutputPath)..\</MacOSBundleContentsDir>
   </PropertyGroup>
 
-  <Target Name="CopyMacOSBundleInfoPlist" AfterTargets="Build;Publish" Condition="$([MSBuild]::IsOSPlatform('OSX'))">
+  <Target Name="CopyMacOSBundleInfoPlist" AfterTargets="Build;Publish" Condition="'$(UseMacOSBundle)' == 'true'">
     <MakeDir Directories="$(MacOSBundleContentsDir)" />
     <Copy SourceFiles="@(MacOSBundleInfoPlist)" DestinationFolder="$(MacOSBundleContentsDir)" />
   </Target>
 
-  <Target Name="AdHocSignMacOSBundle" AfterTargets="Publish" Condition="$([MSBuild]::IsOSPlatform('OSX')) and '$(PublishDir)' != ''">
+  <Target Name="AdHocSignMacOSBundle" AfterTargets="Publish" Condition="'$(UseMacOSBundle)' == 'true' and '$(PublishDir)' != ''">
     <PropertyGroup>
       <MacOSBundleAppDir>$([System.IO.Path]::GetFullPath('$(PublishDir)..\..'))</MacOSBundleAppDir>
     </PropertyGroup>
