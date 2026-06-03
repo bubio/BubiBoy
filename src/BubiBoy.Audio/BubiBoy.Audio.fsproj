@@ -32,11 +32,15 @@
           Condition="Exists('..\..\native\build\bubi_miniaudio.dll') and ('$(RuntimeIdentifier)' == '' or $([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('win-')))" />
     <NativeLibrary Include="..\..\native\build\runtimes\**\*.*"
                    Link="runtimes\%(RecursiveDir)%(Filename)%(Extension)"
-                   CopyToOutputDirectory="PreserveNewest"
                    CopyToPublishDirectory="PreserveNewest"
                    Pack="true"
                    PackagePath="runtimes/%(RecursiveDir)%(Filename)%(Extension)"
                    Condition="Exists('..\..\native\build\runtimes')" />
+    <None Include="..\..\native\build\runtimes\**\*.*"
+          Link="runtimes\%(RecursiveDir)%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="Never"
+          Condition="Exists('..\..\native\build\runtimes')" />
   </ItemGroup>
 
 </Project>
