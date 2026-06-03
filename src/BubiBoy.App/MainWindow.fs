@@ -33,6 +33,7 @@ type MainWindow() as this =
         this.MinHeight <- float Hardware.ScreenHeight
         this.CanResize <- false
         this.Background <- SolidColorBrush(Color.Parse("#F4F5F7"))
+        this.FontFamily <- AppFonts.ui
         this.Focusable <- true
 
         let title =
@@ -356,7 +357,7 @@ type MainWindow() as this =
 
         let debugDetails =
             TextBlock(
-                FontFamily = FontFamily("Menlo, Consolas, monospace"),
+                FontFamily = AppFonts.monospace,
                 FontSize = 12.0,
                 Foreground = SolidColorBrush(Color.Parse("#263448")),
                 TextAlignment = TextAlignment.Center,

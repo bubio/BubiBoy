@@ -19,6 +19,7 @@ type AboutWindow(version: string) as this =
         this.MaxHeight <- 190.0
         this.CanResize <- false
         this.WindowStartupLocation <- WindowStartupLocation.CenterOwner
+        this.FontFamily <- AppFonts.ui
 
         let title =
             TextBlock(

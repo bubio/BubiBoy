@@ -57,6 +57,7 @@ type InputMappingWindow(initialMapping: Map<string, string>) as this =
         this.MinHeight <- 460.0
         this.CanResize <- false
         this.Background <- SolidColorBrush(Color.Parse("#F4F5F7"))
+        this.FontFamily <- AppFonts.ui
         this.Focusable <- true
 
         let root =
