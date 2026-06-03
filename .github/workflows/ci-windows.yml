@@ -65,20 +65,27 @@ jobs:
         run: dotnet test BubiBoy.slnx --no-build
 
       - name: Publish app
-        run: dotnet publish src/BubiBoy.App/BubiBoy.App.fsproj -c Release -r win-x64 --no-restore --self-contained true
+        run: >
+          dotnet publish src/BubiBoy.App/BubiBoy.App.fsproj
+          -c Release
+          -r win-x64
+          --no-restore
+          --self-contained true
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
 
-      - name: Copy native audio into published app
+      - name: Prepare app artifact
         shell: bash
         run: |
           set -euo pipefail
 
-          destination="src/BubiBoy.App/bin/Release/net10.0/win-x64/publish/runtimes/win-x64/native"
-          mkdir -p "${destination}"
-          cp native/build/runtimes/win-x64/native/* "${destination}/"
+          artifact_directory="artifacts/BubiBoy-win-x64"
+          mkdir -p "${artifact_directory}"
+          cp src/BubiBoy.App/bin/Release/net10.0/win-x64/publish/BubiBoy.exe "${artifact_directory}/"
 
       - name: Upload app artifact
         uses: actions/upload-artifact@v4
         with:
           name: BubiBoy-win-x64
-          path: src/BubiBoy.App/bin/Release/net10.0/win-x64/publish
+          path: artifacts/BubiBoy-win-x64
           if-no-files-found: error

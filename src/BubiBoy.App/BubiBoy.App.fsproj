@@ -8,6 +8,10 @@
     <Product>BubiBoy</Product>
   </PropertyGroup>
 
+  <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('Windows')) or ('$(RuntimeIdentifier)' == 'win-x64' or $([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('win-')))">
+    <OutputType>WinExe</OutputType>
+  </PropertyGroup>
+
   <PropertyGroup>
     <UseMacOSBundle Condition="$([MSBuild]::IsOSPlatform('OSX')) and ('$(RuntimeIdentifier)' == '' or $([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('osx-')))">true</UseMacOSBundle>
   </PropertyGroup>

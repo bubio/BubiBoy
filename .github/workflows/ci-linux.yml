@@ -76,9 +76,47 @@ jobs:
           mkdir -p "${destination}"
           cp native/build/runtimes/linux-x64/native/* "${destination}/"
 
+      - name: Build AppImage
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          publish_directory="src/BubiBoy.App/bin/Release/net10.0/linux-x64/publish"
+          appdir="artifacts/appimage/AppDir"
+
+          mkdir -p "${appdir}/usr/lib/bubiboy"
+          mkdir -p "${appdir}/usr/share/icons/hicolor/256x256/apps"
+          cp -a "${publish_directory}/." "${appdir}/usr/lib/bubiboy/"
+          cp src/BubiBoy.App/Assets/AppIcon.png "${appdir}/usr/share/icons/hicolor/256x256/apps/bubiboy.png"
+          cp src/BubiBoy.App/Assets/AppIcon.png "${appdir}/bubiboy.png"
+
+          cat > "${appdir}/BubiBoy.desktop" <<'EOF'
+          [Desktop Entry]
+          Type=Application
+          Name=BubiBoy
+          Comment=Game Boy and Game Boy Color emulator
+          Exec=BubiBoy
+          Icon=bubiboy
+          Categories=Game;Emulator;
+          Terminal=false
+          EOF
+
+          cat > "${appdir}/AppRun" <<'EOF'
+          #!/usr/bin/env sh
+          APPDIR="$(dirname "$(readlink -f "$0")")"
+          exec "$APPDIR/usr/lib/bubiboy/BubiBoy" "$@"
+          EOF
+
+          chmod +x "${appdir}/AppRun"
+          chmod +x "${appdir}/usr/lib/bubiboy/BubiBoy"
+
+          curl -L -o appimagetool https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool
+          ARCH=x86_64 ./appimagetool --appimage-extract-and-run "${appdir}" "artifacts/BubiBoy-linux-x64.AppImage"
+
       - name: Upload app artifact
         uses: actions/upload-artifact@v4
         with:
           name: BubiBoy-linux-x64
-          path: src/BubiBoy.App/bin/Release/net10.0/linux-x64/publish
+          path: artifacts/BubiBoy-linux-x64.AppImage
           if-no-files-found: error
