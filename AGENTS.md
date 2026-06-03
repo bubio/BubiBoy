@@ -75,12 +75,13 @@ The core must not depend on Avalonia or miniaudio.
   repeatable verification:
   `DOTNET_CLI_HOME=~/dev/_Emu/BubiBoy/.dotnet-cli-home dotnet build --disable-build-servers --no-restore`
   followed by `DOTNET_CLI_HOME=~/dev/_Emu/BubiBoy/.dotnet-cli-home dotnet test --no-build`.
-- After Avalonia app changes on macOS, prepare the runnable self-contained bundle with
+- After Avalonia app changes on macOS, prepare the runnable self-contained bundle by requesting approval
+  up front and running this command outside the Codex sandbox:
   `DOTNET_CLI_HOME=~/dev/_Emu/BubiBoy/.dotnet-cli-home dotnet publish src/BubiBoy.App/BubiBoy.App.fsproj -c Release -r osx-arm64`
   so it can be launched with `open src/BubiBoy.App/bin/Release/osx-arm64/BubiBoy.app`. The Debug/AnyCPU
   bundle may require a `DOTNET_ROOT` environment that `open` does not provide.
-- If that `dotnet publish` command hangs or produces no progress inside the Codex sandbox, rerun the
-  same command outside the sandbox with approval instead of treating the publish step as optional.
+- Do not first try that `dotnet publish` command inside the Codex sandbox and wait for it to hang or fail.
+  The expected workflow is to request approval before the publish step and run it outside the sandbox.
 - Do not mix unrelated refactors with emulator behavior changes.
 - Preserve cross-platform paths and avoid macOS-only assumptions outside explicitly platform-specific code.
 

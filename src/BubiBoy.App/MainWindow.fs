@@ -25,6 +25,7 @@ type MainWindow() as this =
 
     do
         this.Title <- "BubiBoy"
+        this.Icon <- WindowIcon(AssetLoader.Open(Uri("avares://BubiBoy/Assets/AppIcon.png")))
         this.WindowStartupLocation <- WindowStartupLocation.CenterScreen
         this.Width <- float Hardware.ScreenWidth * 2.0
         this.Height <- float Hardware.ScreenHeight * 2.0 + 32.0

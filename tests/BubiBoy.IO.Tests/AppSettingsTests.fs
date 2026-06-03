@@ -8,13 +8,16 @@ open Xunit
 let private tempPath name =
     Path.Combine(Path.GetTempPath(), $"bubiboy-{Guid.NewGuid():N}", name)
 
+let private fullPath path = Path.GetFullPath path
+
 [<Fact>]
 let ``saveToPath writes versioned settings and creates directories`` () =
     let path = tempPath "nested/settings.json"
+    let recentRoms = [ tempPath "one.gb"; tempPath "two.gbc" ]
 
     let settings: AppSettings.Settings =
         { VolumePercent = 75
-          RecentRoms = [ "/tmp/one.gb"; "/tmp/two.gbc" ]
+          RecentRoms = recentRoms
           Scale = 4
           IsFloating = true
           KeyboardMapping =
@@ -31,7 +34,7 @@ let ``saveToPath writes versioned settings and creates directories`` () =
         | Error message -> Assert.Fail message
         | Ok loaded ->
             Assert.Equal(75, loaded.VolumePercent)
-            Assert.Equal<string list>([ "/tmp/one.gb"; "/tmp/two.gbc" ], loaded.RecentRoms)
+            Assert.Equal<string list>(recentRoms |> List.map fullPath, loaded.RecentRoms)
             Assert.Equal(4, loaded.Scale)
             Assert.True(loaded.IsFloating)
             Assert.Equal("C", loaded.KeyboardMapping["A"])
@@ -45,11 +48,11 @@ let ``loadFromPath returns defaults when settings file is missing`` () =
 
 [<Fact>]
 let ``normalize clamps volume and limits deduplicated recent ROMs`` () =
-    let paths = [ for index in 0 .. 12 -> $"/tmp/game{index}.gb" ]
+    let paths = [ for index in 0 .. 12 -> tempPath $"game{index}.gb" ]
 
     let raw: AppSettings.Settings =
         { VolumePercent = 125
-          RecentRoms = paths @ [ "/tmp/game1.gb"; ""; "   " ]
+          RecentRoms = paths @ [ paths[1]; ""; "   " ]
           Scale = 99
           IsFloating = true
           KeyboardMapping =
@@ -63,7 +66,7 @@ let ``normalize clamps volume and limits deduplicated recent ROMs`` () =
 
     Assert.Equal(100, settings.VolumePercent)
     Assert.Equal(AppSettings.MaxRecentRoms, settings.RecentRoms.Length)
-    Assert.Equal("/tmp/game0.gb", settings.RecentRoms.Head)
+    Assert.Equal(fullPath paths[0], settings.RecentRoms.Head)
     Assert.Equal(2, settings.Scale)
     Assert.True(settings.IsFloating)
     Assert.Equal("Q", settings.KeyboardMapping["A"])
@@ -73,16 +76,19 @@ let ``normalize clamps volume and limits deduplicated recent ROMs`` () =
 
 [<Fact>]
 let ``rememberRom moves existing ROM to front`` () =
+    let one = tempPath "one.gb"
+    let two = tempPath "two.gb"
+
     let raw: AppSettings.Settings =
         { VolumePercent = 50
-          RecentRoms = [ "/tmp/one.gb"; "/tmp/two.gb" ]
+          RecentRoms = [ one; two ]
           Scale = 2
           IsFloating = false
           KeyboardMapping = AppSettings.defaultKeyboardMapping }
 
-    let settings = raw |> AppSettings.rememberRom "/tmp/two.gb"
+    let settings = raw |> AppSettings.rememberRom two
 
-    Assert.Equal<string list>([ "/tmp/two.gb"; "/tmp/one.gb" ], settings.RecentRoms)
+    Assert.Equal<string list>([ fullPath two; fullPath one ], settings.RecentRoms)
 
 [<Fact>]
 let ``withScale accepts supported integer scales`` () =
@@ -107,14 +113,15 @@ let ``withKeyboardMapping persists normalized keyboard mapping`` () =
 [<Fact>]
 let ``loadFromPath migrates version 1 settings with default scale floating mode and keyboard mapping`` () =
     let path = tempPath "settings.json"
+    let oldRom = tempPath "old.gb"
     Directory.CreateDirectory(Path.GetDirectoryName path) |> ignore
-    File.WriteAllText(path, """{"Version":1,"VolumePercent":25,"RecentRoms":["/tmp/old.gb"]}""")
+    File.WriteAllText(path, $"""{{"Version":1,"VolumePercent":25,"RecentRoms":["{oldRom.Replace("\\", "\\\\")}"]}}""")
 
     match AppSettings.loadFromPath path with
     | Error message -> Assert.Fail message
     | Ok settings ->
         Assert.Equal(25, settings.VolumePercent)
-        Assert.Equal<string list>([ "/tmp/old.gb" ], settings.RecentRoms)
+        Assert.Equal<string list>([ fullPath oldRom ], settings.RecentRoms)
         Assert.Equal(2, settings.Scale)
         Assert.False(settings.IsFloating)
         Assert.Equal<Map<string, string>>(AppSettings.defaultKeyboardMapping, settings.KeyboardMapping)
@@ -122,14 +129,15 @@ let ``loadFromPath migrates version 1 settings with default scale floating mode 
 [<Fact>]
 let ``loadFromPath migrates version 2 settings with default keyboard mapping`` () =
     let path = tempPath "settings.json"
+    let oldRom = tempPath "old.gb"
     Directory.CreateDirectory(Path.GetDirectoryName path) |> ignore
-    File.WriteAllText(path, """{"Version":2,"VolumePercent":25,"RecentRoms":["/tmp/old.gb"],"Scale":4,"IsFloating":true}""")
+    File.WriteAllText(path, $"""{{"Version":2,"VolumePercent":25,"RecentRoms":["{oldRom.Replace("\\", "\\\\")}"],"Scale":4,"IsFloating":true}}""")
 
     match AppSettings.loadFromPath path with
     | Error message -> Assert.Fail message
     | Ok settings ->
         Assert.Equal(25, settings.VolumePercent)
-        Assert.Equal<string list>([ "/tmp/old.gb" ], settings.RecentRoms)
+        Assert.Equal<string list>([ fullPath oldRom ], settings.RecentRoms)
         Assert.Equal(4, settings.Scale)
         Assert.True(settings.IsFloating)
         Assert.Equal<Map<string, string>>(AppSettings.defaultKeyboardMapping, settings.KeyboardMapping)

@@ -25,8 +25,11 @@ let private tempPath name =
 
 [<Fact>]
 let ``defaultStatePath replaces ROM extension with state`` () =
-    match SaveStateFile.defaultStatePath "/tmp/game.gb" with
-    | Ok path -> Assert.Equal("/tmp/game.state", path)
+    let romPath = tempPath "game.gb"
+    let expected = Path.Combine(Path.GetDirectoryName romPath, "game.state")
+
+    match SaveStateFile.defaultStatePath romPath with
+    | Ok path -> Assert.Equal(expected, path)
     | Error message -> failwith message
 
 [<Fact>]

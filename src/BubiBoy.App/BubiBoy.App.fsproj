@@ -23,6 +23,10 @@
     <UseAppHost>true</UseAppHost>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' == 'win-x64' or $([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('win-'))">
+    <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
+  </PropertyGroup>
+
   <ItemGroup>
     <Compile Include="AboutWindow.fs" />
     <Compile Include="PerfTrace.fs" />
@@ -47,8 +51,13 @@
     <PackageReference Include="Avalonia.Themes.Fluent" Version="12.0.3" />
   </ItemGroup>
 
+  <ItemGroup>
+    <AvaloniaResource Include="Assets\AppIcon.png" />
+  </ItemGroup>
+
   <ItemGroup Condition="'$(UseMacOSBundle)' == 'true'">
     <MacOSBundleInfoPlist Include="Platforms\macOS\Info.plist" />
+    <MacOSBundleIcon Include="Assets\AppIcon.icns" />
   </ItemGroup>
 
   <PropertyGroup Condition="'$(UseMacOSBundle)' == 'true'">
@@ -59,6 +68,14 @@
   <Target Name="CopyMacOSBundleInfoPlist" AfterTargets="Build;Publish" Condition="'$(UseMacOSBundle)' == 'true'">
     <MakeDir Directories="$(MacOSBundleContentsDir)" />
     <Copy SourceFiles="@(MacOSBundleInfoPlist)" DestinationFolder="$(MacOSBundleContentsDir)" />
+  </Target>
+
+  <Target Name="CopyMacOSBundleIcon" AfterTargets="Build;Publish" Condition="'$(UseMacOSBundle)' == 'true'">
+    <PropertyGroup>
+      <MacOSBundleResourcesDir>$(MacOSBundleContentsDir)Resources\</MacOSBundleResourcesDir>
+    </PropertyGroup>
+    <MakeDir Directories="$(MacOSBundleResourcesDir)" />
+    <Copy SourceFiles="@(MacOSBundleIcon)" DestinationFolder="$(MacOSBundleResourcesDir)" />
   </Target>
 
   <Target Name="AdHocSignMacOSBundle" AfterTargets="Publish" Condition="'$(UseMacOSBundle)' == 'true' and '$(PublishDir)' != ''">
