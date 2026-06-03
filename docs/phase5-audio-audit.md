@@ -10,7 +10,7 @@ This audit reconciles the Phase 5 audio plan with the current implementation sta
 - `BubiBoy.Audio` provides bounded buffering, underrun padding, PCM16 conversion, WAV diagnostics, and a miniaudio-backed device behind a narrow interface.
 - The app submits generated samples to the audio host and can fall back to the managed buffer when miniaudio is unavailable.
 - CI builds `bubi_miniaudio` on macOS, Linux, and Windows, copies it into `native/build/runtimes/<rid>/native`, and verifies loader availability with `BUBIBOY_EXPECT_NATIVE_AUDIO=1`.
-- CI uploads the built runtime-native miniaudio artifacts for release packaging follow-up.
+- CI bundles the built runtime-native miniaudio files into the published app artifacts.
 - `tests/BubiBoy.TestRoms` can run external APU ROMs configured with `BUBIBOY_APU_TEST_ROMS` and checks
   serial output for pass/fail without vendoring unclear-license ROMs.
 

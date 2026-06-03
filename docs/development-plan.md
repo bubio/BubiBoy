@@ -105,7 +105,7 @@ Current progress:
   artifact layouts.
 - [x] Tightened NR52 power-off behavior so audio registers clear and powered-off channel writes are ignored.
 - [x] Added CI native audio builds for macOS, Linux, and Windows, with loader availability checked by tests.
-- [x] Uploaded CI-built miniaudio runtime artifacts for release packaging follow-up.
+- [x] Bundled CI-built miniaudio runtime files into the published app artifacts.
 - [x] Added a Phase 5 audio audit documenting completed work, licensing constraints, and close criteria.
 - [x] Added an external APU ROM harness that captures serial pass/fail output without vendoring ROMs.
 - [x] Fixed DIV writes so a reset while DIV bit 12 is high clocks the APU frame sequencer.
