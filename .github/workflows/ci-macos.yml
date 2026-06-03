@@ -27,8 +27,16 @@ on:
 
 jobs:
   build-test-publish:
-    name: Build, test, and publish macOS
-    runs-on: macos-latest
+    name: Build, test, and publish macOS ${{ matrix.rid }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rid: osx-arm64
+            runner: macos-15
+          - rid: osx-x64
+            runner: macos-15-intel
 
     steps:
       - name: Checkout
@@ -39,29 +47,6 @@ jobs:
         with:
           dotnet-version: 10.0.107
 
-      - name: Set publish runtime
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          case "${RUNNER_ARCH}" in
-            ARM64)
-              rid="osx-arm64"
-              ;;
-            X64)
-              rid="osx-x64"
-              ;;
-            *)
-              echo "Unsupported macOS runner architecture: ${RUNNER_ARCH}" >&2
-              exit 1
-              ;;
-          esac
-
-          {
-            echo "BUBIBOY_PUBLISH_RID=${rid}"
-            echo "BUBIBOY_PUBLISH_PATH=src/BubiBoy.App/bin/Release/${rid}/BubiBoy.app"
-          } >> "${GITHUB_ENV}"
-
       - name: Build native audio
         shell: bash
         run: |
@@ -71,7 +56,7 @@ jobs:
           cmake --build native/build/cmake --config Release
 
           library="libbubi_miniaudio.dylib"
-          destination="native/build/runtimes/${BUBIBOY_PUBLISH_RID}/native"
+          destination="native/build/runtimes/${{ matrix.rid }}/native"
           mkdir -p "${destination}"
           cp "native/build/cmake/${library}" "${destination}/${library}"
 
@@ -87,29 +72,31 @@ jobs:
         run: dotnet test BubiBoy.slnx --no-build
 
       - name: Publish app
-        run: dotnet publish src/BubiBoy.App/BubiBoy.App.fsproj -c Release -r ${{ env.BUBIBOY_PUBLISH_RID }} --no-restore --self-contained true
+        run: dotnet publish src/BubiBoy.App/BubiBoy.App.fsproj -c Release -r ${{ matrix.rid }} --no-restore --self-contained true
 
       - name: Copy native audio into published app
         shell: bash
         run: |
           set -euo pipefail
 
-          destination="${BUBIBOY_PUBLISH_PATH}/Contents/MacOS/runtimes/${BUBIBOY_PUBLISH_RID}/native"
+          publish_path="src/BubiBoy.App/bin/Release/${{ matrix.rid }}/BubiBoy.app"
+          destination="${publish_path}/Contents/MacOS/runtimes/${{ matrix.rid }}/native"
           mkdir -p "${destination}"
-          cp native/build/runtimes/"${BUBIBOY_PUBLISH_RID}"/native/* "${destination}/"
+          cp native/build/runtimes/${{ matrix.rid }}/native/* "${destination}/"
 
       - name: Prepare app artifact
         shell: bash
         run: |
           set -euo pipefail
 
-          artifact_directory="artifacts/BubiBoy-${BUBIBOY_PUBLISH_RID}"
+          publish_path="src/BubiBoy.App/bin/Release/${{ matrix.rid }}/BubiBoy.app"
+          artifact_directory="artifacts/BubiBoy-${{ matrix.rid }}"
           mkdir -p "${artifact_directory}"
-          cp -R "${BUBIBOY_PUBLISH_PATH}" "${artifact_directory}/"
+          cp -R "${publish_path}" "${artifact_directory}/"
 
       - name: Upload app artifact
         uses: actions/upload-artifact@v4
         with:
-          name: BubiBoy-${{ env.BUBIBOY_PUBLISH_RID }}
-          path: artifacts/BubiBoy-${{ env.BUBIBOY_PUBLISH_RID }}
+          name: BubiBoy-${{ matrix.rid }}
+          path: artifacts/BubiBoy-${{ matrix.rid }}
           if-no-files-found: error

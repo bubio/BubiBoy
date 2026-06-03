@@ -47,7 +47,9 @@ be copied to build and publish output:
 ```text
 native/build/runtimes/osx-arm64/native/libbubi_miniaudio.dylib
 native/build/runtimes/osx-x64/native/libbubi_miniaudio.dylib
+native/build/runtimes/linux-arm64/native/libbubi_miniaudio.so
 native/build/runtimes/linux-x64/native/libbubi_miniaudio.so
+native/build/runtimes/win-arm64/native/bubi_miniaudio.dll
 native/build/runtimes/win-x64/native/bubi_miniaudio.dll
 ```
 

@@ -27,8 +27,16 @@ on:
 
 jobs:
   build-test-publish:
-    name: Build, test, and publish Windows
-    runs-on: windows-latest
+    name: Build, test, and publish Windows ${{ matrix.rid }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rid: win-x64
+            runner: windows-latest
+          - rid: win-arm64
+            runner: windows-11-arm
 
     steps:
       - name: Checkout
@@ -47,9 +55,8 @@ jobs:
           cmake -S native -B native/build/cmake -DCMAKE_BUILD_TYPE=Release
           cmake --build native/build/cmake --config Release
 
-          rid="win-x64"
           library="bubi_miniaudio.dll"
-          destination="native/build/runtimes/${rid}/native"
+          destination="native/build/runtimes/${{ matrix.rid }}/native"
           mkdir -p "${destination}"
           cp "native/build/cmake/Release/${library}" "${destination}/${library}"
 
@@ -68,7 +75,7 @@ jobs:
         run: >
           dotnet publish src/BubiBoy.App/BubiBoy.App.fsproj
           -c Release
-          -r win-x64
+          -r ${{ matrix.rid }}
           --no-restore
           --self-contained true
           -p:PublishSingleFile=true
@@ -79,13 +86,13 @@ jobs:
         run: |
           set -euo pipefail
 
-          artifact_directory="artifacts/BubiBoy-win-x64"
+          artifact_directory="artifacts/BubiBoy-${{ matrix.rid }}"
           mkdir -p "${artifact_directory}"
-          cp src/BubiBoy.App/bin/Release/net10.0/win-x64/publish/BubiBoy.exe "${artifact_directory}/"
+          cp src/BubiBoy.App/bin/Release/net10.0/${{ matrix.rid }}/publish/BubiBoy.exe "${artifact_directory}/"
 
       - name: Upload app artifact
         uses: actions/upload-artifact@v4
         with:
-          name: BubiBoy-win-x64
-          path: artifacts/BubiBoy-win-x64
+          name: BubiBoy-${{ matrix.rid }}
+          path: artifacts/BubiBoy-${{ matrix.rid }}
           if-no-files-found: error

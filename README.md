@@ -40,15 +40,17 @@ cmake --build native/build/cmake --config Release
 
 The CI workflow publishes self-contained distribution artifacts:
 
-- `BubiBoy-win-x64`: a single-file `BubiBoy.exe`.
+- `BubiBoy-win-x64` and `BubiBoy-win-arm64`: a single-file `BubiBoy.exe`.
 - `BubiBoy-<osx-rid>`: a `BubiBoy.app` bundle.
-- `BubiBoy-linux-x64`: an AppImage.
+- `BubiBoy-linux-x64` and `BubiBoy-linux-arm64`: an AppImage.
 
 For local publishing:
 
 ```sh
 dotnet publish src/BubiBoy.App/BubiBoy.App.fsproj -c Release -r linux-x64 --self-contained true
+dotnet publish src/BubiBoy.App/BubiBoy.App.fsproj -c Release -r linux-arm64 --self-contained true
 dotnet publish src/BubiBoy.App/BubiBoy.App.fsproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
+dotnet publish src/BubiBoy.App/BubiBoy.App.fsproj -c Release -r win-arm64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
 ```
 
 macOS publishes to `src/BubiBoy.App/bin/Release/<rid>/BubiBoy.app`. Linux and Windows publish to
