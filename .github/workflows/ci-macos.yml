@@ -98,9 +98,18 @@ jobs:
           mkdir -p "${destination}"
           cp native/build/runtimes/"${BUBIBOY_PUBLISH_RID}"/native/* "${destination}/"
 
+      - name: Prepare app artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          artifact_directory="artifacts/BubiBoy-${BUBIBOY_PUBLISH_RID}"
+          mkdir -p "${artifact_directory}"
+          cp -R "${BUBIBOY_PUBLISH_PATH}" "${artifact_directory}/"
+
       - name: Upload app artifact
         uses: actions/upload-artifact@v4
         with:
           name: BubiBoy-${{ env.BUBIBOY_PUBLISH_RID }}
-          path: ${{ env.BUBIBOY_PUBLISH_PATH }}
+          path: artifacts/BubiBoy-${{ env.BUBIBOY_PUBLISH_RID }}
           if-no-files-found: error
