@@ -6,10 +6,12 @@ BubiBoy currently handles user input in the Avalonia app layer:
 
 - `BubiBoy.Core.Joypad` already exposes the correct emulator-facing model: a set of pressed
   `Joypad.Button` values.
-- `MainWindow` keeps `desiredButtons` as app-owned input intent and reconciles it into the emulation
-  session at frame boundaries.
+- `MainWindow` keeps keyboard and controller button sets as app-owned input intent and reconciles their
+  union into the emulation session at frame boundaries.
 - `InputMapping` and `InputMappingWindow` are keyboard-specific.
 - `AppSettings` stores `KeyboardMapping` only.
+- `ControllerInput` provides reusable gamepad types, an unsupported fallback host, and a macOS
+  GameController.framework backend.
 
 This means the core does not need controller-specific concepts. Controller support should be added through
 a reusable host input library, then adapted in BubiBoy to produce the same `Set<Joypad.Button>` as keyboard
@@ -65,37 +67,42 @@ clean.
 The public API should be generic:
 
 ```fsharp
-type GamepadId = private GamepadId of string
+type GamepadId =
+    new: value: string -> GamepadId
+    member Value: string
 
 type GamepadControl =
-    | DPadUp
-    | DPadDown
-    | DPadLeft
-    | DPadRight
-    | South
-    | East
-    | West
-    | North
-    | Start
-    | Select
-    | LeftShoulder
-    | RightShoulder
-    | LeftTrigger
-    | RightTrigger
-    | LeftStickUp
-    | LeftStickDown
-    | LeftStickLeft
-    | LeftStickRight
+    | DPadUp = 0
+    | DPadDown = 1
+    | DPadLeft = 2
+    | DPadRight = 3
+    | South = 4
+    | East = 5
+    | West = 6
+    | North = 7
+    | Start = 8
+    | Select = 9
+    | LeftShoulder = 10
+    | RightShoulder = 11
+    | LeftTrigger = 12
+    | RightTrigger = 13
+    | LeftStickUp = 14
+    | LeftStickDown = 15
+    | LeftStickLeft = 16
+    | LeftStickRight = 17
 
 type GamepadSnapshot =
     { Id: GamepadId
       Name: string
-      Pressed: Set<GamepadControl> }
+      Pressed: IReadOnlySet<GamepadControl> }
 
 type GamepadHost =
     inherit IDisposable
-    abstract Poll: unit -> GamepadSnapshot list
+    abstract Poll: unit -> IReadOnlyList<GamepadSnapshot>
 ```
+
+Use an enum for `GamepadControl` rather than an F# discriminated union so C# Avalonia apps can consume the
+library without FSharp-specific pattern matching.
 
 Optional but useful once the first backend works:
 
@@ -135,7 +142,7 @@ The first version should be single-player:
   `keyboardButtons + controllerButtons -> desiredButtons`.
 - Do not let a keyboard release clear a controller-held button, or vice versa.
 
-The existing `desiredButtons` variable in `MainWindow` should be split into at least:
+`MainWindow` tracks input sources separately:
 
 ```fsharp
 let mutable desiredKeyboardButtons: Set<Joypad.Button> = Set.empty
@@ -221,17 +228,17 @@ Avoid:
 
 ## Implementation Milestones
 
-1. Add a reusable `ControllerInput` project with generic `GamepadControl`, `GamepadSnapshot`,
+1. [x] Add a reusable `ControllerInput` project with generic `GamepadControl`, `GamepadSnapshot`,
    `GamepadHost`, and `UnsupportedGamepadHost` types.
-2. Add a BubiBoy adapter from `GamepadControl` to `Joypad.Button`.
-3. Split `MainWindow` input state into keyboard and controller button sets, even before the real backend is
+2. [x] Add a BubiBoy adapter from `GamepadControl` to `Joypad.Button`.
+3. [x] Split `MainWindow` input state into keyboard and controller button sets, even before the real backend is
    added.
-4. Add the macOS GameController backend and poll it once per frame.
-5. Add a small status surface, such as menu text or toast, for connected/disconnected controller events.
-6. Persist enable/disable and default mapping settings.
-7. Add Windows XInput and Linux evdev backends.
-8. Add controller remapping UI after the default path is verified.
-9. Consider extracting the reusable project to a separate repository/NuGet package once at least macOS and
+4. [x] Add the macOS GameController backend and poll it once per frame.
+5. [x] Add a small status surface, such as menu text or toast, for connected/disconnected controller events.
+6. [ ] Persist enable/disable and default mapping settings.
+7. [ ] Add Windows XInput and Linux evdev backends.
+8. [ ] Add controller remapping UI after the default path is verified.
+9. [ ] Consider extracting the reusable project to a separate repository/NuGet package once at least macOS and
    Windows backends are real and manually verified.
 
 ## Verification
@@ -247,8 +254,8 @@ Focused checks:
 
 Broader checks:
 
-- `dotnet test`
-- Manual smoke on macOS with Xbox, PlayStation, and Nintendo-style controllers where available.
+- [x] `dotnet test`
+- [x] Manual smoke on macOS with a physical controller.
 - CI packaging checks for any native shims introduced by the platform backends.
 
 ## References Checked
