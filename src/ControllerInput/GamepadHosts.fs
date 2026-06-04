@@ -11,5 +11,9 @@ module GamepadHosts =
             match MacOSGamepadHost.TryCreate() with
             | Ok host -> host
             | Error reason -> createUnsupported reason
+        elif RuntimeInformation.IsOSPlatform OSPlatform.Windows then
+            match WindowsXInputGamepadHost.TryCreate() with
+            | Ok host -> host
+            | Error reason -> createUnsupported reason
         else
             createUnsupported "No gamepad backend is available for this platform yet."

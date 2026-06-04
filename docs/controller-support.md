@@ -236,7 +236,7 @@ Avoid:
 4. [x] Add the macOS GameController backend and poll it once per frame.
 5. [x] Add a small status surface, such as menu text or toast, for connected/disconnected controller events.
 6. [ ] Persist enable/disable and default mapping settings.
-7. [ ] Add Windows XInput and Linux evdev backends.
+7. [ ] Add Windows XInput and Linux evdev backends. Windows XInput is implemented; Linux evdev remains.
 8. [ ] Add controller remapping UI after the default path is verified.
 9. [ ] Consider extracting the reusable project to a separate repository/NuGet package once at least macOS and
    Windows backends are real and manually verified.

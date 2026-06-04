@@ -10,6 +10,7 @@
     <Compile Include="GamepadHost.fs" />
     <Compile Include="UnsupportedGamepadHost.fs" />
     <Compile Include="Platforms\macOS\MacOSGamepadHost.fs" />
+    <Compile Include="Platforms\Windows\WindowsXInputGamepadHost.fs" />
     <Compile Include="GamepadHosts.fs" />
   </ItemGroup>
 
