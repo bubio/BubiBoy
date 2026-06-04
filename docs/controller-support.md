@@ -236,7 +236,7 @@ Avoid:
 4. [x] Add the macOS GameController backend and poll it once per frame.
 5. [x] Add a small status surface, such as menu text or toast, for connected/disconnected controller events.
 6. [ ] Persist enable/disable and default mapping settings.
-7. [ ] Add Windows XInput and Linux evdev backends. Windows XInput is implemented; Linux evdev remains.
+7. [x] Add Windows XInput and Linux evdev backends.
 8. [ ] Add controller remapping UI after the default path is verified.
 9. [ ] Consider extracting the reusable project to a separate repository/NuGet package once at least macOS and
    Windows backends are real and manually verified.
@@ -256,7 +256,7 @@ Broader checks:
 
 - [x] `dotnet test`
 - [x] Manual smoke on macOS with a physical controller.
-- CI packaging checks for any native shims introduced by the platform backends.
+- CI packaging checks for any native shims introduced by the platform backends. Linux evdev uses libc P/Invoke only and does not add a native shim.
 
 ## References Checked
 

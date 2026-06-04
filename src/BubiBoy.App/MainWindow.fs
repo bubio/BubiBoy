@@ -624,7 +624,28 @@ type MainWindow() as this =
         // Bus.setButton only raises the joypad interrupt on a fresh press, so re-applying
         // an unchanged set is a no-op and held buttons never re-trigger.
         let pollControllerInput () =
-            let activeController = controllerHost.Poll() |> Seq.tryHead
+            let controllers = controllerHost.Poll() |> Seq.toList
+
+            let hasPressedInput (controller: ControllerInput.GamepadSnapshot) =
+                controller.Pressed.Count > 0
+
+            let chooseController activeId =
+                let current =
+                    activeId
+                    |> Option.bind (fun id -> controllers |> List.tryFind (fun controller -> controller.Id = id))
+
+                match current with
+                | Some controller when hasPressedInput controller -> Some controller
+                | Some controller ->
+                    controllers
+                    |> List.tryFind (fun candidate -> candidate.Id <> controller.Id && hasPressedInput candidate)
+                    |> Option.orElse (Some controller)
+                | None ->
+                    controllers
+                    |> List.tryFind hasPressedInput
+                    |> Option.orElseWith (fun () -> controllers |> List.tryHead)
+
+            let activeController = lock inputGate (fun () -> chooseController activeControllerId)
             let controllerButtons =
                 activeController
                 |> Option.map ControllerInputAdapter.joypadButtonsForSnapshot
