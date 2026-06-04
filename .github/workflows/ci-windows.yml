@@ -58,7 +58,7 @@ jobs:
           library="bubi_miniaudio.dll"
           destination="native/build/runtimes/${{ matrix.rid }}/native"
           mkdir -p "${destination}"
-          cp "native/build/cmake/Release/${library}" "${destination}/${library}"
+          cp "native/build/cmake/${library}" "${destination}/${library}"
 
       - name: Restore
         run: dotnet restore BubiBoy.slnx

@@ -91,9 +91,7 @@ Examples:
               FailOnLoadError = false }
 
     let private isRomPath (path: string) =
-        let extension = Path.GetExtension(path)
-        extension.Equals(".gb", StringComparison.OrdinalIgnoreCase)
-        || extension.Equals(".gbc", StringComparison.OrdinalIgnoreCase)
+        RomFile.isCandidatePath path
 
     let private isBiosPath (path: string) =
         Path.GetFileName(path).Contains("[BIOS]", StringComparison.OrdinalIgnoreCase)

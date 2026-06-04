@@ -37,6 +37,7 @@
     <Compile Include="PerfTrace.fs" />
     <Compile Include="DisplayHelpers.fs" />
     <Compile Include="InputMapping.fs" />
+    <Compile Include="ControllerInputAdapter.fs" />
     <Compile Include="InputMappingWindow.fs" />
     <Compile Include="RomSession.fs" />
     <Compile Include="MainWindowViewModel.fs" />
@@ -49,6 +50,7 @@
     <ProjectReference Include="..\BubiBoy.Core\BubiBoy.Core.fsproj" />
     <ProjectReference Include="..\BubiBoy.IO\BubiBoy.IO.fsproj" />
     <ProjectReference Include="..\BubiBoy.Audio\BubiBoy.Audio.fsproj" />
+    <ProjectReference Include="..\ControllerInput\ControllerInput.fsproj" />
   </ItemGroup>
 
   <ItemGroup>

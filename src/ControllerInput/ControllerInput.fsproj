@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>ControllerInput.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="GamepadTypes.fs" />
+    <Compile Include="GamepadHost.fs" />
+    <Compile Include="UnsupportedGamepadHost.fs" />
+    <Compile Include="Platforms\macOS\MacOSGamepadHost.fs" />
+    <Compile Include="Platforms\Windows\WindowsXInputGamepadHost.fs" />
+    <Compile Include="Platforms\Linux\LinuxEvdevGamepadHost.fs" />
+    <Compile Include="GamepadHosts.fs" />
+  </ItemGroup>
+
+</Project>

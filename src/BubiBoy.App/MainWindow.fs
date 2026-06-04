@@ -133,12 +133,12 @@ type MainWindow() as this =
         let perfGate = obj ()
         let volumeGate = obj ()
         let inputGate = obj ()
-        // The authoritative set of currently-held buttons. Key events only update this
-        // (cheaply, under inputGate); the emulation thread reconciles it into the live
-        // session at the start of each frame. This keeps the emulation thread the sole
-        // mutator of the session, so a frame's write-back can no longer clobber a key
-        // press/release that arrived while that frame was running.
-        let mutable desiredButtons: Set<Joypad.Button> = Set.empty
+        // The authoritative set of currently-held buttons is tracked per input source.
+        // The emulation thread reconciles the union into the live session at frame
+        // boundaries, so one source releasing a button cannot clear another source's hold.
+        let mutable desiredKeyboardButtons: Set<Joypad.Button> = Set.empty
+        let mutable desiredControllerButtons: Set<Joypad.Button> = Set.empty
+        let mutable activeControllerId: ControllerInput.GamepadId option = None
         let perfTrace = PerfTrace.createFromEnvironment ()
         let audioFramesPerVideoFrame =
             int (Math.Round(float AudioHost.defaultFormat.SampleRate * float Hardware.CyclesPerFrame / float Hardware.DmgClockHz))
@@ -151,6 +151,7 @@ type MainWindow() as this =
             | Error _ -> AudioHost.createBufferedDevice AudioHost.defaultFormat.SampleRate :> AudioHost.AudioDevice
 
         let audioOutput = audioDevice
+        let controllerHost = ControllerInput.GamepadHosts.createDefault ()
 
         let applyVolume (samples: Apu.Sample[]) =
             let volume = lock volumeGate (fun () -> outputVolume)
@@ -343,6 +344,7 @@ type MainWindow() as this =
             )
 
         let toastTimer = DispatcherTimer(Interval = TimeSpan.FromSeconds(3.0))
+        let controllerPollTimer = DispatcherTimer(Interval = TimeSpan.FromMilliseconds(16.0))
 
         let romDetails =
             TextBlock(
@@ -403,7 +405,7 @@ type MainWindow() as this =
                 match result with
                 | Some keyboardMapping ->
                     appSettings <- AppSettings.withKeyboardMapping keyboardMapping appSettings
-                    lock inputGate (fun () -> desiredButtons <- Set.empty)
+                    lock inputGate (fun () -> desiredKeyboardButtons <- Set.empty)
                     saveSettings ()
                     showToast "Input mapping saved."
                 | None -> ()
@@ -622,8 +624,66 @@ type MainWindow() as this =
         // thread is about to advance the session, so the session stays single-writer.
         // Bus.setButton only raises the joypad interrupt on a fresh press, so re-applying
         // an unchanged set is a no-op and held buttons never re-trigger.
+        let pollControllerInput () =
+            let controllers = controllerHost.Poll() |> Seq.toList
+
+            let hasPressedInput (controller: ControllerInput.GamepadSnapshot) =
+                controller.Pressed.Count > 0
+
+            let chooseController activeId =
+                let current =
+                    activeId
+                    |> Option.bind (fun id -> controllers |> List.tryFind (fun controller -> controller.Id = id))
+
+                match current with
+                | Some controller when hasPressedInput controller -> Some controller
+                | Some controller ->
+                    controllers
+                    |> List.tryFind (fun candidate -> candidate.Id <> controller.Id && hasPressedInput candidate)
+                    |> Option.orElse (Some controller)
+                | None ->
+                    controllers
+                    |> List.tryFind hasPressedInput
+                    |> Option.orElseWith (fun () -> controllers |> List.tryHead)
+
+            let activeController = lock inputGate (fun () -> chooseController activeControllerId)
+            let controllerButtons =
+                activeController
+                |> Option.map ControllerInputAdapter.joypadButtonsForSnapshot
+                |> Option.defaultValue Set.empty
+
+            let statusMessage =
+                lock inputGate (fun () ->
+                    desiredControllerButtons <- controllerButtons
+
+                    match activeControllerId, activeController with
+                    | None, Some controller ->
+                        activeControllerId <- Some controller.Id
+                        Some $"Controller connected: {controller.Name}"
+                    | Some _, None ->
+                        activeControllerId <- None
+                        Some "Controller disconnected."
+                    | Some previous, Some controller when previous <> controller.Id ->
+                        activeControllerId <- Some controller.Id
+                        Some $"Controller connected: {controller.Name}"
+                    | _ -> None)
+
+            statusMessage |> Option.iter showToast
+
+        controllerPollTimer.Tick.Add(fun _ ->
+            try
+                pollControllerInput ()
+            with ex ->
+                controllerPollTimer.Stop()
+                lock inputGate (fun () ->
+                    desiredControllerButtons <- Set.empty
+                    activeControllerId <- None)
+                showToast $"Controller input disabled: {ex.Message}")
+        controllerPollTimer.Start()
+
         let applyInput (session: Emulator.Session) =
-            let desired = lock inputGate (fun () -> desiredButtons)
+            let desired =
+                lock inputGate (fun () -> Set.union desiredKeyboardButtons desiredControllerButtons)
 
             if desired = (Bus.joypad session.Bus).Pressed then
                 session
@@ -1176,11 +1236,11 @@ type MainWindow() as this =
                 // session via applyInput. Recording the latest state (rather than queuing
                 // edits) means a press immediately followed by a release can never be lost.
                 lock inputGate (fun () ->
-                    desiredButtons <-
+                    desiredKeyboardButtons <-
                         if pressed then
-                            desiredButtons.Add button
+                            desiredKeyboardButtons.Add button
                         else
-                            desiredButtons.Remove button)
+                            desiredKeyboardButtons.Remove button)
 
                 true
             | _ -> false
@@ -1254,7 +1314,10 @@ type MainWindow() as this =
         this.Closing.Add(fun _ ->
             saveCurrentRam ()
             saveSettings ())
-        this.Closed.Add(fun _ -> PerfTrace.close perfTrace)
+        this.Closed.Add(fun _ ->
+            controllerPollTimer.Stop()
+            controllerHost.Dispose()
+            PerfTrace.close perfTrace)
 
         let contentGrid =
             Grid(RowDefinitions = RowDefinitions("Auto,*,Auto"))
