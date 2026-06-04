@@ -9,6 +9,7 @@ dotnet run --project tools/BubiBoy.RomSmoke/BubiBoy.RomSmoke.fsproj -- /Volumes/
 ```
 
 The runner recursively scans `.gb` and `.gbc` files, skips files containing `[BIOS]` by default, loads cartridge headers, creates an emulator session, and runs a bounded number of CPU steps.
+macOS AppleDouble metadata files such as `._game.gb` are ignored because they can appear in shared ROM folders on Windows but are not cartridge data.
 
 Output statuses:
 
