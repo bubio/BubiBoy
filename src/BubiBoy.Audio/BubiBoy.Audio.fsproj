@@ -3,6 +3,18 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <BubiBoyBuildNativeMiniaudio Condition="'$(BubiBoyBuildNativeMiniaudio)' == ''">true</BubiBoyBuildNativeMiniaudio>
+    <BubiBoyNativeRid Condition="'$(RuntimeIdentifier)' != ''">$(RuntimeIdentifier)</BubiBoyNativeRid>
+    <BubiBoyNativeRid Condition="'$(BubiBoyNativeRid)' == ''">$(NETCoreSdkRuntimeIdentifier)</BubiBoyNativeRid>
+    <BubiBoyNativeLibraryName Condition="$([System.String]::Copy('$(BubiBoyNativeRid)').StartsWith('osx-'))">libbubi_miniaudio.dylib</BubiBoyNativeLibraryName>
+    <BubiBoyNativeLibraryName Condition="$([System.String]::Copy('$(BubiBoyNativeRid)').StartsWith('linux-'))">libbubi_miniaudio.so</BubiBoyNativeLibraryName>
+    <BubiBoyNativeLibraryName Condition="$([System.String]::Copy('$(BubiBoyNativeRid)').StartsWith('win-'))">bubi_miniaudio.dll</BubiBoyNativeLibraryName>
+    <BubiBoyNativeRoot>$(MSBuildThisFileDirectory)../../native</BubiBoyNativeRoot>
+    <BubiBoyNativeCMakeBuildDir>$(BubiBoyNativeRoot)/build/cmake/$(BubiBoyNativeRid)</BubiBoyNativeCMakeBuildDir>
+    <BubiBoyNativeRuntimeDir>$(BubiBoyNativeRoot)/build/runtimes/$(BubiBoyNativeRid)/native</BubiBoyNativeRuntimeDir>
+    <BubiBoyNativeRuntimeLibrary>$(BubiBoyNativeRuntimeDir)/$(BubiBoyNativeLibraryName)</BubiBoyNativeRuntimeLibrary>
+    <BubiBoyNativeSources>$(BubiBoyNativeRoot)/CMakeLists.txt;$(BubiBoyNativeRoot)/bubi_miniaudio.c;$(BubiBoyNativeRoot)/miniaudio.h</BubiBoyNativeSources>
+    <BubiBoyCanBuildNativeMiniaudio Condition="'$(RuntimeIdentifier)' == '' or '$(RuntimeIdentifier)' == '$(NETCoreSdkRuntimeIdentifier)'">true</BubiBoyCanBuildNativeMiniaudio>
   </PropertyGroup>
 
   <ItemGroup>
@@ -41,6 +53,23 @@
           CopyToOutputDirectory="PreserveNewest"
           CopyToPublishDirectory="Never"
           Condition="Exists('..\..\native\build\runtimes')" />
+    <None Include="$(BubiBoyNativeRuntimeLibrary)"
+          Link="runtimes\$(BubiBoyNativeRid)\native\$(BubiBoyNativeLibraryName)"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest"
+          Condition="'$(BubiBoyBuildNativeMiniaudio)' == 'true' and '$(BubiBoyCanBuildNativeMiniaudio)' == 'true' and '$(BubiBoyNativeLibraryName)' != ''" />
   </ItemGroup>
+
+  <Target Name="BuildBubiBoyNativeMiniaudio"
+          BeforeTargets="PrepareForBuild"
+          Inputs="$(BubiBoyNativeSources)"
+          Outputs="$(BubiBoyNativeRuntimeLibrary)"
+          Condition="'$(BubiBoyBuildNativeMiniaudio)' == 'true' and '$(BubiBoyCanBuildNativeMiniaudio)' == 'true' and '$(BubiBoyNativeLibraryName)' != ''">
+    <MakeDir Directories="$(BubiBoyNativeRuntimeDir)" />
+    <Exec Command="cmake -S &quot;$(BubiBoyNativeRoot)&quot; -B &quot;$(BubiBoyNativeCMakeBuildDir)&quot; -DCMAKE_BUILD_TYPE=$(Configuration)" />
+    <Exec Command="cmake --build &quot;$(BubiBoyNativeCMakeBuildDir)&quot; --config $(Configuration)" />
+    <Copy SourceFiles="$(BubiBoyNativeCMakeBuildDir)/$(BubiBoyNativeLibraryName)"
+          DestinationFiles="$(BubiBoyNativeRuntimeLibrary)" />
+  </Target>
 
 </Project>

@@ -14,19 +14,19 @@ native library is not present.
 
 ## Build The Native Library
 
-`native/bubi_miniaudio.c` expects `miniaudio.h` to be available in the native compiler include path.
-Do not commit downloaded third-party headers without recording their license and provenance.
-
-Example:
+`native/bubi_miniaudio.c` expects the vendored `native/miniaudio.h` to be available next to the wrapper.
+The `BubiBoy.Audio` project builds the wrapper automatically for the current host RID when
+`native/build/runtimes/<rid>/native` does not already contain the expected library. Set
+`BubiBoyBuildNativeMiniaudio=false` to skip this step.
 
 ```sh
-cmake -S native -B native/build -DCMAKE_C_FLAGS="-I/path/to/miniaudio"
-cmake --build native/build
+dotnet build src/BubiBoy.Audio/BubiBoy.Audio.fsproj
 ```
 
-CI builds the wrapper on macOS, Linux, and Windows before running managed tests. The workflow copies the
-result into `native/build/runtimes/<rid>/native`, then sets `BUBIBOY_EXPECT_NATIVE_AUDIO=1` so the audio
-tests assert that the managed loader can find the native library without requiring a real playback device.
+Cross-RID publishing still needs a native library built for the target RID. CI builds the wrapper on
+macOS, Linux, and Windows before running managed tests. The workflow copies the result into
+`native/build/runtimes/<rid>/native`, then sets `BUBIBOY_EXPECT_NATIVE_AUDIO=1` so the audio tests assert
+that the managed loader can find the native library without requiring a real playback device.
 
 Then place the built library where .NET can load it:
 
@@ -34,12 +34,13 @@ Then place the built library where .NET can load it:
 - Linux: `libbubi_miniaudio.so`
 - Windows: `bubi_miniaudio.dll`
 
-For local development, putting the library next to `BubiBoy.App.dll` or on the platform library search path
-is sufficient.
+For local development, the automatic build places the library under `native/build/runtimes/<rid>/native`
+and copies it through project references into app and test output. Putting the library next to
+`BubiBoy.App.dll` or on the platform library search path is also sufficient.
 
-When `native/build` contains one of the expected library names, `BubiBoy.Audio.fsproj` copies it to its
-own output directory. App/test output may still need a rebuild after the native build so the project
-reference can copy the asset forward.
+When `native/build` contains one of the legacy top-level expected library names, `BubiBoy.Audio.fsproj`
+still copies it to its own output directory. App/test output may still need a rebuild after the native
+build so the project reference can copy the asset forward.
 
 RID-specific output is also supported. Place native libraries under the standard .NET layout and they will
 be copied to build and publish output:
