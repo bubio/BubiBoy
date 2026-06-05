@@ -145,9 +145,11 @@ Deliverable: representative CGB titles boot and render with correct palette beha
 - [x] Improve the macOS app bundle for routine local use: app identity, self-contained `osx-arm64`
   publish output, ad-hoc signing, fixed arbitrary window resizing, and floating-mode layout.
 - [x] Add keyboard input mapping UI and persistent mappings.
-- [ ] Add save-state support with versioned serialization.
-- [ ] Add compatibility notes and a known-issues document.
+- [x] Add controller input mapping UI and persistent mappings.
+- [x] Add save-state support with versioned serialization.
 - [ ] Improve error messages for unsupported ROMs or invalid files.
+- [ ] Improve save-data confidence for routine play, such as clearer save-state/save-RAM status and failure
+  handling.
 
 Progress note:
 
@@ -157,10 +159,14 @@ Progress note:
 - Settings are stored through `BubiBoy.IO.AppSettings` with migration and normalization tests.
 - Keyboard input mappings are configurable from the Avalonia app through a compact list dialog, persisted
   in versioned settings, normalized on load, and default to the original `Z`/`X`/arrow-key layout.
+- Controller input mappings are configurable through the same input mapping dialog and persisted in
+  versioned settings.
+- Save states are available from the app menu, written next to the loaded ROM as `.state` files, and
+  serialized through a versioned core format with ROM identity checks.
 - The Release `osx-arm64` `.app` publish path now updates `Contents/MacOS` directly, publishes
   self-contained output, and ad-hoc signs the bundle so it can be launched with `open`.
-- Remaining Phase 7 work is save states, compatibility/known-issues documentation, and more polished
-  user-facing error messages.
+- Remaining Phase 7 work is focused on wrap-up polish for routine play: clearer user-facing load errors and
+  better confidence around save-data operations.
 
 Deliverable: a usable desktop emulator for routine testing and play.
 
