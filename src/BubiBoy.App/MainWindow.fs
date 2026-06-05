@@ -1,11 +1,8 @@
 namespace BubiBoy.App
 
 open System
-open System.Collections.Generic
 open System.Diagnostics
 open System.Runtime.InteropServices
-open System.Threading
-open System.Threading.Tasks
 open Avalonia
 open Avalonia.Controls
 open Avalonia.Data
@@ -87,8 +84,6 @@ type MainWindow() as this =
 
         let mutable loadedRom: RomFile.LoadedRom option = None
         let mutable currentSession: Emulator.Session option = None
-        let pendingFrames = Queue<Emulator.FrameResult>()
-        let mutable emulationLoop: CancellationTokenSource option = None
         let mutable isRunning = false
         let mutable lastSaveStatus: string option = None
         let performanceCounters = RuntimePerformanceCounters()
@@ -122,13 +117,7 @@ type MainWindow() as this =
         let mutable outputVolume = VolumeControl.gainFromPercent appSettings.VolumePercent
         let sessionGate = obj ()
         let volumeGate = obj ()
-        let inputGate = obj ()
-        // The authoritative set of currently-held buttons is tracked per input source.
-        // The emulation thread reconciles the union into the live session at frame
-        // boundaries, so one source releasing a button cannot clear another source's hold.
-        let mutable desiredKeyboardButtons: Set<Joypad.Button> = Set.empty
-        let mutable desiredControllerButtons: Set<Joypad.Button> = Set.empty
-        let mutable activeControllerId: ControllerInput.GamepadId option = None
+        let inputState = InputStateController()
         let perfTrace = PerfTrace.createFromEnvironment ()
         let audioFramesPerVideoFrame =
             int (Math.Round(float AudioHost.defaultFormat.SampleRate * float Hardware.CyclesPerFrame / float Hardware.DmgClockHz))
@@ -143,6 +132,15 @@ type MainWindow() as this =
         let audioOutput = audioDevice
         let controllerHost = ControllerInput.GamepadHosts.createDefault ()
 
+        let getCurrentSession () =
+            lock sessionGate (fun () -> currentSession)
+
+        let setCurrentSession session =
+            lock sessionGate (fun () -> currentSession <- Some session)
+
+        let applyInput (session: Emulator.Session) =
+            inputState.ApplyInput session
+
         let applyVolume (samples: Apu.Sample[]) =
             let volume = lock volumeGate (fun () -> outputVolume)
 
@@ -154,6 +152,18 @@ type MainWindow() as this =
                     samples[index] <- { Left = sample.Left * volume; Right = sample.Right * volume }
 
             samples
+
+        let emulationRunner =
+            EmulationRunner(
+                audioOutput,
+                applyVolume,
+                applyInput,
+                performanceCounters,
+                traceCounters,
+                perfTrace,
+                maxStepsPerFrame,
+                audioBufferTargetFrames
+            )
 
         let runIndicator = AppChrome.createRunIndicator ()
 
@@ -235,7 +245,7 @@ type MainWindow() as this =
                         |> AppSettings.withKeyboardMapping inputMapping.KeyboardMapping
                         |> AppSettings.withControllerMapping inputMapping.ControllerMapping
 
-                    lock inputGate (fun () -> desiredKeyboardButtons <- Set.empty)
+                    inputState.ResetKeyboard()
                     saveSettings ()
                     showToast "Input mapping saved."
                 | None -> ()
@@ -339,16 +349,7 @@ type MainWindow() as this =
         let stopRunning () =
             isRunning <- false
             viewModel.IsRunning <- false
-            match emulationLoop with
-            | Some cts ->
-                try
-                    cts.Cancel()
-                with
-                | :? ObjectDisposedException -> ()
-
-                emulationLoop <- None
-            | None -> ()
-
+            emulationRunner.StopLoop()
             audioOutput.Stop()
 
         let saveCurrentRam () =
@@ -372,193 +373,24 @@ type MainWindow() as this =
             | Emulator.FrameCompleted -> ()
             | _ -> stopRunning ()
 
-        let enqueueFrameAudio (session: Emulator.Session) =
-            let diagnosticsBefore = audioOutput.Diagnostics()
-            let beforeSteps = session.Steps
-            let beforeCycles = session.TotalCycles
-            let stopwatch = Stopwatch.StartNew()
-            let result = Emulator.runFrame maxStepsPerFrame session
-            stopwatch.Stop()
-            performanceCounters.RecordEmulatedFrame()
-            let writeResult = audioOutput.Enqueue(applyVolume result.AudioSamples)
-            let diagnosticsAfter = audioOutput.Diagnostics()
-            let frame = traceCounters.NextGeneratedFrame()
-
-            PerfTrace.writeFrame
-                perfTrace
-                frame
-                stopwatch.Elapsed.TotalMilliseconds
-                (result.Session.Steps - beforeSteps)
-                (result.Session.TotalCycles - beforeCycles)
-                result.Session.Cpu.Registers.PC
-                result.StopReason
-                writeResult.AcceptedFrames
-                writeResult.DroppedFrames
-                diagnosticsBefore.BufferedFrames
-                diagnosticsAfter.BufferedFrames
-                diagnosticsAfter.UnderrunFrames
-                diagnosticsAfter.DroppedFrames
-
-            lock sessionGate (fun () ->
-                pendingFrames.Enqueue result
-
-                while pendingFrames.Count > 30 do
-                    pendingFrames.Dequeue() |> ignore)
-
-            result
-
-        let fillAudioLead (token: CancellationToken) (session: Emulator.Session) (initialDiagnostics: AudioHost.AudioDiagnostics) =
-            let stopwatch = Stopwatch.StartNew()
-            let mutable current = session
-            let mutable latest = None
-            let mutable diagnostics = initialDiagnostics
-            let mutable framesGenerated = 0
-            let mutable keepGoing = diagnostics.IsRunning
-
-            while
-                keepGoing
-                && not token.IsCancellationRequested
-                && diagnostics.BufferedFrames < audioBufferTargetFrames do
-                let result = enqueueFrameAudio current
-                current <- result.Session
-                latest <- Some result
-                framesGenerated <- framesGenerated + 1
-                keepGoing <- result.StopReason = Emulator.FrameCompleted
-                diagnostics <- audioOutput.Diagnostics()
-
-            stopwatch.Stop()
-
-            if framesGenerated > 0 then
-                performanceCounters.RecordFrameTime(stopwatch.Elapsed.TotalMilliseconds / float framesGenerated)
-
-            current, latest, keepGoing
-
-        // Reconciles the session's joypad with the latest user input. Runs on whichever
-        // thread is about to advance the session, so the session stays single-writer.
-        // Bus.setButton only raises the joypad interrupt on a fresh press, so re-applying
-        // an unchanged set is a no-op and held buttons never re-trigger.
         let pollControllerInput () =
-            let controllers = controllerHost.Poll() |> Seq.toList
-
-            let hasPressedInput (controller: ControllerInput.GamepadSnapshot) =
-                controller.Pressed.Count > 0
-
-            let chooseController activeId =
-                let current =
-                    activeId
-                    |> Option.bind (fun id -> controllers |> List.tryFind (fun controller -> controller.Id = id))
-
-                match current with
-                | Some controller when hasPressedInput controller -> Some controller
-                | Some controller ->
-                    controllers
-                    |> List.tryFind (fun candidate -> candidate.Id <> controller.Id && hasPressedInput candidate)
-                    |> Option.orElse (Some controller)
-                | None ->
-                    controllers
-                    |> List.tryFind hasPressedInput
-                    |> Option.orElseWith (fun () -> controllers |> List.tryHead)
-
-            let activeController = lock inputGate (fun () -> chooseController activeControllerId)
-            let controllerButtons =
-                activeController
-                |> Option.map (ControllerInputAdapter.joypadButtonsForSnapshot appSettings.ControllerMapping)
-                |> Option.defaultValue Set.empty
-
-            let statusMessage =
-                lock inputGate (fun () ->
-                    desiredControllerButtons <- controllerButtons
-
-                    match activeControllerId, activeController with
-                    | None, Some controller ->
-                        activeControllerId <- Some controller.Id
-                        Some $"Controller connected: {controller.Name}"
-                    | Some _, None ->
-                        activeControllerId <- None
-                        Some "Controller disconnected."
-                    | Some previous, Some controller when previous <> controller.Id ->
-                        activeControllerId <- Some controller.Id
-                        Some $"Controller connected: {controller.Name}"
-                    | _ -> None)
-
-            statusMessage |> Option.iter showToast
+            inputState.PollController(controllerHost, appSettings.ControllerMapping)
+            |> Option.iter showToast
 
         controllerPollTimer.Tick.Add(fun _ ->
             try
                 pollControllerInput ()
             with ex ->
                 controllerPollTimer.Stop()
-                lock inputGate (fun () ->
-                    desiredControllerButtons <- Set.empty
-                    activeControllerId <- None)
+                inputState.DisableController()
                 showToast $"Controller input disabled: {ex.Message}")
         controllerPollTimer.Start()
 
-        let applyInput (session: Emulator.Session) =
-            let desired =
-                lock inputGate (fun () -> Set.union desiredKeyboardButtons desiredControllerButtons)
-
-            if desired = (Bus.joypad session.Bus).Pressed then
-                session
-            else
-                let bus =
-                    InputMapping.allJoypadButtons
-                    |> List.fold
-                        (fun bus button ->
-                            let want = Set.contains button desired
-                            let have = Set.contains button (Bus.joypad bus).Pressed
-                            if want = have then bus else Bus.setButton button want bus)
-                        session.Bus
-
-                { session with Bus = bus }
-
         let startEmulationLoop () =
-            let cts = new CancellationTokenSource()
-            let token = cts.Token
-            emulationLoop <- Some cts
-
-            let task =
-                Task.Run(
-                    (fun () ->
-                        while not token.IsCancellationRequested do
-                            let session = lock sessionGate (fun () -> currentSession)
-
-                            match session with
-                            | None -> Thread.Sleep 1
-                            | Some session ->
-                                let diagnostics = audioOutput.Diagnostics()
-
-                                if diagnostics.IsRunning && not token.IsCancellationRequested then
-                                    if diagnostics.BufferedFrames < audioBufferTargetFrames then
-                                        let result = enqueueFrameAudio (applyInput session)
-
-                                        lock sessionGate (fun () -> currentSession <- Some result.Session)
-
-                                        if result.StopReason <> Emulator.FrameCompleted then
-                                            token.ThrowIfCancellationRequested()
-                                            cts.Cancel()
-                                            Dispatcher.UIThread.Post(fun () -> stopRunning ())
-                                    else
-                                        Thread.Sleep 1
-                                elif not token.IsCancellationRequested then
-                                    Thread.Sleep 1
-
-                                if token.IsCancellationRequested then
-                                    token.ThrowIfCancellationRequested()
-                            ),
-                    token
-                )
-
-            task.ContinueWith(fun (_: Task) -> cts.Dispose()) |> ignore
+            emulationRunner.Start(getCurrentSession, setCurrentSession, stopRunning)
 
         let primeAudioBuffer () =
-            let session = lock sessionGate (fun () -> currentSession)
-
-            match session with
-            | None -> ()
-            | Some session ->
-                let current, _, _ = fillAudioLead CancellationToken.None (applyInput session) (audioOutput.Diagnostics())
-                lock sessionGate (fun () -> currentSession <- Some current)
+            emulationRunner.PrimeAudioBuffer(getCurrentSession, setCurrentSession)
 
         let resetCurrentRom () =
             match loadedRom with
@@ -572,8 +404,8 @@ type MainWindow() as this =
                 let outcome = RomWorkflow.reset rom
 
                 lock sessionGate (fun () ->
-                    currentSession <- outcome.Session
-                    pendingFrames.Clear())
+                    currentSession <- outcome.Session)
+                emulationRunner.ClearFrames()
                 updateSessionState ()
 
                 performanceCounters.Reset()
@@ -607,8 +439,8 @@ type MainWindow() as this =
                     loadedRom <- Some outcome.Rom
 
                     lock sessionGate (fun () ->
-                        currentSession <- outcome.Session
-                        pendingFrames.Clear())
+                        currentSession <- outcome.Session)
+                    emulationRunner.ClearFrames()
                     updateSessionState ()
 
                     stopRunning ()
@@ -626,8 +458,8 @@ type MainWindow() as this =
                     loadedRom <- None
 
                     lock sessionGate (fun () ->
-                        currentSession <- None
-                        pendingFrames.Clear())
+                        currentSession <- None)
+                    emulationRunner.ClearFrames()
                     updateSessionState ()
 
                     stopRunning ()
@@ -672,8 +504,8 @@ type MainWindow() as this =
             match outcome.RestoredSession with
             | Some restored ->
                 lock sessionGate (fun () ->
-                    currentSession <- Some restored
-                    pendingFrames.Clear())
+                    currentSession <- Some restored)
+                emulationRunner.ClearFrames()
                 performanceCounters.Reset()
                 presentFrame restored.Framebuffer
                 updateSessionState ()
@@ -740,20 +572,9 @@ type MainWindow() as this =
             if isRunning then
                 let tick, tickDelta = traceCounters.NextDisplayTick(perfTrace)
                 let stopwatch = Stopwatch.StartNew()
-                let mutable queueBefore = 0
-                let mutable queueAfter = 0
-                let frame =
-                    lock sessionGate (fun () ->
-                        queueBefore <- pendingFrames.Count
-                        if pendingFrames.Count > 0 then
-                            let frame = pendingFrames.Dequeue()
-                            queueAfter <- pendingFrames.Count
-                            Some frame
-                        else
-                            queueAfter <- 0
-                            None)
+                let dequeued = emulationRunner.DequeueFrame()
 
-                match frame with
+                match dequeued.Frame with
                 | Some result ->
                     traceCounters.RecordDisplayedFrame() |> ignore
                     performanceCounters.RecordDisplayedFrame()
@@ -770,8 +591,8 @@ type MainWindow() as this =
                     stopwatch.Elapsed.TotalMilliseconds
                     tickDelta
                     traceCounters.DisplayedFrameCount
-                    queueBefore
-                    queueAfter
+                    dequeued.QueueBefore
+                    dequeued.QueueAfter
                     diagnostics.BufferedFrames
                     diagnostics.UnderrunFrames
                     diagnostics.DroppedFrames)
@@ -828,20 +649,7 @@ type MainWindow() as this =
                 command.Execute null
 
         let updateButtonState key pressed =
-            match InputMapping.mapKey appSettings.KeyboardMapping key with
-            | Some button ->
-                // Only record intent here; the emulation thread reconciles it into the
-                // session via applyInput. Recording the latest state (rather than queuing
-                // edits) means a press immediately followed by a release can never be lost.
-                lock inputGate (fun () ->
-                    desiredKeyboardButtons <-
-                        if pressed then
-                            desiredKeyboardButtons.Add button
-                        else
-                            desiredKeyboardButtons.Remove button)
-
-                true
-            | _ -> false
+            inputState.UpdateKeyboardKey(appSettings.KeyboardMapping, key, pressed)
 
         this.KeyDown.Add(fun args ->
             if args.Key = Key.P && args.KeyModifiers = platformModifier then

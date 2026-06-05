@@ -39,6 +39,8 @@
     <Compile Include="RuntimeCounters.fs" />
     <Compile Include="InputMapping.fs" />
     <Compile Include="ControllerInputAdapter.fs" />
+    <Compile Include="InputStateController.fs" />
+    <Compile Include="EmulationRunner.fs" />
     <Compile Include="InputMappingWindow.fs" />
     <Compile Include="RomSession.fs" />
     <Compile Include="RomWorkflow.fs" />
