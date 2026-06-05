@@ -7,7 +7,7 @@ open System.Text.Json
 
 module AppSettings =
     [<Literal>]
-    let CurrentVersion = 3
+    let CurrentVersion = 4
 
     [<Literal>]
     let MaxRecentRoms = 10
@@ -26,6 +26,37 @@ module AppSettings =
           "Start", "Enter" ]
         |> Map.ofList
 
+    let ControllerControlNames =
+        [ "DPadUp"
+          "DPadDown"
+          "DPadLeft"
+          "DPadRight"
+          "South"
+          "East"
+          "West"
+          "North"
+          "Start"
+          "Select"
+          "LeftShoulder"
+          "RightShoulder"
+          "LeftTrigger"
+          "RightTrigger"
+          "LeftStickUp"
+          "LeftStickDown"
+          "LeftStickLeft"
+          "LeftStickRight" ]
+
+    let defaultControllerMapping =
+        [ "Right", "DPadRight"
+          "Left", "DPadLeft"
+          "Up", "DPadUp"
+          "Down", "DPadDown"
+          "A", "South"
+          "B", "East"
+          "Select", "Select"
+          "Start", "Start" ]
+        |> Map.ofList
+
     [<CLIMutable>]
     type SettingsFile =
         { Version: int
@@ -33,21 +64,24 @@ module AppSettings =
           RecentRoms: string[]
           Scale: int
           IsFloating: bool
-          KeyboardMapping: Dictionary<string, string> }
+          KeyboardMapping: Dictionary<string, string>
+          ControllerMapping: Dictionary<string, string> }
 
     type Settings =
         { VolumePercent: int
           RecentRoms: string list
           Scale: int
           IsFloating: bool
-          KeyboardMapping: Map<string, string> }
+          KeyboardMapping: Map<string, string>
+          ControllerMapping: Map<string, string> }
 
     let defaults =
         { VolumePercent = 50
           RecentRoms = []
           Scale = 2
           IsFloating = false
-          KeyboardMapping = defaultKeyboardMapping }
+          KeyboardMapping = defaultKeyboardMapping
+          ControllerMapping = defaultControllerMapping }
 
     let private jsonOptions =
         JsonSerializerOptions(WriteIndented = true)
@@ -102,6 +136,42 @@ module AppSettings =
                     normalized.Add(button, candidate))
             defaultKeyboardMapping
 
+    let private normalizeControllerMapping (mapping: Map<string, string>) =
+        let validControls = HashSet<string>(ControllerControlNames, StringComparer.OrdinalIgnoreCase)
+
+        let input =
+            mapping
+            |> Map.toSeq
+            |> Seq.choose (fun (button, control) ->
+                if String.IsNullOrWhiteSpace button || String.IsNullOrWhiteSpace control then
+                    None
+                else
+                    Some(button.Trim(), control.Trim()))
+            |> Seq.fold
+                (fun (known: Map<string, string>) (button, control) ->
+                    match KeyboardButtonOrder |> List.tryFind (fun knownButton -> String.Equals(knownButton, button, StringComparison.OrdinalIgnoreCase)) with
+                    | Some knownButton -> known.Add(knownButton, control)
+                    | None -> known)
+                Map.empty
+
+        KeyboardButtonOrder
+        |> List.fold
+            (fun normalized button ->
+                let defaultControl = defaultControllerMapping[button]
+                let candidate = input |> Map.tryFind button |> Option.defaultValue defaultControl
+                let controlsAssignedToOtherButtons =
+                    normalized
+                    |> Map.toSeq
+                    |> Seq.filter (fun (existingButton, _) -> existingButton <> button)
+                    |> Seq.map snd
+                    |> fun controls -> HashSet<string>(controls, StringComparer.OrdinalIgnoreCase)
+
+                if validControls.Contains candidate && not (controlsAssignedToOtherButtons.Contains candidate) then
+                    normalized.Add(button, candidate)
+                else
+                    normalized.Add(button, defaultControl))
+            defaultControllerMapping
+
     let normalize settings =
         let recent =
             settings.RecentRoms
@@ -121,7 +191,8 @@ module AppSettings =
           RecentRoms = recent
           Scale = scale
           IsFloating = settings.IsFloating
-          KeyboardMapping = normalizeKeyboardMapping settings.KeyboardMapping }
+          KeyboardMapping = normalizeKeyboardMapping settings.KeyboardMapping
+          ControllerMapping = normalizeControllerMapping settings.ControllerMapping }
 
     let defaultPath () =
         let root =
@@ -151,7 +222,7 @@ module AppSettings =
 
                 if isNull (box file) then
                     raise (InvalidDataException "Settings file is empty.")
-                elif file.Version <> CurrentVersion && file.Version <> 2 && file.Version <> 1 then
+                elif file.Version <> CurrentVersion && file.Version <> 3 && file.Version <> 2 && file.Version <> 1 then
                     raise (InvalidDataException $"Unsupported settings version {file.Version}.")
                 else
                     let keyboardMapping =
@@ -159,6 +230,14 @@ module AppSettings =
                             defaultKeyboardMapping
                         else
                             file.KeyboardMapping
+                            |> Seq.map (fun pair -> pair.Key, pair.Value)
+                            |> Map.ofSeq
+
+                    let controllerMapping =
+                        if file.Version < 4 || isNull file.ControllerMapping then
+                            defaultControllerMapping
+                        else
+                            file.ControllerMapping
                             |> Seq.map (fun pair -> pair.Key, pair.Value)
                             |> Map.ofSeq
 
@@ -179,7 +258,8 @@ module AppSettings =
                                 defaults.IsFloating
                             else
                                 file.IsFloating
-                          KeyboardMapping = keyboardMapping })
+                          KeyboardMapping = keyboardMapping
+                          ControllerMapping = controllerMapping })
 
     let saveToPath path settings =
         if String.IsNullOrWhiteSpace path then
@@ -192,7 +272,8 @@ module AppSettings =
                   RecentRoms = List.toArray normalized.RecentRoms
                   Scale = normalized.Scale
                   IsFloating = normalized.IsFloating
-                  KeyboardMapping = Dictionary<string, string>(normalized.KeyboardMapping) }
+                  KeyboardMapping = Dictionary<string, string>(normalized.KeyboardMapping)
+                  ControllerMapping = Dictionary<string, string>(normalized.ControllerMapping) }
 
             protect (fun () ->
                 let directory = Path.GetDirectoryName path
@@ -224,3 +305,6 @@ module AppSettings =
 
     let withKeyboardMapping mapping settings =
         normalize { settings with KeyboardMapping = mapping }
+
+    let withControllerMapping mapping settings =
+        normalize { settings with ControllerMapping = mapping }

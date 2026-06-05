@@ -1,6 +1,9 @@
 module ControllerInput.Tests.GamepadInputTests
 
 open System
+open BubiBoy.App
+open BubiBoy.Core
+open BubiBoy.IO
 open ControllerInput
 open Xunit
 
@@ -41,6 +44,27 @@ let ``Default GamepadHost can be created and polled`` () =
     use host = GamepadHosts.createDefault ()
 
     Assert.NotNull(host.Poll())
+
+[<Fact>]
+let ``ControllerInputAdapter applies custom controller mapping`` () =
+    let mapping =
+        AppSettings.defaultControllerMapping
+        |> Map.add "A" "West"
+        |> Map.add "B" "North"
+
+    let snapshot =
+        GamepadSnapshot.create
+            (GamepadId.create "one")
+            "Test Pad"
+            [ GamepadControl.West
+              GamepadControl.North
+              GamepadControl.South ]
+
+    let buttons = ControllerInputAdapter.joypadButtonsForSnapshot mapping snapshot
+
+    Assert.Contains(Joypad.A, buttons)
+    Assert.Contains(Joypad.B, buttons)
+    Assert.DoesNotContain(Joypad.Select, buttons)
 
 [<Fact>]
 let ``Linux evdev key codes map to standard gamepad controls`` () =
@@ -85,4 +109,3 @@ let ``Linux evdev trigger axes map above midpoint`` () =
     Assert.Empty(LinuxEvdev.controlsForTriggerAxis LinuxEvdev.ABS_Z released)
     Assert.Equal<GamepadControl list>([ GamepadControl.LeftTrigger ], LinuxEvdev.controlsForTriggerAxis LinuxEvdev.ABS_Z pressed)
     Assert.Equal<GamepadControl list>([ GamepadControl.RightTrigger ], LinuxEvdev.controlsForTriggerAxis LinuxEvdev.ABS_RZ pressed)
-

@@ -400,11 +400,21 @@ type MainWindow() as this =
 
         let openInputMapping () =
             task {
-                let! result = InputMappingWindow.Show(this, appSettings.KeyboardMapping)
+                let! result =
+                    InputMappingWindow.Show(
+                        this,
+                        appSettings.KeyboardMapping,
+                        appSettings.ControllerMapping,
+                        controllerHost
+                    )
 
                 match result with
-                | Some keyboardMapping ->
-                    appSettings <- AppSettings.withKeyboardMapping keyboardMapping appSettings
+                | Some inputMapping ->
+                    appSettings <-
+                        appSettings
+                        |> AppSettings.withKeyboardMapping inputMapping.KeyboardMapping
+                        |> AppSettings.withControllerMapping inputMapping.ControllerMapping
+
                     lock inputGate (fun () -> desiredKeyboardButtons <- Set.empty)
                     saveSettings ()
                     showToast "Input mapping saved."
@@ -649,7 +659,7 @@ type MainWindow() as this =
             let activeController = lock inputGate (fun () -> chooseController activeControllerId)
             let controllerButtons =
                 activeController
-                |> Option.map ControllerInputAdapter.joypadButtonsForSnapshot
+                |> Option.map (ControllerInputAdapter.joypadButtonsForSnapshot appSettings.ControllerMapping)
                 |> Option.defaultValue Set.empty
 
             let statusMessage =

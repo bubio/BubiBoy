@@ -23,7 +23,11 @@ let ``saveToPath writes versioned settings and creates directories`` () =
           KeyboardMapping =
             AppSettings.defaultKeyboardMapping
             |> Map.add "A" "C"
-            |> Map.add "B" "V" }
+            |> Map.add "B" "V"
+          ControllerMapping =
+            AppSettings.defaultControllerMapping
+            |> Map.add "A" "West"
+            |> Map.add "B" "North" }
 
     match AppSettings.saveToPath path settings with
     | Error message -> Assert.Fail message
@@ -39,6 +43,8 @@ let ``saveToPath writes versioned settings and creates directories`` () =
             Assert.True(loaded.IsFloating)
             Assert.Equal("C", loaded.KeyboardMapping["A"])
             Assert.Equal("V", loaded.KeyboardMapping["B"])
+            Assert.Equal("West", loaded.ControllerMapping["A"])
+            Assert.Equal("North", loaded.ControllerMapping["B"])
 
 [<Fact>]
 let ``loadFromPath returns defaults when settings file is missing`` () =
@@ -60,7 +66,13 @@ let ``normalize clamps volume and limits deduplicated recent ROMs`` () =
             |> Map.add "A" "Q"
             |> Map.add "B" "Q"
             |> Map.add "Unknown" "W"
-            |> Map.add "Start" "" }
+            |> Map.add "Start" ""
+          ControllerMapping =
+            AppSettings.defaultControllerMapping
+            |> Map.add "A" "West"
+            |> Map.add "B" "West"
+            |> Map.add "Select" "NotAControl"
+            |> Map.add "Unknown" "North" }
 
     let settings = AppSettings.normalize raw
 
@@ -73,6 +85,10 @@ let ``normalize clamps volume and limits deduplicated recent ROMs`` () =
     Assert.Equal("X", settings.KeyboardMapping["B"])
     Assert.Equal("Enter", settings.KeyboardMapping["Start"])
     Assert.False(settings.KeyboardMapping.ContainsKey "Unknown")
+    Assert.Equal("West", settings.ControllerMapping["A"])
+    Assert.Equal("East", settings.ControllerMapping["B"])
+    Assert.Equal("Select", settings.ControllerMapping["Select"])
+    Assert.False(settings.ControllerMapping.ContainsKey "Unknown")
 
 [<Fact>]
 let ``rememberRom moves existing ROM to front`` () =
@@ -84,7 +100,8 @@ let ``rememberRom moves existing ROM to front`` () =
           RecentRoms = [ one; two ]
           Scale = 2
           IsFloating = false
-          KeyboardMapping = AppSettings.defaultKeyboardMapping }
+          KeyboardMapping = AppSettings.defaultKeyboardMapping
+          ControllerMapping = AppSettings.defaultControllerMapping }
 
     let settings = raw |> AppSettings.rememberRom two
 
@@ -111,6 +128,14 @@ let ``withKeyboardMapping persists normalized keyboard mapping`` () =
     Assert.Equal("C", settings.KeyboardMapping["A"])
 
 [<Fact>]
+let ``withControllerMapping persists normalized controller mapping`` () =
+    let settings =
+        AppSettings.defaults
+        |> AppSettings.withControllerMapping (AppSettings.defaultControllerMapping |> Map.add "A" "West")
+
+    Assert.Equal("West", settings.ControllerMapping["A"])
+
+[<Fact>]
 let ``loadFromPath migrates version 1 settings with default scale floating mode and keyboard mapping`` () =
     let path = tempPath "settings.json"
     let oldRom = tempPath "old.gb"
@@ -125,6 +150,7 @@ let ``loadFromPath migrates version 1 settings with default scale floating mode 
         Assert.Equal(2, settings.Scale)
         Assert.False(settings.IsFloating)
         Assert.Equal<Map<string, string>>(AppSettings.defaultKeyboardMapping, settings.KeyboardMapping)
+        Assert.Equal<Map<string, string>>(AppSettings.defaultControllerMapping, settings.ControllerMapping)
 
 [<Fact>]
 let ``loadFromPath migrates version 2 settings with default keyboard mapping`` () =
@@ -141,6 +167,24 @@ let ``loadFromPath migrates version 2 settings with default keyboard mapping`` (
         Assert.Equal(4, settings.Scale)
         Assert.True(settings.IsFloating)
         Assert.Equal<Map<string, string>>(AppSettings.defaultKeyboardMapping, settings.KeyboardMapping)
+        Assert.Equal<Map<string, string>>(AppSettings.defaultControllerMapping, settings.ControllerMapping)
+
+[<Fact>]
+let ``loadFromPath migrates version 3 settings with default controller mapping`` () =
+    let path = tempPath "settings.json"
+    let oldRom = tempPath "old.gb"
+    Directory.CreateDirectory(Path.GetDirectoryName path) |> ignore
+    File.WriteAllText(path, $"""{{"Version":3,"VolumePercent":25,"RecentRoms":["{oldRom.Replace("\\", "\\\\")}"],"Scale":4,"IsFloating":true,"KeyboardMapping":{{"A":"C"}}}}""")
+
+    match AppSettings.loadFromPath path with
+    | Error message -> Assert.Fail message
+    | Ok settings ->
+        Assert.Equal(25, settings.VolumePercent)
+        Assert.Equal<string list>([ fullPath oldRom ], settings.RecentRoms)
+        Assert.Equal(4, settings.Scale)
+        Assert.True(settings.IsFloating)
+        Assert.Equal("C", settings.KeyboardMapping["A"])
+        Assert.Equal<Map<string, string>>(AppSettings.defaultControllerMapping, settings.ControllerMapping)
 
 [<Fact>]
 let ``loadFromPath reports unsupported settings version`` () =

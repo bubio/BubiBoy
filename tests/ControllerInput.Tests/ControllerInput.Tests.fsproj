@@ -17,6 +17,9 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\BubiBoy.App\BubiBoy.App.fsproj" />
+    <ProjectReference Include="..\..\src\BubiBoy.Core\BubiBoy.Core.fsproj" />
+    <ProjectReference Include="..\..\src\BubiBoy.IO\BubiBoy.IO.fsproj" />
     <ProjectReference Include="..\..\src\ControllerInput\ControllerInput.fsproj" />
   </ItemGroup>
 
