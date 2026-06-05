@@ -91,16 +91,8 @@ type MainWindow() as this =
         let mutable emulationLoop: CancellationTokenSource option = None
         let mutable isRunning = false
         let mutable lastSaveStatus: string option = None
-        let mutable displayedFrames = 0
-        let mutable emulatedFrames = 0
-        let mutable measuredDisplayFps = 0.0
-        let mutable measuredEmulationFps = 0.0
-        let mutable lastFrameMilliseconds = 0.0
-        let mutable lastFpsSample = DateTime.UtcNow
-        let mutable generatedFrameCounter = 0
-        let mutable displayTickCounter = 0
-        let mutable displayedFrameCounter = 0
-        let mutable lastDisplayTickMs = 0.0
+        let performanceCounters = RuntimePerformanceCounters()
+        let traceCounters = RuntimeTraceCounters()
         let settingsPath = AppSettings.defaultPath ()
         let loadedSettings, settingsLoadError =
             match AppSettings.loadFromPath settingsPath with
@@ -129,7 +121,6 @@ type MainWindow() as this =
         let mutable isFloating = false
         let mutable outputVolume = VolumeControl.gainFromPercent appSettings.VolumePercent
         let sessionGate = obj ()
-        let perfGate = obj ()
         let volumeGate = obj ()
         let inputGate = obj ()
         // The authoritative set of currently-held buttons is tracked per input source.
@@ -366,41 +357,8 @@ type MainWindow() as this =
             lastSaveStatus <- outcome.LastSaveStatus
             outcome.ToastMessage |> Option.iter showToast
 
-        let recordEmulatedFrame () =
-            lock perfGate (fun () -> emulatedFrames <- emulatedFrames + 1)
-
-        let resetPerformance () =
-            lock perfGate (fun () ->
-                displayedFrames <- 0
-                emulatedFrames <- 0
-                measuredDisplayFps <- 0.0
-                measuredEmulationFps <- 0.0
-                lastFrameMilliseconds <- 0.0
-                lastFpsSample <- DateTime.UtcNow)
-
-        let recordDisplayedFrame () =
-            lock perfGate (fun () ->
-                displayedFrames <- displayedFrames + 1
-
-                let now = DateTime.UtcNow
-                let elapsed = now - lastFpsSample
-
-                if elapsed.TotalSeconds >= 1.0 then
-                    measuredDisplayFps <- float displayedFrames / elapsed.TotalSeconds
-                    measuredEmulationFps <- float emulatedFrames / elapsed.TotalSeconds
-                    displayedFrames <- 0
-                    emulatedFrames <- 0
-                    lastFpsSample <- now)
-
-        let recordFrameTime elapsedMilliseconds =
-            lock perfGate (fun () -> lastFrameMilliseconds <- elapsedMilliseconds)
-
-        let performanceSnapshot () =
-            lock perfGate (fun () -> measuredDisplayFps, measuredEmulationFps, lastFrameMilliseconds)
-
         let formatRuntimeDiagnostics () =
-            let displayFps, emulationFps, frameMilliseconds = performanceSnapshot ()
-            $"{DebugDisplay.formatPerformance displayFps emulationFps frameMilliseconds}\n{DebugDisplay.formatAudioDiagnostics (audioOutput.Diagnostics())}"
+            performanceCounters.FormatDiagnostics(audioOutput.Diagnostics())
 
         let updateFrame (result: Emulator.FrameResult) =
             presentFrame result.Framebuffer
@@ -421,10 +379,10 @@ type MainWindow() as this =
             let stopwatch = Stopwatch.StartNew()
             let result = Emulator.runFrame maxStepsPerFrame session
             stopwatch.Stop()
-            recordEmulatedFrame ()
+            performanceCounters.RecordEmulatedFrame()
             let writeResult = audioOutput.Enqueue(applyVolume result.AudioSamples)
             let diagnosticsAfter = audioOutput.Diagnostics()
-            let frame = Interlocked.Increment(&generatedFrameCounter)
+            let frame = traceCounters.NextGeneratedFrame()
 
             PerfTrace.writeFrame
                 perfTrace
@@ -471,7 +429,7 @@ type MainWindow() as this =
             stopwatch.Stop()
 
             if framesGenerated > 0 then
-                recordFrameTime(stopwatch.Elapsed.TotalMilliseconds / float framesGenerated)
+                performanceCounters.RecordFrameTime(stopwatch.Elapsed.TotalMilliseconds / float framesGenerated)
 
             current, latest, keepGoing
 
@@ -618,7 +576,7 @@ type MainWindow() as this =
                     pendingFrames.Clear())
                 updateSessionState ()
 
-                resetPerformance ()
+                performanceCounters.Reset()
                 presentFrame (Video.blankFrame ())
                 showToast outcome.ToastMessage
                 viewModel.DebugDetails <- outcome.DebugDetails
@@ -626,7 +584,7 @@ type MainWindow() as this =
                 if wasRunning && outcome.Session.IsSome then
                     isRunning <- true
                     viewModel.IsRunning <- true
-                    resetPerformance ()
+                    performanceCounters.Reset()
                     audioOutput.Start()
                     primeAudioBuffer ()
                     startEmulationLoop ()
@@ -681,7 +639,7 @@ type MainWindow() as this =
             if wasRunning then
                 isRunning <- true
                 viewModel.IsRunning <- true
-                resetPerformance ()
+                performanceCounters.Reset()
                 audioOutput.Start()
                 primeAudioBuffer ()
                 startEmulationLoop ()
@@ -716,7 +674,7 @@ type MainWindow() as this =
                 lock sessionGate (fun () ->
                     currentSession <- Some restored
                     pendingFrames.Clear())
-                resetPerformance ()
+                performanceCounters.Reset()
                 presentFrame restored.Framebuffer
                 updateSessionState ()
             | None -> ()
@@ -736,7 +694,7 @@ type MainWindow() as this =
                 viewModel.IsRunning <- isRunning
 
                 if isRunning then
-                    resetPerformance ()
+                    performanceCounters.Reset()
                     audioOutput.Start()
                     primeAudioBuffer ()
                     startEmulationLoop ()
@@ -780,20 +738,7 @@ type MainWindow() as this =
         frameTimer.Interval <- TimeSpan.FromMilliseconds(1000.0 * float Hardware.CyclesPerFrame / float Hardware.DmgClockHz)
         frameTimer.Tick.Add(fun _ ->
             if isRunning then
-                let tick = displayTickCounter + 1
-                displayTickCounter <- tick
-                let tickNow =
-                    match perfTrace with
-                    | None -> 0.0
-                    | Some trace -> trace.Stopwatch.Elapsed.TotalMilliseconds
-
-                let tickDelta =
-                    if lastDisplayTickMs = 0.0 then
-                        0.0
-                    else
-                        tickNow - lastDisplayTickMs
-
-                lastDisplayTickMs <- tickNow
+                let tick, tickDelta = traceCounters.NextDisplayTick(perfTrace)
                 let stopwatch = Stopwatch.StartNew()
                 let mutable queueBefore = 0
                 let mutable queueAfter = 0
@@ -810,8 +755,8 @@ type MainWindow() as this =
 
                 match frame with
                 | Some result ->
-                    displayedFrameCounter <- displayedFrameCounter + 1
-                    recordDisplayedFrame ()
+                    traceCounters.RecordDisplayedFrame() |> ignore
+                    performanceCounters.RecordDisplayedFrame()
                     updateFrame result
                 | None ->
                     viewModel.DebugDetails <- formatRuntimeDiagnostics ()
@@ -824,7 +769,7 @@ type MainWindow() as this =
                     tick
                     stopwatch.Elapsed.TotalMilliseconds
                     tickDelta
-                    displayedFrameCounter
+                    traceCounters.DisplayedFrameCount
                     queueBefore
                     queueAfter
                     diagnostics.BufferedFrames
