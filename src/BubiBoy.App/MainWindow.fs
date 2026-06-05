@@ -51,6 +51,10 @@ type MainWindow() as this =
                 Foreground = SolidColorBrush(Color.Parse("#4F5F72"))
             )
 
+        let normalVideoHostBackground = SolidColorBrush(Color.Parse("#F4F5F7")) :> IBrush
+        let fullscreenVideoHostBackground = Brushes.Black :> IBrush
+        let mutable applyVideoHostBackground = fun () -> ()
+
         let framebuffer =
             Border(
                 Width = float Hardware.ScreenWidth * 2.0,
@@ -455,12 +459,30 @@ type MainWindow() as this =
         let applySelectedScale resizeWindow =
             let videoWidth = float Hardware.ScreenWidth * float selectedScale
             let videoHeight = float Hardware.ScreenHeight * float selectedScale
-            framebuffer.Width <- videoWidth
-            framebuffer.Height <- videoHeight
-            framebufferImage.Width <- videoWidth
-            framebufferImage.Height <- videoHeight
+            let isFullScreen = this.WindowState = WindowState.FullScreen
 
-            if resizeWindow && this.WindowState <> WindowState.FullScreen then
+            if isFullScreen then
+                framebuffer.Width <- Double.NaN
+                framebuffer.Height <- Double.NaN
+                framebuffer.HorizontalAlignment <- HorizontalAlignment.Stretch
+                framebuffer.VerticalAlignment <- VerticalAlignment.Stretch
+                framebufferImage.Width <- Double.NaN
+                framebufferImage.Height <- Double.NaN
+                framebufferImage.HorizontalAlignment <- HorizontalAlignment.Stretch
+                framebufferImage.VerticalAlignment <- VerticalAlignment.Stretch
+            else
+                framebuffer.Width <- videoWidth
+                framebuffer.Height <- videoHeight
+                framebuffer.HorizontalAlignment <- HorizontalAlignment.Center
+                framebuffer.VerticalAlignment <- VerticalAlignment.Center
+                framebufferImage.Width <- videoWidth
+                framebufferImage.Height <- videoHeight
+                framebufferImage.HorizontalAlignment <- HorizontalAlignment.Center
+                framebufferImage.VerticalAlignment <- VerticalAlignment.Center
+
+            applyVideoHostBackground ()
+
+            if resizeWindow && not isFullScreen then
                 let menuHeight =
                     if isMacOS || isFloating then 0.0 else 28.0
 
@@ -1169,7 +1191,9 @@ type MainWindow() as this =
                 rebuildRecentMenus ()
                 updateMenuState ()
 
-        this.GetObservable(Window.WindowStateProperty).Subscribe(fun _ -> refreshMenus ())
+        this.GetObservable(Window.WindowStateProperty).Subscribe(fun _ ->
+            applySelectedScale false
+            refreshMenus ())
         |> ignore
 
         let nativeMenu = NativeMenu()
@@ -1346,7 +1370,15 @@ type MainWindow() as this =
         updateContentRows ()
 
         let videoHost =
-            Grid(Background = SolidColorBrush(Color.Parse("#F4F5F7")))
+            Grid(Background = normalVideoHostBackground)
+
+        applyVideoHostBackground <-
+            fun () ->
+                videoHost.Background <-
+                    if this.WindowState = WindowState.FullScreen then
+                        fullscreenVideoHostBackground
+                    else
+                        normalVideoHostBackground
 
         videoHost.Children.Add framebuffer |> ignore
         Grid.SetRow(menuBar, 0)
