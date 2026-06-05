@@ -5,6 +5,27 @@ open System.IO
 open BubiBoy.Core
 
 module SaveStateFile =
+    let private writeBytesWithBackup (path: string) (bytes: byte[]) =
+        let directory = Path.GetDirectoryName path
+
+        if not (String.IsNullOrWhiteSpace directory) then
+            Directory.CreateDirectory directory |> ignore
+
+        let tempPath = $"{path}.tmp-{Guid.NewGuid():N}"
+        File.WriteAllBytes(tempPath, bytes)
+
+        try
+            if File.Exists path then
+                File.Copy(path, $"{path}.bak", true)
+
+            File.Move(tempPath, path, true)
+        with
+        | ex ->
+            if File.Exists tempPath then
+                File.Delete tempPath
+
+            raise ex
+
     let defaultStatePath romPath =
         if String.IsNullOrWhiteSpace romPath then
             Error "ROM path is empty."
@@ -22,15 +43,10 @@ module SaveStateFile =
             Error "Save state path is empty."
         else
             try
-                let directory = Path.GetDirectoryName path
-
-                if not (String.IsNullOrWhiteSpace directory) then
-                    Directory.CreateDirectory directory |> ignore
-
                 session
                 |> SaveState.capture
                 |> SaveState.encode
-                |> fun bytes -> File.WriteAllBytes(path, bytes)
+                |> writeBytesWithBackup path
 
                 Ok()
             with

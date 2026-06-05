@@ -59,6 +59,30 @@ let ``saveToPath writes battery backed RAM and creates directories`` () =
         Assert.Equal(0x42uy, File.ReadAllBytes(savePath)[0])
 
 [<Fact>]
+let ``saveToPath backs up previous save RAM before overwriting`` () =
+    let savePath = tempPath "game.sav"
+
+    let first =
+        makeCartridge ()
+        |> CartridgeMemory.writeByte 0x0000us 0x0Auy
+        |> CartridgeMemory.writeByte 0xA000us 0x11uy
+
+    let second =
+        makeCartridge ()
+        |> CartridgeMemory.writeByte 0x0000us 0x0Auy
+        |> CartridgeMemory.writeByte 0xA000us 0x42uy
+
+    match SaveRam.saveToPath savePath first with
+    | Error message -> Assert.Fail message
+    | Ok _ ->
+        match SaveRam.saveToPath savePath second with
+        | Error message -> Assert.Fail message
+        | Ok wrote ->
+            Assert.True wrote
+            Assert.Equal(0x42uy, File.ReadAllBytes(savePath)[0])
+            Assert.Equal(0x11uy, File.ReadAllBytes($"{savePath}.bak")[0])
+
+[<Fact>]
 let ``saveToPath skips cartridges without battery backed RAM`` () =
     let rom = makeRom 0x02uy 0x04uy 0x03uy 32
     let savePath = tempPath "game.sav"

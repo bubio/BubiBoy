@@ -779,14 +779,14 @@ type MainWindow() as this =
                 let resetMessage =
                     match sessionResult with
                     | Ok _ -> $"Reset {IO.Path.GetFileName rom.Path}"
-                    | Error message -> $"Could not reset ROM: {message}"
+                    | Error message -> $"Could not reset ROM: {UserMessage.formatRomStartError message}"
 
                 showToast resetMessage
 
                 viewModel.DebugDetails <-
                     match sessionResult with
                     | Ok _ -> "Reset complete."
-                    | Error message -> message
+                    | Error message -> UserMessage.formatRomStartError message
 
                 if wasRunning && session.IsSome then
                     isRunning <- true
@@ -830,7 +830,7 @@ type MainWindow() as this =
                         match sessionResult, lastSaveStatus with
                         | Ok _, Some saveMessage -> $"Loaded {IO.Path.GetFileName loaded.Path}  {saveMessage}"
                         | Ok _, None -> $"Loaded {IO.Path.GetFileName loaded.Path}"
-                        | Error message, _ -> $"Could not start ROM: {message}"
+                        | Error message, _ -> $"Could not start ROM: {UserMessage.formatRomStartError message}"
 
                     showToast loadMessage
 
@@ -840,7 +840,7 @@ type MainWindow() as this =
                     viewModel.DebugDetails <-
                         match sessionResult with
                         | Ok _ -> "Ready to run frames."
-                        | Error message -> message
+                        | Error message -> UserMessage.formatRomStartError message
                 | Error message ->
                     loadedRom <- None
                     lock sessionGate (fun () ->
@@ -849,8 +849,9 @@ type MainWindow() as this =
                     updateSessionState ()
 
                     stopRunning ()
-                    showToast $"Could not load ROM: {message}"
-                    viewModel.RomDetails <- message
+                    let displayMessage = UserMessage.formatRomLoadError message
+                    showToast $"Could not load ROM: {displayMessage}"
+                    viewModel.RomDetails <- displayMessage
                     viewModel.DebugDetails <- "Frame stepping is available after loading a ROM."
 
         let resumeAfterStateOperation wasRunning =
@@ -880,8 +881,9 @@ type MainWindow() as this =
                     showToast "Save state written."
                     viewModel.DebugDetails <- "Save state written."
                 | Error message ->
-                    showToast $"Save state error: {message}"
-                    viewModel.DebugDetails <- message
+                    let displayMessage = UserMessage.formatSaveStateError message
+                    showToast $"Save state error: {displayMessage}"
+                    viewModel.DebugDetails <- displayMessage
             | _ ->
                 showToast "Load a ROM before saving state."
 
@@ -906,8 +908,9 @@ type MainWindow() as this =
                     viewModel.DebugDetails <- "Save state loaded."
                     updateSessionState ()
                 | Error message ->
-                    showToast $"Save state error: {message}"
-                    viewModel.DebugDetails <- message
+                    let displayMessage = UserMessage.formatSaveStateError message
+                    showToast $"Save state error: {displayMessage}"
+                    viewModel.DebugDetails <- displayMessage
             | _ ->
                 showToast "Load a ROM before loading state."
 

@@ -28,6 +28,27 @@ module SaveRam =
         | :? UnauthorizedAccessException as ex -> Error ex.Message
         | :? System.Security.SecurityException as ex -> Error ex.Message
 
+    let private writeBytesWithBackup (path: string) (bytes: byte[]) =
+        let directory = Path.GetDirectoryName path
+
+        if not (String.IsNullOrWhiteSpace directory) then
+            Directory.CreateDirectory directory |> ignore
+
+        let tempPath = $"{path}.tmp-{Guid.NewGuid():N}"
+        File.WriteAllBytes(tempPath, bytes)
+
+        try
+            if File.Exists path then
+                File.Copy(path, $"{path}.bak", true)
+
+            File.Move(tempPath, path, true)
+        with
+        | ex ->
+            if File.Exists tempPath then
+                File.Delete tempPath
+
+            raise ex
+
     let private encodeRtc (rtc: CartridgeMemory.RtcSave) =
         let bytes = Array.zeroCreate<byte> 18
         Array.Copy(rtcMagic, 0, bytes, 0, rtcMagic.Length)
@@ -104,13 +125,8 @@ module SaveRam =
             match CartridgeMemory.exportSaveRam image with
             | None -> Ok false
             | Some saveRam ->
-                let directory = Path.GetDirectoryName savePath
-
                 protect (fun () ->
-                    if not (String.IsNullOrWhiteSpace directory) then
-                        Directory.CreateDirectory directory |> ignore
-
-                    File.WriteAllBytes(savePath, saveRam)
+                    writeBytesWithBackup savePath saveRam
                     true)
 
     let saveRtcToPath rtcPath image =
@@ -120,13 +136,8 @@ module SaveRam =
             match CartridgeMemory.exportRtc image with
             | None -> Ok false
             | Some rtc ->
-                let directory = Path.GetDirectoryName rtcPath
-
                 protect (fun () ->
-                    if not (String.IsNullOrWhiteSpace directory) then
-                        Directory.CreateDirectory directory |> ignore
-
-                    File.WriteAllBytes(rtcPath, encodeRtc rtc)
+                    writeBytesWithBackup rtcPath (encodeRtc rtc)
                     true)
 
     let saveForRom romPath image =

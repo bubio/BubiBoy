@@ -59,6 +59,63 @@ module DebugDisplay =
     let formatPerformance displayFps emulationFps frameMilliseconds =
         $"FPS: display {displayFps:F1}    emu {emulationFps:F1}    frame {frameMilliseconds:F2} ms"
 
+module UserMessage =
+    let private contains (text: string) (message: string) =
+        if isNull message then
+            false
+        else
+            message.IndexOf(text, StringComparison.OrdinalIgnoreCase) >= 0
+
+    let private withDetails message text =
+        if String.IsNullOrWhiteSpace message then
+            text
+        else
+            $"{text}\n\nDetails: {message}"
+
+    let formatRomLoadError message =
+        if contains "ROM path is empty" message then
+            "No ROM file was selected."
+        elif contains "AppleDouble" message then
+            "The selected file is macOS metadata, not a Game Boy ROM. Choose the matching file without the '._' prefix."
+        elif contains "Unsupported ROM file extension" message then
+            withDetails message "BubiBoy opens .gb and .gbc files. Choose a Game Boy or Game Boy Color ROM file."
+        elif contains "does not exist" message then
+            withDetails message "The selected ROM file no longer exists. It may have been moved or removed."
+        elif contains "too small to contain a Game Boy cartridge header" message then
+            withDetails message "This file is too small to be a valid Game Boy ROM."
+        elif contains "Unsupported ROM size code" message then
+            withDetails message "The ROM header declares a size value BubiBoy does not support yet."
+        elif contains "Unsupported RAM size code" message then
+            withDetails message "The ROM header declares a save-RAM size value BubiBoy does not support yet."
+        elif contains "smaller than the size declared" message then
+            withDetails message "The ROM appears to be truncated or incomplete."
+        else
+            message
+
+    let formatRomStartError message =
+        if contains "Save RAM size mismatch" message then
+            withDetails message "The existing .sav file does not match this ROM. Move or rename the .sav file next to the ROM, then try again."
+        elif contains "RTC data has an unsupported" message then
+            withDetails message "The existing .rtc file could not be used. Move or rename the .rtc file next to the ROM, then try again."
+        elif contains "Cartridge does not have an MBC3 RTC" message then
+            withDetails message "The existing .rtc file is for a cartridge with a real-time clock, but this ROM does not use one."
+        else
+            formatRomLoadError message
+
+    let formatSaveStateError message =
+        if contains "does not exist" message then
+            "No save state exists yet for this ROM. Use Save State before loading one."
+        elif contains "identity does not match" message then
+            withDetails message "This save state belongs to a different ROM."
+        elif contains "Unsupported save state version" message then
+            withDetails message "This save state was written by an incompatible BubiBoy version."
+        elif contains "not a BubiBoy save state" message then
+            withDetails message "The .state file next to this ROM is not a BubiBoy save state."
+        elif contains "truncated" message || contains "Invalid save state data" message then
+            withDetails message "The save state file is corrupt or incomplete."
+        else
+            message
+
 module FramebufferBitmap =
     let private copyToBgraBytes (pixels: uint32[]) (bytes: byte[]) : unit =
         for index in 0 .. pixels.Length - 1 do

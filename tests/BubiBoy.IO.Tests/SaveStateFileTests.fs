@@ -49,6 +49,26 @@ let ``saveToPath writes state and loadFromPath restores it`` () =
             Assert.Equal(session.TotalCycles, restored.TotalCycles)
 
 [<Fact>]
+let ``saveToPath backs up previous state before overwriting`` () =
+    let path = tempPath "game.state"
+    let first = createSession () |> Emulator.run 1 |> fun result -> result.Session
+    let second = first |> Emulator.run 1 |> fun result -> result.Session
+
+    match SaveStateFile.saveToPath path first with
+    | Error message -> failwith message
+    | Ok() ->
+        match SaveStateFile.saveToPath path second with
+        | Error message -> failwith message
+        | Ok() ->
+            Assert.True(File.Exists $"{path}.bak")
+
+            match SaveStateFile.loadFromPath $"{path}.bak" (createSession ()) with
+            | Error message -> failwith message
+            | Ok restored ->
+                Assert.Equal(first.Cpu, restored.Cpu)
+                Assert.Equal(first.TotalCycles, restored.TotalCycles)
+
+[<Fact>]
 let ``loadFromPath reports corrupt save state`` () =
     let path = tempPath "corrupt.state"
     Directory.CreateDirectory(Path.GetDirectoryName path) |> ignore
