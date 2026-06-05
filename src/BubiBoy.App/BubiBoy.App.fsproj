@@ -40,6 +40,7 @@
     <Compile Include="ControllerInputAdapter.fs" />
     <Compile Include="InputMappingWindow.fs" />
     <Compile Include="RomSession.fs" />
+    <Compile Include="RomWorkflow.fs" />
     <Compile Include="MainWindowViewModel.fs" />
     <Compile Include="VolumeControl.fs" />
     <Compile Include="AppChrome.fs" />

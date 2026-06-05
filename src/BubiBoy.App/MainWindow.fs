@@ -362,18 +362,9 @@ type MainWindow() as this =
 
         let saveCurrentRam () =
             let session = lock sessionGate (fun () -> currentSession)
-
-            match loadedRom, session with
-            | Some rom, Some session ->
-                match SaveRam.saveForRom rom.Path (Bus.cartridge session.Bus) with
-                | Ok true ->
-                    lastSaveStatus <- Some "Save RAM written."
-                    showToast "Save RAM written."
-                | Ok false -> lastSaveStatus <- None
-                | Error message ->
-                    lastSaveStatus <- Some $"Save RAM error: {message}"
-                    showToast $"Save RAM error: {message}"
-            | _ -> ()
+            let outcome = RomWorkflow.saveRam loadedRom session
+            lastSaveStatus <- outcome.LastSaveStatus
+            outcome.ToastMessage |> Option.iter showToast
 
         let recordEmulatedFrame () =
             lock perfGate (fun () -> emulatedFrames <- emulatedFrames + 1)
@@ -620,29 +611,19 @@ type MainWindow() as this =
                 saveCurrentRam ()
                 stopRunning ()
 
-                let sessionResult = RomSession.createForRom rom
-                let session = sessionResult |> Result.toOption
+                let outcome = RomWorkflow.reset rom
 
                 lock sessionGate (fun () ->
-                    currentSession <- session
+                    currentSession <- outcome.Session
                     pendingFrames.Clear())
                 updateSessionState ()
 
                 resetPerformance ()
                 presentFrame (Video.blankFrame ())
-                let resetMessage =
-                    match sessionResult with
-                    | Ok _ -> $"Reset {IO.Path.GetFileName rom.Path}"
-                    | Error message -> $"Could not reset ROM: {UserMessage.formatRomStartError message}"
+                showToast outcome.ToastMessage
+                viewModel.DebugDetails <- outcome.DebugDetails
 
-                showToast resetMessage
-
-                viewModel.DebugDetails <-
-                    match sessionResult with
-                    | Ok _ -> "Reset complete."
-                    | Error message -> UserMessage.formatRomStartError message
-
-                if wasRunning && session.IsSome then
+                if wasRunning && outcome.Session.IsSome then
                     isRunning <- true
                     viewModel.IsRunning <- true
                     resetPerformance ()
@@ -661,14 +642,14 @@ type MainWindow() as this =
             else
                 saveCurrentRam ()
 
-                match RomFile.load path with
-                | Ok loaded ->
-                    let header = loaded.Header
-                    let sessionResult = RomSession.createForRom loaded
-                    let session = sessionResult |> Result.toOption
-                    loadedRom <- Some loaded
+                match RomWorkflow.load path lastSaveStatus with
+                | RomWorkflow.EmptyPath ->
+                    showToast "Could not open the selected ROM path."
+                | RomWorkflow.Loaded outcome ->
+                    loadedRom <- Some outcome.Rom
+
                     lock sessionGate (fun () ->
-                        currentSession <- session
+                        currentSession <- outcome.Session
                         pendingFrames.Clear())
                     updateSessionState ()
 
@@ -676,37 +657,25 @@ type MainWindow() as this =
                     presentFrame (Video.blankFrame ())
 
                     if rememberRecent then
-                        appSettings <- AppSettings.rememberRom loaded.Path appSettings
+                        appSettings <- AppSettings.rememberRom outcome.Rom.Path appSettings
                         refreshMenus ()
                         saveSettings ()
 
-                    let loadMessage =
-                        match sessionResult, lastSaveStatus with
-                        | Ok _, Some saveMessage -> $"Loaded {IO.Path.GetFileName loaded.Path}  {saveMessage}"
-                        | Ok _, None -> $"Loaded {IO.Path.GetFileName loaded.Path}"
-                        | Error message, _ -> $"Could not start ROM: {UserMessage.formatRomStartError message}"
-
-                    showToast loadMessage
-
-                    viewModel.RomDetails <-
-                        $"Title: {header.Title}\nCGB: {header.CgbSupport}\nSGB: {header.SgbSupport}\nCartridge: {header.CartridgeKind} (0x{header.CartridgeTypeCode:X2})\nROM: {HeaderDisplay.formatRomSize header.RomSizeCode} (0x{header.RomSizeCode:X2})\nRAM: {HeaderDisplay.formatRamSize header.RamSizeCode} (0x{header.RamSizeCode:X2})"
-
-                    viewModel.DebugDetails <-
-                        match sessionResult with
-                        | Ok _ -> "Ready to run frames."
-                        | Error message -> UserMessage.formatRomStartError message
-                | Error message ->
+                    showToast outcome.ToastMessage
+                    viewModel.RomDetails <- outcome.RomDetails
+                    viewModel.DebugDetails <- outcome.DebugDetails
+                | RomWorkflow.LoadFailed(toastMessage, romDetails, debugDetails) ->
                     loadedRom <- None
+
                     lock sessionGate (fun () ->
                         currentSession <- None
                         pendingFrames.Clear())
                     updateSessionState ()
 
                     stopRunning ()
-                    let displayMessage = UserMessage.formatRomLoadError message
-                    showToast $"Could not load ROM: {displayMessage}"
-                    viewModel.RomDetails <- displayMessage
-                    viewModel.DebugDetails <- "Frame stepping is available after loading a ROM."
+                    showToast toastMessage
+                    viewModel.RomDetails <- romDetails
+                    viewModel.DebugDetails <- debugDetails
 
         let resumeAfterStateOperation wasRunning =
             if wasRunning then
@@ -727,19 +696,11 @@ type MainWindow() as this =
             stopRunning ()
 
             let session = lock sessionGate (fun () -> currentSession)
+            let outcome = RomWorkflow.saveState loadedRom session
+            showToast outcome.ToastMessage
 
-            match loadedRom, session with
-            | Some rom, Some session ->
-                match SaveStateFile.saveForRom rom.Path session with
-                | Ok() ->
-                    showToast "Save state written."
-                    viewModel.DebugDetails <- "Save state written."
-                | Error message ->
-                    let displayMessage = UserMessage.formatSaveStateError message
-                    showToast $"Save state error: {displayMessage}"
-                    viewModel.DebugDetails <- displayMessage
-            | _ ->
-                showToast "Load a ROM before saving state."
+            if not (String.IsNullOrWhiteSpace outcome.DebugDetails) then
+                viewModel.DebugDetails <- outcome.DebugDetails
 
             resumeAfterStateOperation wasRunning
 
@@ -748,25 +709,22 @@ type MainWindow() as this =
             stopRunning ()
 
             let session = lock sessionGate (fun () -> currentSession)
+            let outcome = RomWorkflow.loadState loadedRom session
 
-            match loadedRom, session with
-            | Some rom, Some session ->
-                match SaveStateFile.loadForRom rom.Path session with
-                | Ok restored ->
-                    lock sessionGate (fun () ->
-                        currentSession <- Some restored
-                        pendingFrames.Clear())
-                    resetPerformance ()
-                    presentFrame restored.Framebuffer
-                    showToast "Save state loaded."
-                    viewModel.DebugDetails <- "Save state loaded."
-                    updateSessionState ()
-                | Error message ->
-                    let displayMessage = UserMessage.formatSaveStateError message
-                    showToast $"Save state error: {displayMessage}"
-                    viewModel.DebugDetails <- displayMessage
-            | _ ->
-                showToast "Load a ROM before loading state."
+            match outcome.RestoredSession with
+            | Some restored ->
+                lock sessionGate (fun () ->
+                    currentSession <- Some restored
+                    pendingFrames.Clear())
+                resetPerformance ()
+                presentFrame restored.Framebuffer
+                updateSessionState ()
+            | None -> ()
+
+            showToast outcome.ToastMessage
+
+            if not (String.IsNullOrWhiteSpace outcome.DebugDetails) then
+                viewModel.DebugDetails <- outcome.DebugDetails
 
             resumeAfterStateOperation wasRunning
 
