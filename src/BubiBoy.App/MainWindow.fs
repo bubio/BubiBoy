@@ -8,7 +8,6 @@ open System.Threading
 open System.Threading.Tasks
 open Avalonia
 open Avalonia.Controls
-open Avalonia.Controls.Shapes
 open Avalonia.Data
 open Avalonia.Input
 open Avalonia.Layout
@@ -128,11 +127,7 @@ type MainWindow() as this =
         this.DataContext <- viewModel
         let mutable selectedScale = appSettings.Scale
         let mutable isFloating = false
-        let volumeGainFromPercent percent =
-            let normalized = single (Math.Clamp(percent, 0, 100)) / 100.0f
-            normalized * normalized
-
-        let mutable outputVolume = volumeGainFromPercent appSettings.VolumePercent
+        let mutable outputVolume = VolumeControl.gainFromPercent appSettings.VolumePercent
         let sessionGate = obj ()
         let perfGate = obj ()
         let volumeGate = obj ()
@@ -169,188 +164,15 @@ type MainWindow() as this =
 
             samples
 
-        let runIndicator =
-            Ellipse(
-                Width = 9.0,
-                Height = 9.0,
-                Fill = SolidColorBrush(Color.Parse("#8692A3")),
-                VerticalAlignment = VerticalAlignment.Center,
-                HorizontalAlignment = HorizontalAlignment.Center
-            )
-
-        let runIndicatorHost =
-            Border(
-                Width = 28.0,
-                Height = 28.0,
-                Child = runIndicator,
-                VerticalAlignment = VerticalAlignment.Center
-            )
-
-        let setRunIndicator running =
-            runIndicator.Fill <-
-                if running then
-                    SolidColorBrush(Color.Parse("#18A058"))
-                else
-                    SolidColorBrush(Color.Parse("#8692A3"))
-
-            ToolTip.SetTip(runIndicatorHost, if running then "Running" else "Paused")
-
-        setRunIndicator false
+        let runIndicator = AppChrome.createRunIndicator ()
 
         viewModel.PropertyChanged.Add(fun args ->
             if args.PropertyName = "IsRunning" then
-                setRunIndicator viewModel.IsRunning)
+                runIndicator.SetRunning viewModel.IsRunning)
 
-        let volumeIcon =
-            Path(
-                Width = 14.4,
-                Height = 14.4,
-                Data =
-                    Geometry.Parse(
-                        "M2,8 L6,8 L11,3 L11,21 L6,16 L2,16 Z M14,8 C15.4,9.3 16.2,10.7 16.2,12 C16.2,13.3 15.4,14.7 14,16 L15.5,17.6 C17.4,15.8 18.5,14 18.5,12 C18.5,10 17.4,8.2 15.5,6.4 Z"
-                    ),
-                Fill = SolidColorBrush(Color.Parse("#5F6B7A")),
-                Stretch = Stretch.Uniform,
-                VerticalAlignment = VerticalAlignment.Center
-            )
-
-        ToolTip.SetTip(volumeIcon, "Volume")
-
-        let volumeIconHost =
-            Border(
-                Width = 14.4,
-                Height = 24.0,
-                Child = volumeIcon,
-                VerticalAlignment = VerticalAlignment.Center,
-                HorizontalAlignment = HorizontalAlignment.Center
-            )
-
-        let volumeSliderWidth = 88.0
-        let volumeSliderHeight = 24.0
-        let volumeThumbSize = 12.0
-        let volumeTrackHeight = 4.0
-        let volumeTrackLeft = volumeThumbSize / 2.0
-        let volumeTrackWidth = volumeSliderWidth - volumeThumbSize
-
-        let volumeSlider =
-            Canvas(
-                Width = volumeSliderWidth,
-                Height = volumeSliderHeight,
-                Background = Brushes.Transparent,
-                Cursor = new Cursor(StandardCursorType.Hand),
-                Focusable = true,
-                ClipToBounds = false,
-                VerticalAlignment = VerticalAlignment.Center
-            )
-
-        let volumeTrack =
-            Border(
-                Width = volumeTrackWidth,
-                Height = volumeTrackHeight,
-                Background = SolidColorBrush(Color.Parse("#CBD2DC")),
-                CornerRadius = CornerRadius(volumeTrackHeight / 2.0)
-            )
-
-        let volumeFill =
-            Border(
-                Height = volumeTrackHeight,
-                Background = SolidColorBrush(Color.Parse("#178BFF")),
-                CornerRadius = CornerRadius(volumeTrackHeight / 2.0)
-            )
-
-        let volumeThumb =
-            Ellipse(
-                Width = volumeThumbSize,
-                Height = volumeThumbSize,
-                Fill = SolidColorBrush(Color.Parse("#178BFF"))
-            )
-
-        let volumeTrackTop = (volumeSliderHeight - volumeTrackHeight) / 2.0
-        let volumeThumbTop = (volumeSliderHeight - volumeThumbSize) / 2.0
-
-        Canvas.SetLeft(volumeTrack, volumeTrackLeft)
-        Canvas.SetTop(volumeTrack, volumeTrackTop)
-        Canvas.SetLeft(volumeFill, volumeTrackLeft)
-        Canvas.SetTop(volumeFill, volumeTrackTop)
-        Canvas.SetTop(volumeThumb, volumeThumbTop)
-        volumeSlider.Children.Add volumeTrack |> ignore
-        volumeSlider.Children.Add volumeFill |> ignore
-        volumeSlider.Children.Add volumeThumb |> ignore
-
-        let updateVolumeSliderVisual percent =
-            let clamped = Math.Clamp(percent, 0, 100)
-            let fraction = float clamped / 100.0
-            let centerX = volumeTrackLeft + volumeTrackWidth * fraction
-            volumeFill.Width <- volumeTrackWidth * fraction
-            Canvas.SetLeft(volumeThumb, centerX - volumeThumbSize / 2.0)
-
-        updateVolumeSliderVisual appSettings.VolumePercent
-
-        ToolTip.SetTip(volumeSlider, "Volume")
-
-        let volumeHost =
-            Grid(
-                ColumnDefinitions = ColumnDefinitions("14.4,8,88"),
-                Width = 110.4,
-                Height = 24.0,
-                VerticalAlignment = VerticalAlignment.Center,
-                HorizontalAlignment = HorizontalAlignment.Right
-            )
-
-        Grid.SetColumn(volumeIconHost, 0)
-        Grid.SetColumn(volumeSlider, 2)
-        volumeHost.Children.Add volumeIconHost |> ignore
-        volumeHost.Children.Add volumeSlider |> ignore
-
-        let statusBarHeight = 32.0
-
-        let statusBar =
-            Border(
-                Height = statusBarHeight,
-                MinHeight = statusBarHeight,
-                Background = SolidColorBrush(Color.Parse("#F8F9FB")),
-                BorderBrush = SolidColorBrush(Color.Parse("#C8CED8")),
-                BorderThickness = Thickness(0.0, 1.0, 0.0, 0.0),
-                Padding = Thickness(6.0, 0.0, 16.0, 0.0),
-                IsVisible = not isFloating
-            )
-
-        let statusGrid =
-            Grid(
-                ColumnDefinitions = ColumnDefinitions("Auto,*,Auto"),
-                RowDefinitions = RowDefinitions("32"),
-                VerticalAlignment = VerticalAlignment.Center
-            )
-
-        Grid.SetColumn(runIndicatorHost, 0)
-        Grid.SetColumn(volumeHost, 2)
-        Grid.SetRow(runIndicatorHost, 0)
-        Grid.SetRow(volumeHost, 0)
-        statusGrid.Children.Add runIndicatorHost |> ignore
-        statusGrid.Children.Add volumeHost |> ignore
-        statusBar.Child <- statusGrid
-
-        let toastText =
-            TextBlock(
-                FontSize = 13.0,
-                Foreground = Brushes.White,
-                TextWrapping = TextWrapping.Wrap,
-                MaxWidth = 320.0
-            )
-
-        let toast =
-            Border(
-                Child = toastText,
-                Background = SolidColorBrush(Color.Parse("#263448")),
-                CornerRadius = CornerRadius(6.0),
-                Padding = Thickness(12.0, 8.0),
-                Margin = Thickness(12.0),
-                HorizontalAlignment = HorizontalAlignment.Right,
-                VerticalAlignment = VerticalAlignment.Bottom,
-                IsVisible = false
-            )
-
-        let toastTimer = DispatcherTimer(Interval = TimeSpan.FromSeconds(3.0))
+        let volumeControl = VolumeControl.create appSettings.VolumePercent
+        let statusBar = AppChrome.createStatusBar isFloating runIndicator.Host volumeControl.Host
+        let toast = AppChrome.createToast ()
         let controllerPollTimer = DispatcherTimer(Interval = TimeSpan.FromMilliseconds(16.0))
 
         let romDetails =
@@ -392,18 +214,18 @@ type MainWindow() as this =
 
         let showToast message =
             if not isFloating then
-                toastText.Text <- message
-                toast.IsVisible <- true
-                toastTimer.Stop()
-                toastTimer.Start()
+                toast.Text.Text <- message
+                toast.Host.IsVisible <- true
+                toast.Timer.Stop()
+                toast.Timer.Start()
             else
                 lastSaveStatus <- Some message
 
         notify <- showToast
 
-        toastTimer.Tick.Add(fun _ ->
-            toastTimer.Stop()
-            toast.IsVisible <- false)
+        toast.Timer.Tick.Add(fun _ ->
+            toast.Timer.Stop()
+            toast.Host.IsVisible <- false)
 
         let openInputMapping () =
             task {
@@ -433,10 +255,13 @@ type MainWindow() as this =
         |> Option.iter (fun message -> showToast $"Settings error: {message}")
 
         let isMacOS = RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
+        let platformModifier =
+            if isMacOS then KeyModifiers.Meta else KeyModifiers.Control
+
         let mutable refreshMenus = fun () -> ()
         let mutable updateContentRows = fun () -> ()
 
-        let menuBar = Menu()
+        let mutable menuBar = Menu()
         menuBar.IsVisible <- not isMacOS && not isFloating
 
         let applyWindowChrome () =
@@ -452,15 +277,15 @@ type MainWindow() as this =
                 statusBar.MinHeight <- 0.0
                 statusBar.Height <- 0.0
                 menuBar.IsVisible <- false
-                toast.IsVisible <- false
+                toast.Host.IsVisible <- false
             else
                 this.ExtendClientAreaToDecorationsHint <- false
                 this.ExtendClientAreaTitleBarHeightHint <- -1.0
                 this.WindowDecorations <- WindowDecorations.Full
                 this.CanResize <- false
                 statusBar.IsVisible <- true
-                statusBar.MinHeight <- statusBarHeight
-                statusBar.Height <- statusBarHeight
+                statusBar.MinHeight <- AppChrome.StatusBarHeight
+                statusBar.Height <- AppChrome.StatusBarHeight
                 menuBar.IsVisible <- not isMacOS
 
             updateContentRows ()
@@ -496,7 +321,7 @@ type MainWindow() as this =
                     if isMacOS || isFloating then 0.0 else 28.0
 
                 let statusHeight =
-                    if isFloating then 0.0 else statusBarHeight
+                    if isFloating then 0.0 else AppChrome.StatusBarHeight
 
                 this.Width <- videoWidth
                 this.Height <- videoHeight + menuHeight + statusHeight
@@ -1049,64 +874,7 @@ type MainWindow() as this =
                     diagnostics.DroppedFrames)
         frameTimer.Start()
 
-        let platformModifier =
-            if isMacOS then KeyModifiers.Meta else KeyModifiers.Control
-
-        let gesture key modifiers =
-            KeyGesture(key, modifiers)
-
-        let nativeItem header key modifiers action =
-            let item = NativeMenuItem(header)
-            item.Gesture <- gesture key modifiers
-            item.Click.Add(fun _ -> action ())
-            item
-
-        let nativePlain header action =
-            let item = NativeMenuItem(header)
-            item.Click.Add(fun _ -> action ())
-            item
-
-        let nativeCommandItem header key modifiers command =
-            let item = NativeMenuItem(header)
-            item.Gesture <- gesture key modifiers
-            item.Command <- command
-            item
-
-        let nativePlainCommandItem header command =
-            let item = NativeMenuItem(header)
-            item.Command <- command
-            item
-
-        let menuItem header key modifiers action =
-            let item = MenuItem(Header = header)
-            item.InputGesture <- gesture key modifiers
-            item.Click.Add(fun _ -> action ())
-            item
-
-        let plainMenuItem header action =
-            let item = MenuItem(Header = header)
-            item.Click.Add(fun _ -> action ())
-            item
-
-        let commandMenuItem header key modifiers command =
-            let item = MenuItem(Header = header)
-            item.InputGesture <- gesture key modifiers
-            item.Command <- command
-            item
-
-        let plainCommandMenuItem header command =
-            MenuItem(Header = header, Command = command)
-
-        let nativeOpenRecentMenu = NativeMenu()
-        let nativeOpenRecentItem = NativeMenuItem("Open Recent")
-        nativeOpenRecentItem.Menu <- nativeOpenRecentMenu
-        let nativeClearRecentItem = nativePlainCommandItem "Clear Recent" viewModel.ClearRecentCommand
-        let nativeRunPauseItem = nativeCommandItem "Run" Key.P platformModifier viewModel.RunPauseCommand
-        let nativeResetItem = nativeCommandItem "Reset" Key.R platformModifier viewModel.ResetCommand
-        let nativeSaveStateItem = nativeItem "Save State" Key.S platformModifier saveStateForCurrentRom
-        let nativeLoadStateItem = nativeItem "Load State" Key.L platformModifier loadStateForCurrentRom
-        let nativeInputMappingItem = nativePlain "Input Mapping..." openInputMapping
-        let nativeFullscreenItem = nativeItem "Full Screen" Key.F platformModifier (fun () ->
+        let toggleFullScreen () =
             if isFloating then
                 setFloating false
 
@@ -1116,154 +884,37 @@ type MainWindow() as this =
                 else
                     WindowState.FullScreen
 
-            refreshMenus ())
-        let nativeFloatingItem = nativeItem "Floating Mode" Key.F (platformModifier ||| KeyModifiers.Shift) (fun () -> setFloating (not isFloating))
-        let nativeScaleItems =
-            [ 1, nativeItem "Scale x1" Key.D1 platformModifier (fun () -> setScale 1)
-              2, nativeItem "Scale x2" Key.D2 platformModifier (fun () -> setScale 2)
-              4, nativeItem "Scale x4" Key.D4 platformModifier (fun () -> setScale 4)
-              8, nativeItem "Scale x8" Key.D8 platformModifier (fun () -> setScale 8) ]
+            refreshMenus ()
 
-        let openRecentMenu = MenuItem(Header = "Open Recent")
-        let clearRecentItem = plainCommandMenuItem "Clear Recent" viewModel.ClearRecentCommand
-        let runPauseItem = commandMenuItem "Run" Key.P platformModifier viewModel.RunPauseCommand
-        let resetMenuItem = commandMenuItem "Reset" Key.R platformModifier viewModel.ResetCommand
-        let saveStateItem = menuItem "Save State" Key.S platformModifier saveStateForCurrentRom
-        let loadStateItem = menuItem "Load State" Key.L platformModifier loadStateForCurrentRom
-        let inputMappingItem = plainMenuItem "Input Mapping..." openInputMapping
-        let fullscreenItem = menuItem "Full Screen" Key.F platformModifier (fun () ->
-            if isFloating then
-                setFloating false
+        let menuElements =
+            MainWindowMenus.create
+                this
+                isMacOS
+                platformModifier
+                viewModel
+                { OpenInputMapping = openInputMapping
+                  SaveState = saveStateForCurrentRom
+                  LoadState = loadStateForCurrentRom
+                  SetScale = setScale
+                  ToggleFullScreen = toggleFullScreen
+                  ToggleFloating = fun () -> setFloating (not isFloating)
+                  LoadRecent = fun path -> loadRomPath path true
+                  Close = fun () -> this.Close()
+                  ShowAbout = this.ShowAbout }
 
-            this.WindowState <-
-                if this.WindowState = WindowState.FullScreen then
-                    WindowState.Normal
-                else
-                    WindowState.FullScreen
-
-            refreshMenus ())
-        let floatingItem = menuItem "Floating Mode" Key.F (platformModifier ||| KeyModifiers.Shift) (fun () -> setFloating (not isFloating))
-        let scaleItems =
-            [ 1, menuItem "Scale x1" Key.D1 platformModifier (fun () -> setScale 1)
-              2, menuItem "Scale x2" Key.D2 platformModifier (fun () -> setScale 2)
-              4, menuItem "Scale x4" Key.D4 platformModifier (fun () -> setScale 4)
-              8, menuItem "Scale x8" Key.D8 platformModifier (fun () -> setScale 8) ]
-
-        let rebuildRecentMenus () =
-            nativeOpenRecentMenu.Items.Clear()
-            openRecentMenu.Items.Clear()
-
-            if List.isEmpty appSettings.RecentRoms then
-                let nativeEmpty = NativeMenuItem("(Empty)")
-                nativeEmpty.IsEnabled <- false
-                nativeOpenRecentMenu.Items.Add nativeEmpty |> ignore
-                let empty = MenuItem(Header = "(Empty)", IsEnabled = false)
-                openRecentMenu.Items.Add empty |> ignore
-            else
-                for path in appSettings.RecentRoms do
-                    let label = IO.Path.GetFileName path
-                    let nativeRecent = nativePlain label (fun () -> loadRomPath path true)
-                    nativeRecent.ToolTip <- path
-                    nativeOpenRecentMenu.Items.Add nativeRecent |> ignore
-                    let recent = plainMenuItem label (fun () -> loadRomPath path true)
-                    openRecentMenu.Items.Add recent |> ignore
-
-            nativeClearRecentItem.IsEnabled <- not (List.isEmpty appSettings.RecentRoms)
-            clearRecentItem.IsEnabled <- nativeClearRecentItem.IsEnabled
-
-        let updateMenuState () =
-            nativeRunPauseItem.Header <- viewModel.RunPauseHeader
-            runPauseItem.Header <- viewModel.RunPauseHeader
-            nativeRunPauseItem.IsEnabled <- viewModel.HasSession
-            runPauseItem.IsEnabled <- viewModel.HasSession
-            nativeResetItem.IsEnabled <- viewModel.HasLoadedRom
-            resetMenuItem.IsEnabled <- viewModel.HasLoadedRom
-            nativeSaveStateItem.IsEnabled <- viewModel.HasSession
-            saveStateItem.IsEnabled <- viewModel.HasSession
-            nativeLoadStateItem.IsEnabled <- viewModel.HasSession
-            loadStateItem.IsEnabled <- viewModel.HasSession
-            nativeFullscreenItem.IsChecked <- this.WindowState = WindowState.FullScreen
-            fullscreenItem.IsChecked <- this.WindowState = WindowState.FullScreen
-            nativeFloatingItem.IsChecked <- viewModel.IsFloating
-            floatingItem.IsChecked <- viewModel.IsFloating
-
-            for scale, item in nativeScaleItems do
-                item.IsChecked <- (scale = viewModel.SelectedScale)
-
-            for scale, item in scaleItems do
-                item.IsChecked <- (scale = viewModel.SelectedScale)
+        menuBar <- menuElements.MenuBar
 
         refreshMenus <-
             fun () ->
-                rebuildRecentMenus ()
-                updateMenuState ()
+                menuElements.Refresh
+                    { RecentRoms = appSettings.RecentRoms
+                      IsFloating = isFloating
+                      IsFullScreen = this.WindowState = WindowState.FullScreen }
 
         this.GetObservable(Window.WindowStateProperty).Subscribe(fun _ ->
             applySelectedScale false
             refreshMenus ())
         |> ignore
-
-        let nativeMenu = NativeMenu()
-        let nativeFileMenu = NativeMenuItem("File")
-        let nativeFileSubmenu = NativeMenu()
-        nativeFileSubmenu.Items.Add(nativeCommandItem "Open ROM..." Key.O platformModifier viewModel.OpenRomCommand) |> ignore
-        nativeFileSubmenu.Items.Add nativeOpenRecentItem |> ignore
-        nativeFileSubmenu.Items.Add nativeClearRecentItem |> ignore
-        nativeFileMenu.Menu <- nativeFileSubmenu
-        let nativeEmulationMenu = NativeMenuItem("Emulation")
-        let nativeEmulationSubmenu = NativeMenu()
-        nativeEmulationSubmenu.Items.Add nativeRunPauseItem |> ignore
-        nativeEmulationSubmenu.Items.Add nativeResetItem |> ignore
-        nativeEmulationSubmenu.Items.Add nativeSaveStateItem |> ignore
-        nativeEmulationSubmenu.Items.Add nativeLoadStateItem |> ignore
-        nativeEmulationSubmenu.Items.Add(NativeMenuItemSeparator()) |> ignore
-        nativeEmulationSubmenu.Items.Add nativeInputMappingItem |> ignore
-        nativeEmulationMenu.Menu <- nativeEmulationSubmenu
-        let nativeViewMenu = NativeMenuItem("View")
-        let nativeViewSubmenu = NativeMenu()
-
-        for _, item in nativeScaleItems do
-            nativeViewSubmenu.Items.Add item |> ignore
-
-        nativeViewSubmenu.Items.Add(NativeMenuItemSeparator()) |> ignore
-        nativeViewSubmenu.Items.Add nativeFullscreenItem |> ignore
-        nativeViewSubmenu.Items.Add nativeFloatingItem |> ignore
-        nativeViewMenu.Menu <- nativeViewSubmenu
-
-        nativeMenu.Items.Add nativeFileMenu |> ignore
-        nativeMenu.Items.Add nativeEmulationMenu |> ignore
-        nativeMenu.Items.Add nativeViewMenu |> ignore
-        NativeMenu.SetMenu(this, nativeMenu)
-
-        let fileMenu = MenuItem(Header = "File")
-        fileMenu.Items.Add(commandMenuItem "Open ROM..." Key.O platformModifier viewModel.OpenRomCommand) |> ignore
-        fileMenu.Items.Add openRecentMenu |> ignore
-        fileMenu.Items.Add clearRecentItem |> ignore
-        fileMenu.Items.Add(Separator()) |> ignore
-        fileMenu.Items.Add(plainMenuItem "Quit" (fun () -> this.Close())) |> ignore
-        let emulationMenu = MenuItem(Header = "Emulation")
-        emulationMenu.Items.Add runPauseItem |> ignore
-        emulationMenu.Items.Add resetMenuItem |> ignore
-        emulationMenu.Items.Add saveStateItem |> ignore
-        emulationMenu.Items.Add loadStateItem |> ignore
-        emulationMenu.Items.Add(Separator()) |> ignore
-        emulationMenu.Items.Add inputMappingItem |> ignore
-        let viewMenu = MenuItem(Header = "View")
-
-        for _, item in scaleItems do
-            viewMenu.Items.Add item |> ignore
-
-        viewMenu.Items.Add(Separator()) |> ignore
-        viewMenu.Items.Add fullscreenItem |> ignore
-        viewMenu.Items.Add floatingItem |> ignore
-        let helpMenu = MenuItem(Header = "Help")
-        helpMenu.Items.Add(plainMenuItem "About BubiBoy" this.ShowAbout) |> ignore
-        menuBar.Items.Add fileMenu |> ignore
-        menuBar.Items.Add emulationMenu |> ignore
-        menuBar.Items.Add viewMenu |> ignore
-
-        if not isMacOS then
-            menuBar.Items.Add helpMenu |> ignore
 
         refreshMenus ()
         applyWindowChrome ()
@@ -1302,39 +953,37 @@ type MainWindow() as this =
 
         let setVolumePercent percent =
             let clamped = Math.Clamp(percent, 0, 100)
-            lock volumeGate (fun () -> outputVolume <- volumeGainFromPercent clamped)
+            lock volumeGate (fun () -> outputVolume <- VolumeControl.gainFromPercent clamped)
             viewModel.VolumePercent <- clamped
             appSettings <- AppSettings.withVolumePercent clamped appSettings
-            updateVolumeSliderVisual clamped
+            volumeControl.SetVisual clamped
             saveSettings ()
 
         let setVolumeFromPointer (args: PointerEventArgs) =
-            let position = args.GetPosition(volumeSlider)
-            let fraction = Math.Clamp((position.X - volumeTrackLeft) / volumeTrackWidth, 0.0, 1.0)
-            setVolumePercent (int (Math.Round(fraction * 100.0)))
+            setVolumePercent (volumeControl.PercentFromPointer args)
 
         let mutable isDraggingVolume = false
 
-        volumeSlider.PointerPressed.Add(fun args ->
+        volumeControl.Slider.PointerPressed.Add(fun args ->
             isDraggingVolume <- true
-            volumeSlider.Focus() |> ignore
-            args.Pointer.Capture(volumeSlider) |> ignore
+            volumeControl.Slider.Focus() |> ignore
+            args.Pointer.Capture(volumeControl.Slider) |> ignore
             setVolumeFromPointer args
             args.Handled <- true)
 
-        volumeSlider.PointerMoved.Add(fun args ->
+        volumeControl.Slider.PointerMoved.Add(fun args ->
             if isDraggingVolume then
                 setVolumeFromPointer args
                 args.Handled <- true)
 
-        volumeSlider.PointerReleased.Add(fun args ->
+        volumeControl.Slider.PointerReleased.Add(fun args ->
             if isDraggingVolume then
                 isDraggingVolume <- false
                 args.Pointer.Capture(null) |> ignore
                 setVolumeFromPointer args
                 args.Handled <- true)
 
-        volumeSlider.KeyDown.Add(fun args ->
+        volumeControl.Slider.KeyDown.Add(fun args ->
             let delta =
                 match args.Key with
                 | Key.Left | Key.Down -> Some -5
@@ -1410,7 +1059,7 @@ type MainWindow() as this =
             Grid()
 
         overlay.Children.Add contentGrid |> ignore
-        overlay.Children.Add toast |> ignore
+        overlay.Children.Add toast.Host |> ignore
 
         this.Content <- overlay
 

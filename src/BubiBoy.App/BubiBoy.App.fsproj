@@ -41,6 +41,9 @@
     <Compile Include="InputMappingWindow.fs" />
     <Compile Include="RomSession.fs" />
     <Compile Include="MainWindowViewModel.fs" />
+    <Compile Include="VolumeControl.fs" />
+    <Compile Include="AppChrome.fs" />
+    <Compile Include="MainWindowMenus.fs" />
     <Compile Include="MainWindow.fs" />
     <Compile Include="App.fs" />
     <Compile Include="Program.fs" />
