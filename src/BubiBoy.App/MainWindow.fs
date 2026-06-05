@@ -117,7 +117,7 @@ type MainWindow() as this =
         let viewModel =
             MainWindowViewModel(
                 appSettings.Scale,
-                appSettings.IsFloating,
+                false,
                 appSettings.VolumePercent,
                 (fun () -> openRomHandler ()),
                 (fun () -> toggleRunPauseHandler ()),
@@ -127,7 +127,7 @@ type MainWindow() as this =
 
         this.DataContext <- viewModel
         let mutable selectedScale = appSettings.Scale
-        let mutable isFloating = appSettings.IsFloating
+        let mutable isFloating = false
         let volumeGainFromPercent percent =
             let normalized = single (Math.Clamp(percent, 0, 100)) / 100.0f
             normalized * normalized
@@ -302,9 +302,12 @@ type MainWindow() as this =
         volumeHost.Children.Add volumeIconHost |> ignore
         volumeHost.Children.Add volumeSlider |> ignore
 
+        let statusBarHeight = 32.0
+
         let statusBar =
             Border(
-                Height = 32.0,
+                Height = statusBarHeight,
+                MinHeight = statusBarHeight,
                 Background = SolidColorBrush(Color.Parse("#F8F9FB")),
                 BorderBrush = SolidColorBrush(Color.Parse("#C8CED8")),
                 BorderThickness = Thickness(0.0, 1.0, 0.0, 0.0),
@@ -441,17 +444,23 @@ type MainWindow() as this =
                 if this.WindowState = WindowState.FullScreen then
                     this.WindowState <- WindowState.Normal
 
-                this.WindowDecorations <- WindowDecorations.None
+                this.WindowDecorations <- WindowDecorations.BorderOnly
+                this.ExtendClientAreaToDecorationsHint <- true
+                this.ExtendClientAreaTitleBarHeightHint <- 0.0
                 this.CanResize <- false
                 statusBar.IsVisible <- false
+                statusBar.MinHeight <- 0.0
                 statusBar.Height <- 0.0
                 menuBar.IsVisible <- false
                 toast.IsVisible <- false
             else
+                this.ExtendClientAreaToDecorationsHint <- false
+                this.ExtendClientAreaTitleBarHeightHint <- -1.0
                 this.WindowDecorations <- WindowDecorations.Full
                 this.CanResize <- false
                 statusBar.IsVisible <- true
-                statusBar.Height <- 32.0
+                statusBar.MinHeight <- statusBarHeight
+                statusBar.Height <- statusBarHeight
                 menuBar.IsVisible <- not isMacOS
 
             updateContentRows ()
@@ -487,7 +496,7 @@ type MainWindow() as this =
                     if isMacOS || isFloating then 0.0 else 28.0
 
                 let statusHeight =
-                    if isFloating then 0.0 else 32.0
+                    if isFloating then 0.0 else statusBarHeight
 
                 this.Width <- videoWidth
                 this.Height <- videoHeight + menuHeight + statusHeight
@@ -503,11 +512,9 @@ type MainWindow() as this =
         let setFloating enabled =
             isFloating <- enabled
             viewModel.IsFloating <- enabled
-            appSettings <- AppSettings.withFloating enabled appSettings
             applyWindowChrome ()
             applySelectedScale true
             refreshMenus ()
-            saveSettings ()
 
         let updateSessionState () =
             let hasSession = lock sessionGate (fun () -> currentSession.IsSome)
@@ -1371,6 +1378,17 @@ type MainWindow() as this =
 
         let videoHost =
             Grid(Background = normalVideoHostBackground)
+
+        videoHost.PointerPressed.Add(fun args ->
+            let pointer = args.GetCurrentPoint(videoHost)
+
+            if
+                not args.Handled
+                && pointer.Properties.IsLeftButtonPressed
+                && this.WindowState <> WindowState.FullScreen
+            then
+                this.BeginMoveDrag(args)
+                args.Handled <- true)
 
         applyVideoHostBackground <-
             fun () ->

@@ -140,7 +140,7 @@ Deliverable: representative CGB titles boot and render with correct palette beha
 
 ## Phase 7: Product Quality
 
-- [x] Add persistent settings for volume, scale, floating mode, and recent ROMs.
+- [x] Add persistent settings for volume, scale, recent ROMs, and input mappings.
 - [x] Add pause, reset, frame step, ROM recent list, fullscreen, scaling, and basic diagnostics.
 - [x] Improve the macOS app bundle for routine local use: app identity, self-contained `osx-arm64`
   publish output, ad-hoc signing, fixed arbitrary window resizing, and floating-mode layout.

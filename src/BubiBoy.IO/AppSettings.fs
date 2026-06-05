@@ -63,7 +63,6 @@ module AppSettings =
           VolumePercent: int
           RecentRoms: string[]
           Scale: int
-          IsFloating: bool
           KeyboardMapping: Dictionary<string, string>
           ControllerMapping: Dictionary<string, string> }
 
@@ -71,7 +70,6 @@ module AppSettings =
         { VolumePercent: int
           RecentRoms: string list
           Scale: int
-          IsFloating: bool
           KeyboardMapping: Map<string, string>
           ControllerMapping: Map<string, string> }
 
@@ -79,7 +77,6 @@ module AppSettings =
         { VolumePercent = 50
           RecentRoms = []
           Scale = 2
-          IsFloating = false
           KeyboardMapping = defaultKeyboardMapping
           ControllerMapping = defaultControllerMapping }
 
@@ -190,7 +187,6 @@ module AppSettings =
         { VolumePercent = Math.Clamp(settings.VolumePercent, 0, 100)
           RecentRoms = recent
           Scale = scale
-          IsFloating = settings.IsFloating
           KeyboardMapping = normalizeKeyboardMapping settings.KeyboardMapping
           ControllerMapping = normalizeControllerMapping settings.ControllerMapping }
 
@@ -253,11 +249,6 @@ module AppSettings =
                                 defaults.Scale
                             else
                                 file.Scale
-                          IsFloating =
-                            if file.Version = 1 then
-                                defaults.IsFloating
-                            else
-                                file.IsFloating
                           KeyboardMapping = keyboardMapping
                           ControllerMapping = controllerMapping })
 
@@ -271,7 +262,6 @@ module AppSettings =
                   VolumePercent = normalized.VolumePercent
                   RecentRoms = List.toArray normalized.RecentRoms
                   Scale = normalized.Scale
-                  IsFloating = normalized.IsFloating
                   KeyboardMapping = Dictionary<string, string>(normalized.KeyboardMapping)
                   ControllerMapping = Dictionary<string, string>(normalized.ControllerMapping) }
 
@@ -299,9 +289,6 @@ module AppSettings =
 
     let withScale scale settings =
         normalize { settings with Scale = scale }
-
-    let withFloating isFloating settings =
-        normalize { settings with IsFloating = isFloating }
 
     let withKeyboardMapping mapping settings =
         normalize { settings with KeyboardMapping = mapping }

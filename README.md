@@ -13,7 +13,7 @@ It provides an Avalonia desktop app for macOS, Linux, and Windows. The emulator 
 - Supports ROM-only, MBC1, MBC2, MBC3, and MBC5 cartridges.
 - Loads and saves battery-backed `.sav` data automatically.
 - Supports save states and recent ROMs.
-- Stores app settings such as volume, scale, floating mode, and input mappings.
+- Stores app settings such as volume, scale, recent ROMs, and input mappings.
 
 Compatibility is still in progress, so some games and cartridge variants may not work correctly yet.
 
