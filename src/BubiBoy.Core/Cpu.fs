@@ -67,335 +67,354 @@ module Cpu =
           Halted = false
           InterruptsEnabled = false }
 
-    let private combineBytes high low =
-        (uint16 high <<< 8) ||| uint16 low
+    module private RegisterPairs =
+        let combineBytes high low =
+            (uint16 high <<< 8) ||| uint16 low
 
-    let private readImmediate16 bus pc =
-        let low = Bus.readByte pc bus
-        let high = Bus.readByte (pc + 1us) bus
-        combineBytes high low
+        let split16 value =
+            byte (value >>> 8), byte (value &&& 0x00FFus)
 
-    let private write16ToStack value sp bus =
-        let high, low = byte (value >>> 8), byte (value &&& 0x00FFus)
-        let spAfterHigh = sp - 1us
-        let bus = Bus.writeByte spAfterHigh high bus
-        let spAfterLow = spAfterHigh - 1us
-        let bus = Bus.writeByte spAfterLow low bus
-        spAfterLow, bus
+        let getHL registers =
+            combineBytes registers.H registers.L
 
-    let private read16FromStack sp bus =
-        let low = Bus.readByte sp bus
-        let high = Bus.readByte (sp + 1us) bus
-        combineBytes high low, sp + 2us
+        let getBC registers =
+            combineBytes registers.B registers.C
 
-    let private pendingInterrupt bus =
-        let enabled = Bus.readByte 0xFFFFus bus
-        let flags = Bus.readByte 0xFF0Fus bus
-        let pending = enabled &&& flags
+        let getDE registers =
+            combineBytes registers.D registers.E
 
-        if pending &&& Interrupt.VBlankBit <> 0uy then
-            Some(Interrupt.VBlankBit, 0x0040us)
-        elif pending &&& Interrupt.LcdStatBit <> 0uy then
-            Some(Interrupt.LcdStatBit, 0x0048us)
-        elif pending &&& Interrupt.TimerBit <> 0uy then
-            Some(Interrupt.TimerBit, 0x0050us)
-        elif pending &&& Interrupt.SerialBit <> 0uy then
-            Some(Interrupt.SerialBit, 0x0058us)
-        elif pending &&& Interrupt.JoypadBit <> 0uy then
-            Some(Interrupt.JoypadBit, 0x0060us)
-        else
-            None
+        let setBC value registers =
+            let high, low = split16 value
+            { registers with B = high; C = low }
 
-    let private serviceInterrupt flag vector cpu bus =
-        let registers = cpu.Registers
-        let flags = Bus.readByte 0xFF0Fus bus &&& ~~~flag
-        let bus = Bus.writeByte 0xFF0Fus flags bus
-        let sp, bus = write16ToStack registers.PC registers.SP bus
+        let setDE value registers =
+            let high, low = split16 value
+            { registers with D = high; E = low }
 
-        { Cpu =
-            { cpu with
-                Registers = { registers with SP = sp; PC = vector }
-                Halted = false
-                InterruptsEnabled = false }
-          Bus = bus
-          Cycles = 20 }
+        let setHL value registers =
+            let high, low = split16 value
+            { registers with H = high; L = low }
 
-    let private split16 value =
-        byte (value >>> 8), byte (value &&& 0x00FFus)
+    module private LoadStore =
+        let readImmediate16 bus pc =
+            let low = Bus.readByte pc bus
+            let high = Bus.readByte (pc + 1us) bus
+            RegisterPairs.combineBytes high low
 
-    let private getHL registers =
-        combineBytes registers.H registers.L
+    module private Stack =
+        let write16ToStack value sp bus =
+            let high, low = RegisterPairs.split16 value
+            let spAfterHigh = sp - 1us
+            let bus = Bus.writeByte spAfterHigh high bus
+            let spAfterLow = spAfterHigh - 1us
+            let bus = Bus.writeByte spAfterLow low bus
+            spAfterLow, bus
 
-    let private getBC registers =
-        combineBytes registers.B registers.C
+        let read16FromStack sp bus =
+            let low = Bus.readByte sp bus
+            let high = Bus.readByte (sp + 1us) bus
+            RegisterPairs.combineBytes high low, sp + 2us
 
-    let private getDE registers =
-        combineBytes registers.D registers.E
+    module private InterruptHandling =
+        let pendingInterrupt bus =
+            let enabled = Bus.readByte 0xFFFFus bus
+            let flags = Bus.readByte 0xFF0Fus bus
+            let pending = enabled &&& flags
 
-    let private setBC value registers =
-        let high, low = split16 value
-        { registers with B = high; C = low }
-
-    let private setDE value registers =
-        let high, low = split16 value
-        { registers with D = high; E = low }
-
-    let private setHL value registers =
-        let high, low = split16 value
-        { registers with H = high; L = low }
-
-    let private setFlags zero subtract halfCarry carry registers =
-        let flag condition value =
-            if condition then value else 0uy
-
-        { registers with
-            F =
-                (flag zero ZeroFlag)
-                ||| (flag subtract SubtractFlag)
-                ||| (flag halfCarry HalfCarryFlag)
-                ||| (flag carry CarryFlag) }
-
-    let private preserveCarry registers =
-        registers.F &&& CarryFlag <> 0uy
-
-    let private dec8 value registers =
-        let result = value - 1uy
-        let halfCarry = value &&& 0x0Fuy = 0uy
-        result, setFlags (result = 0uy) true halfCarry (preserveCarry registers) registers
-
-    let private inc8 value registers =
-        let result = value + 1uy
-        let halfCarry = value &&& 0x0Fuy = 0x0Fuy
-        result, setFlags (result = 0uy) false halfCarry (preserveCarry registers) registers
-
-    let private compareA value registers =
-        let a = registers.A
-        let result = a - value
-        let halfCarry = (a &&& 0x0Fuy) < (value &&& 0x0Fuy)
-        let carry = a < value
-        setFlags (result = 0uy) true halfCarry carry registers
-
-    let private addA value registers =
-        let a = registers.A
-        let sum = uint16 a + uint16 value
-        let result = byte (sum &&& 0x00FFus)
-        let halfCarry = (a &&& 0x0Fuy) + (value &&& 0x0Fuy) > 0x0Fuy
-        let carry = sum > 0x00FFus
-
-        { registers with A = result }
-        |> setFlags (result = 0uy) false halfCarry carry
-
-    let private adcA value registers =
-        let carryIn = if registers.F &&& CarryFlag <> 0uy then 1uy else 0uy
-        let a = registers.A
-        let sum = uint16 a + uint16 value + uint16 carryIn
-        let result = byte (sum &&& 0x00FFus)
-        let halfCarry = uint16 (a &&& 0x0Fuy) + uint16 (value &&& 0x0Fuy) + uint16 carryIn > 0x0Fus
-        let carry = sum > 0x00FFus
-
-        { registers with A = result }
-        |> setFlags (result = 0uy) false halfCarry carry
-
-    let private subA value registers =
-        let a = registers.A
-        let result = a - value
-        let halfCarry = (a &&& 0x0Fuy) < (value &&& 0x0Fuy)
-        let carry = a < value
-
-        { registers with A = result }
-        |> setFlags (result = 0uy) true halfCarry carry
-
-    let private sbcA value registers =
-        let carryIn = if registers.F &&& CarryFlag <> 0uy then 1uy else 0uy
-        let a = registers.A
-        let subtrahend = uint16 value + uint16 carryIn
-        let result = byte ((uint16 a - subtrahend) &&& 0x00FFus)
-        let halfCarry = uint16 (a &&& 0x0Fuy) < uint16 (value &&& 0x0Fuy) + uint16 carryIn
-        let carry = uint16 a < subtrahend
-
-        { registers with A = result }
-        |> setFlags (result = 0uy) true halfCarry carry
-
-    let private andA value registers =
-        let result = registers.A &&& value
-
-        { registers with A = result }
-        |> setFlags (result = 0uy) false true false
-
-    let private orA value registers =
-        let result = registers.A ||| value
-
-        { registers with A = result }
-        |> setFlags (result = 0uy) false false false
-
-    let private xorA value registers =
-        let result = registers.A ^^^ value
-
-        { registers with A = result }
-        |> setFlags (result = 0uy) false false false
-
-    let private addHL value registers =
-        let hl = getHL registers
-        let sum = uint32 hl + uint32 value
-        let result = uint16 (sum &&& 0xFFFFu)
-        let halfCarry = (hl &&& 0x0FFFus) + (value &&& 0x0FFFus) > 0x0FFFus
-        let carry = sum > 0xFFFFu
-
-        registers
-        |> setHL result
-        |> setFlags (registers.F &&& ZeroFlag <> 0uy) false halfCarry carry
-
-    let private srl8 value registers =
-        let carry = value &&& 0x01uy <> 0uy
-        let result = value >>> 1
-        result, setFlags (result = 0uy) false false carry registers
-
-    let private sra8 value registers =
-        let carry = value &&& 0x01uy <> 0uy
-        let result = (value >>> 1) ||| (value &&& 0x80uy)
-        result, setFlags (result = 0uy) false false carry registers
-
-    let private sla8 value registers =
-        let carry = value &&& 0x80uy <> 0uy
-        let result = value <<< 1
-        result, setFlags (result = 0uy) false false carry registers
-
-    let private rr8 value registers =
-        let carryIn = if registers.F &&& CarryFlag <> 0uy then 0x80uy else 0uy
-        let carry = value &&& 0x01uy <> 0uy
-        let result = (value >>> 1) ||| carryIn
-        result, setFlags (result = 0uy) false false carry registers
-
-    let private rrc8 value registers =
-        let carry = value &&& 0x01uy <> 0uy
-        let result = (value >>> 1) ||| if carry then 0x80uy else 0uy
-        result, setFlags (result = 0uy) false false carry registers
-
-    let private rlc8 value registers =
-        let carry = value &&& 0x80uy <> 0uy
-        let result = (value <<< 1) ||| if carry then 0x01uy else 0uy
-        result, setFlags (result = 0uy) false false carry registers
-
-    let private rl8 value registers =
-        let carryIn = if registers.F &&& CarryFlag <> 0uy then 0x01uy else 0uy
-        let carry = value &&& 0x80uy <> 0uy
-        let result = (value <<< 1) ||| carryIn
-        result, setFlags (result = 0uy) false false carry registers
-
-    let private swap8 value registers =
-        let result = (value >>> 4) ||| (value <<< 4)
-        result, setFlags (result = 0uy) false false false registers
-
-    let private bitTest bit value registers =
-        let mask = 1uy <<< bit
-        registers
-        |> setFlags (value &&& mask = 0uy) false true (registers.F &&& CarryFlag <> 0uy)
-
-    let private readIndexedRegister index registers bus =
-        match index with
-        | 0 -> registers.B
-        | 1 -> registers.C
-        | 2 -> registers.D
-        | 3 -> registers.E
-        | 4 -> registers.H
-        | 5 -> registers.L
-        | 6 -> Bus.readByte (getHL registers) bus
-        | 7 -> registers.A
-        | _ -> failwith $"Invalid register index: {index}"
-
-    let private writeIndexedRegister index value registers bus =
-        match index with
-        | 0 -> { registers with B = value }, bus
-        | 1 -> { registers with C = value }, bus
-        | 2 -> { registers with D = value }, bus
-        | 3 -> { registers with E = value }, bus
-        | 4 -> { registers with H = value }, bus
-        | 5 -> { registers with L = value }, bus
-        | 6 -> registers, Bus.writeByte (getHL registers) value bus
-        | 7 -> { registers with A = value }, bus
-        | _ -> failwith $"Invalid register index: {index}"
-
-    let private stepGenericPrefixed prefixed cpu bus =
-        let registers = cpu.Registers
-        let group = int prefixed >>> 6
-        let operation = (int prefixed >>> 3) &&& 0x07
-        let target = int prefixed &&& 0x07
-        let targetValue = readIndexedRegister target registers bus
-        let cycles registerCycles memoryCycles = if target = 6 then memoryCycles else registerCycles
-
-        match group with
-        | 0 ->
-            let value, nextRegisters =
-                match operation with
-                | 0 -> rlc8 targetValue registers
-                | 1 -> rrc8 targetValue registers
-                | 2 -> rl8 targetValue registers
-                | 3 -> rr8 targetValue registers
-                | 4 -> sla8 targetValue registers
-                | 5 -> sra8 targetValue registers
-                | 6 -> swap8 targetValue registers
-                | 7 -> srl8 targetValue registers
-                | _ -> failwith $"Invalid CB rotate operation: {operation}"
-
-            let nextRegisters, bus = writeIndexedRegister target value nextRegisters bus
-
-            { Cpu = { cpu with Registers = { nextRegisters with PC = registers.PC + 2us } }
-              Bus = bus
-              Cycles = cycles 8 16 }
-        | 1 ->
-            let nextRegisters = bitTest operation targetValue registers
-
-            { Cpu = { cpu with Registers = { nextRegisters with PC = registers.PC + 2us } }
-              Bus = bus
-              Cycles = cycles 8 12 }
-        | 2 ->
-            let value = targetValue &&& ~~~(1uy <<< operation)
-            let nextRegisters, bus = writeIndexedRegister target value registers bus
-
-            { Cpu = { cpu with Registers = { nextRegisters with PC = registers.PC + 2us } }
-              Bus = bus
-              Cycles = cycles 8 16 }
-        | 3 ->
-            let value = targetValue ||| (1uy <<< operation)
-            let nextRegisters, bus = writeIndexedRegister target value registers bus
-
-            { Cpu = { cpu with Registers = { nextRegisters with PC = registers.PC + 2us } }
-              Bus = bus
-              Cycles = cycles 8 16 }
-        | _ ->
-            failwith $"Invalid CB opcode group: {group}"
-
-    let private decimalAdjust registers =
-        let subtract = registers.F &&& SubtractFlag <> 0uy
-        let halfCarry = registers.F &&& HalfCarryFlag <> 0uy
-        let carry = registers.F &&& CarryFlag <> 0uy
-        let mutable correction = 0
-        let mutable setCarry = carry
-
-        if halfCarry || (not subtract && (registers.A &&& 0x0Fuy) > 0x09uy) then
-            correction <- correction ||| 0x06
-
-        if carry || (not subtract && registers.A > 0x99uy) then
-            correction <- correction ||| 0x60
-            setCarry <- true
-
-        let adjusted =
-            if subtract then
-                byte (int registers.A - correction)
+            if pending &&& Interrupt.VBlankBit <> 0uy then
+                Some(Interrupt.VBlankBit, 0x0040us)
+            elif pending &&& Interrupt.LcdStatBit <> 0uy then
+                Some(Interrupt.LcdStatBit, 0x0048us)
+            elif pending &&& Interrupt.TimerBit <> 0uy then
+                Some(Interrupt.TimerBit, 0x0050us)
+            elif pending &&& Interrupt.SerialBit <> 0uy then
+                Some(Interrupt.SerialBit, 0x0058us)
+            elif pending &&& Interrupt.JoypadBit <> 0uy then
+                Some(Interrupt.JoypadBit, 0x0060us)
             else
-                byte (int registers.A + correction)
+                None
 
-        { registers with A = adjusted }
-        |> setFlags (adjusted = 0uy) subtract false setCarry
+        let serviceInterrupt flag vector cpu bus =
+            let registers = cpu.Registers
+            let flags = Bus.readByte 0xFF0Fus bus &&& ~~~flag
+            let bus = Bus.writeByte 0xFF0Fus flags bus
+            let sp, bus = Stack.write16ToStack registers.PC registers.SP bus
 
-    let private jumpRelative pc offset =
-        let signedOffset =
-            if offset < 0x80uy then
-                int offset
-            else
-                int offset - 0x100
+            { Cpu =
+                { cpu with
+                    Registers = { registers with SP = sp; PC = vector }
+                    Halted = false
+                    InterruptsEnabled = false }
+              Bus = bus
+              Cycles = 20 }
 
-        uint16 (int pc + 2 + signedOffset)
+    open InterruptHandling
+    open LoadStore
+    open RegisterPairs
+    open Stack
+
+    module private Alu =
+        let setFlags zero subtract halfCarry carry registers =
+            let flag condition value =
+                if condition then value else 0uy
+
+            { registers with
+                F =
+                    (flag zero ZeroFlag)
+                    ||| (flag subtract SubtractFlag)
+                    ||| (flag halfCarry HalfCarryFlag)
+                    ||| (flag carry CarryFlag) }
+
+        let preserveCarry registers =
+            registers.F &&& CarryFlag <> 0uy
+
+        let dec8 value registers =
+            let result = value - 1uy
+            let halfCarry = value &&& 0x0Fuy = 0uy
+            result, setFlags (result = 0uy) true halfCarry (preserveCarry registers) registers
+
+        let inc8 value registers =
+            let result = value + 1uy
+            let halfCarry = value &&& 0x0Fuy = 0x0Fuy
+            result, setFlags (result = 0uy) false halfCarry (preserveCarry registers) registers
+
+        let compareA value registers =
+            let a = registers.A
+            let result = a - value
+            let halfCarry = (a &&& 0x0Fuy) < (value &&& 0x0Fuy)
+            let carry = a < value
+            setFlags (result = 0uy) true halfCarry carry registers
+
+        let addA value registers =
+            let a = registers.A
+            let sum = uint16 a + uint16 value
+            let result = byte (sum &&& 0x00FFus)
+            let halfCarry = (a &&& 0x0Fuy) + (value &&& 0x0Fuy) > 0x0Fuy
+            let carry = sum > 0x00FFus
+
+            { registers with A = result }
+            |> setFlags (result = 0uy) false halfCarry carry
+
+        let adcA value registers =
+            let carryIn = if registers.F &&& CarryFlag <> 0uy then 1uy else 0uy
+            let a = registers.A
+            let sum = uint16 a + uint16 value + uint16 carryIn
+            let result = byte (sum &&& 0x00FFus)
+            let halfCarry = uint16 (a &&& 0x0Fuy) + uint16 (value &&& 0x0Fuy) + uint16 carryIn > 0x0Fus
+            let carry = sum > 0x00FFus
+
+            { registers with A = result }
+            |> setFlags (result = 0uy) false halfCarry carry
+
+        let subA value registers =
+            let a = registers.A
+            let result = a - value
+            let halfCarry = (a &&& 0x0Fuy) < (value &&& 0x0Fuy)
+            let carry = a < value
+
+            { registers with A = result }
+            |> setFlags (result = 0uy) true halfCarry carry
+
+        let sbcA value registers =
+            let carryIn = if registers.F &&& CarryFlag <> 0uy then 1uy else 0uy
+            let a = registers.A
+            let subtrahend = uint16 value + uint16 carryIn
+            let result = byte ((uint16 a - subtrahend) &&& 0x00FFus)
+            let halfCarry = uint16 (a &&& 0x0Fuy) < uint16 (value &&& 0x0Fuy) + uint16 carryIn
+            let carry = uint16 a < subtrahend
+
+            { registers with A = result }
+            |> setFlags (result = 0uy) true halfCarry carry
+
+        let andA value registers =
+            let result = registers.A &&& value
+
+            { registers with A = result }
+            |> setFlags (result = 0uy) false true false
+
+        let orA value registers =
+            let result = registers.A ||| value
+
+            { registers with A = result }
+            |> setFlags (result = 0uy) false false false
+
+        let xorA value registers =
+            let result = registers.A ^^^ value
+
+            { registers with A = result }
+            |> setFlags (result = 0uy) false false false
+
+        let addHL value registers =
+            let hl = getHL registers
+            let sum = uint32 hl + uint32 value
+            let result = uint16 (sum &&& 0xFFFFu)
+            let halfCarry = (hl &&& 0x0FFFus) + (value &&& 0x0FFFus) > 0x0FFFus
+            let carry = sum > 0xFFFFu
+
+            registers
+            |> setHL result
+            |> setFlags (registers.F &&& ZeroFlag <> 0uy) false halfCarry carry
+
+    open Alu
+
+    module private CbPrefix =
+        let srl8 value registers =
+            let carry = value &&& 0x01uy <> 0uy
+            let result = value >>> 1
+            result, setFlags (result = 0uy) false false carry registers
+
+        let sra8 value registers =
+            let carry = value &&& 0x01uy <> 0uy
+            let result = (value >>> 1) ||| (value &&& 0x80uy)
+            result, setFlags (result = 0uy) false false carry registers
+
+        let sla8 value registers =
+            let carry = value &&& 0x80uy <> 0uy
+            let result = value <<< 1
+            result, setFlags (result = 0uy) false false carry registers
+
+        let rr8 value registers =
+            let carryIn = if registers.F &&& CarryFlag <> 0uy then 0x80uy else 0uy
+            let carry = value &&& 0x01uy <> 0uy
+            let result = (value >>> 1) ||| carryIn
+            result, setFlags (result = 0uy) false false carry registers
+
+        let rrc8 value registers =
+            let carry = value &&& 0x01uy <> 0uy
+            let result = (value >>> 1) ||| if carry then 0x80uy else 0uy
+            result, setFlags (result = 0uy) false false carry registers
+
+        let rlc8 value registers =
+            let carry = value &&& 0x80uy <> 0uy
+            let result = (value <<< 1) ||| if carry then 0x01uy else 0uy
+            result, setFlags (result = 0uy) false false carry registers
+
+        let rl8 value registers =
+            let carryIn = if registers.F &&& CarryFlag <> 0uy then 0x01uy else 0uy
+            let carry = value &&& 0x80uy <> 0uy
+            let result = (value <<< 1) ||| carryIn
+            result, setFlags (result = 0uy) false false carry registers
+
+        let swap8 value registers =
+            let result = (value >>> 4) ||| (value <<< 4)
+            result, setFlags (result = 0uy) false false false registers
+
+        let bitTest bit value registers =
+            let mask = 1uy <<< bit
+            registers
+            |> setFlags (value &&& mask = 0uy) false true (registers.F &&& CarryFlag <> 0uy)
+
+        let private readIndexedRegister index registers bus =
+            match index with
+            | 0 -> registers.B
+            | 1 -> registers.C
+            | 2 -> registers.D
+            | 3 -> registers.E
+            | 4 -> registers.H
+            | 5 -> registers.L
+            | 6 -> Bus.readByte (getHL registers) bus
+            | 7 -> registers.A
+            | _ -> failwith $"Invalid register index: {index}"
+
+        let private writeIndexedRegister index value registers bus =
+            match index with
+            | 0 -> { registers with B = value }, bus
+            | 1 -> { registers with C = value }, bus
+            | 2 -> { registers with D = value }, bus
+            | 3 -> { registers with E = value }, bus
+            | 4 -> { registers with H = value }, bus
+            | 5 -> { registers with L = value }, bus
+            | 6 -> registers, Bus.writeByte (getHL registers) value bus
+            | 7 -> { registers with A = value }, bus
+            | _ -> failwith $"Invalid register index: {index}"
+
+        let stepGenericPrefixed prefixed cpu bus =
+            let registers = cpu.Registers
+            let group = int prefixed >>> 6
+            let operation = (int prefixed >>> 3) &&& 0x07
+            let target = int prefixed &&& 0x07
+            let targetValue = readIndexedRegister target registers bus
+            let cycles registerCycles memoryCycles = if target = 6 then memoryCycles else registerCycles
+
+            match group with
+            | 0 ->
+                let value, nextRegisters =
+                    match operation with
+                    | 0 -> rlc8 targetValue registers
+                    | 1 -> rrc8 targetValue registers
+                    | 2 -> rl8 targetValue registers
+                    | 3 -> rr8 targetValue registers
+                    | 4 -> sla8 targetValue registers
+                    | 5 -> sra8 targetValue registers
+                    | 6 -> swap8 targetValue registers
+                    | 7 -> srl8 targetValue registers
+                    | _ -> failwith $"Invalid CB rotate operation: {operation}"
+
+                let nextRegisters, bus = writeIndexedRegister target value nextRegisters bus
+
+                { Cpu = { cpu with Registers = { nextRegisters with PC = registers.PC + 2us } }
+                  Bus = bus
+                  Cycles = cycles 8 16 }
+            | 1 ->
+                let nextRegisters = bitTest operation targetValue registers
+
+                { Cpu = { cpu with Registers = { nextRegisters with PC = registers.PC + 2us } }
+                  Bus = bus
+                  Cycles = cycles 8 12 }
+            | 2 ->
+                let value = targetValue &&& ~~~(1uy <<< operation)
+                let nextRegisters, bus = writeIndexedRegister target value registers bus
+
+                { Cpu = { cpu with Registers = { nextRegisters with PC = registers.PC + 2us } }
+                  Bus = bus
+                  Cycles = cycles 8 16 }
+            | 3 ->
+                let value = targetValue ||| (1uy <<< operation)
+                let nextRegisters, bus = writeIndexedRegister target value registers bus
+
+                { Cpu = { cpu with Registers = { nextRegisters with PC = registers.PC + 2us } }
+                  Bus = bus
+                  Cycles = cycles 8 16 }
+            | _ ->
+                failwith $"Invalid CB opcode group: {group}"
+
+    module private DecimalAdjust =
+        let decimalAdjust registers =
+            let subtract = registers.F &&& SubtractFlag <> 0uy
+            let halfCarry = registers.F &&& HalfCarryFlag <> 0uy
+            let carry = registers.F &&& CarryFlag <> 0uy
+            let mutable correction = 0
+            let mutable setCarry = carry
+
+            if halfCarry || (not subtract && (registers.A &&& 0x0Fuy) > 0x09uy) then
+                correction <- correction ||| 0x06
+
+            if carry || (not subtract && registers.A > 0x99uy) then
+                correction <- correction ||| 0x60
+                setCarry <- true
+
+            let adjusted =
+                if subtract then
+                    byte (int registers.A - correction)
+                else
+                    byte (int registers.A + correction)
+
+            { registers with A = adjusted }
+            |> setFlags (adjusted = 0uy) subtract false setCarry
+
+    module private Branch =
+        let jumpRelative pc offset =
+            let signedOffset =
+                if offset < 0x80uy then
+                    int offset
+                else
+                    int offset - 0x100
+
+            uint16 (int pc + 2 + signedOffset)
+
+    open Branch
+    open CbPrefix
+    open DecimalAdjust
 
     /// Executes one instruction or interrupt service operation.
     let step cpu bus =
