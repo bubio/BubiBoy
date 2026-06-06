@@ -47,40 +47,8 @@ type MainWindow() as this =
                 Foreground = SolidColorBrush(Color.Parse("#4F5F72"))
             )
 
-        let normalVideoHostBackground = SolidColorBrush(Color.Parse("#F4F5F7")) :> IBrush
-        let fullscreenVideoHostBackground = Brushes.Black :> IBrush
-        let mutable applyVideoHostBackground = fun () -> ()
-
-        let framebuffer =
-            Border(
-                Width = float Hardware.ScreenWidth * 2.0,
-                Height = float Hardware.ScreenHeight * 2.0,
-                Background = Brushes.Black,
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center
-            )
-
-        // A single display bitmap and BGRA scratch buffer are reused for every frame;
-        // writeInto blits the emulator framebuffer into them in place (no per-frame
-        // WriteableBitmap or 100 KiB byte[] allocation).
-        let displayBitmap = FramebufferBitmap.createBitmap ()
-        let displayBytes = Array.zeroCreate<byte> (Hardware.ScreenWidth * Hardware.ScreenHeight * 4)
-        FramebufferBitmap.writeInto (Video.blankFrame ()) displayBitmap displayBytes
-
-        let framebufferImage =
-            Image(
-                Width = float Hardware.ScreenWidth * 2.0,
-                Height = float Hardware.ScreenHeight * 2.0,
-                Stretch = Stretch.Uniform,
-                Source = displayBitmap
-            )
-
-        framebuffer.Child <- framebufferImage
-
-        // Writes pixels into the persistent bitmap and asks Avalonia to repaint it.
-        let presentFrame (pixels: uint32[]) =
-            FramebufferBitmap.writeInto pixels displayBitmap displayBytes
-            framebufferImage.InvalidateVisual()
+        let viewport = GameViewport.create this
+        let presentFrame = viewport.PresentFrame
 
         let mutable loadedRom: RomFile.LoadedRom option = None
         let mutable currentSession: Emulator.Session option = None
@@ -295,27 +263,7 @@ type MainWindow() as this =
             let videoWidth = float Hardware.ScreenWidth * float selectedScale
             let videoHeight = float Hardware.ScreenHeight * float selectedScale
             let isFullScreen = this.WindowState = WindowState.FullScreen
-
-            if isFullScreen then
-                framebuffer.Width <- Double.NaN
-                framebuffer.Height <- Double.NaN
-                framebuffer.HorizontalAlignment <- HorizontalAlignment.Stretch
-                framebuffer.VerticalAlignment <- VerticalAlignment.Stretch
-                framebufferImage.Width <- Double.NaN
-                framebufferImage.Height <- Double.NaN
-                framebufferImage.HorizontalAlignment <- HorizontalAlignment.Stretch
-                framebufferImage.VerticalAlignment <- VerticalAlignment.Stretch
-            else
-                framebuffer.Width <- videoWidth
-                framebuffer.Height <- videoHeight
-                framebuffer.HorizontalAlignment <- HorizontalAlignment.Center
-                framebuffer.VerticalAlignment <- VerticalAlignment.Center
-                framebufferImage.Width <- videoWidth
-                framebufferImage.Height <- videoHeight
-                framebufferImage.HorizontalAlignment <- HorizontalAlignment.Center
-                framebufferImage.VerticalAlignment <- VerticalAlignment.Center
-
-            applyVideoHostBackground ()
+            viewport.ApplyScale selectedScale this.WindowState
 
             if resizeWindow && not isFullScreen then
                 let menuHeight =
@@ -670,50 +618,7 @@ type MainWindow() as this =
             volumeControl.SetVisual clamped
             saveSettings ()
 
-        let setVolumeFromPointer (args: PointerEventArgs) =
-            setVolumePercent (volumeControl.PercentFromPointer args)
-
-        let mutable isDraggingVolume = false
-
-        volumeControl.Slider.PointerPressed.Add(fun args ->
-            isDraggingVolume <- true
-            volumeControl.Slider.Focus() |> ignore
-            args.Pointer.Capture(volumeControl.Slider) |> ignore
-            setVolumeFromPointer args
-            args.Handled <- true)
-
-        volumeControl.Slider.PointerMoved.Add(fun args ->
-            if isDraggingVolume then
-                setVolumeFromPointer args
-                args.Handled <- true)
-
-        volumeControl.Slider.PointerReleased.Add(fun args ->
-            if isDraggingVolume then
-                isDraggingVolume <- false
-                args.Pointer.Capture(null) |> ignore
-                setVolumeFromPointer args
-                args.Handled <- true)
-
-        volumeControl.Slider.KeyDown.Add(fun args ->
-            let delta =
-                match args.Key with
-                | Key.Left | Key.Down -> Some -5
-                | Key.Right | Key.Up -> Some 5
-                | Key.Home -> Some -100
-                | Key.End -> Some 100
-                | _ -> None
-
-            match delta with
-            | Some change ->
-                let next =
-                    match args.Key with
-                    | Key.Home -> 0
-                    | Key.End -> 100
-                    | _ -> viewModel.VolumePercent + change
-
-                setVolumePercent next
-                args.Handled <- true
-            | None -> ())
+        VolumeControl.bind volumeControl (fun () -> viewModel.VolumePercent) setVolumePercent
 
         this.Closing.Add(fun _ ->
             saveCurrentRam ()
@@ -736,34 +641,11 @@ type MainWindow() as this =
 
         updateContentRows ()
 
-        let videoHost =
-            Grid(Background = normalVideoHostBackground)
-
-        videoHost.PointerPressed.Add(fun args ->
-            let pointer = args.GetCurrentPoint(videoHost)
-
-            if
-                not args.Handled
-                && pointer.Properties.IsLeftButtonPressed
-                && this.WindowState <> WindowState.FullScreen
-            then
-                this.BeginMoveDrag(args)
-                args.Handled <- true)
-
-        applyVideoHostBackground <-
-            fun () ->
-                videoHost.Background <-
-                    if this.WindowState = WindowState.FullScreen then
-                        fullscreenVideoHostBackground
-                    else
-                        normalVideoHostBackground
-
-        videoHost.Children.Add framebuffer |> ignore
         Grid.SetRow(menuBar, 0)
-        Grid.SetRow(videoHost, 1)
+        Grid.SetRow(viewport.Host, 1)
         Grid.SetRow(statusBar, 2)
         contentGrid.Children.Add menuBar |> ignore
-        contentGrid.Children.Add videoHost |> ignore
+        contentGrid.Children.Add viewport.Host |> ignore
         contentGrid.Children.Add statusBar |> ignore
 
         let overlay =

@@ -129,3 +129,49 @@ module VolumeControl =
           Slider = slider
           SetVisual = setVisual
           PercentFromPointer = percentFromPointer }
+
+    let bind (elements: Elements) (currentPercent: unit -> int) (setPercent: int -> unit) =
+        let mutable isDragging = false
+
+        let setFromPointer (args: PointerEventArgs) =
+            setPercent (elements.PercentFromPointer args)
+
+        elements.Slider.PointerPressed.Add(fun args ->
+            isDragging <- true
+            elements.Slider.Focus() |> ignore
+            args.Pointer.Capture(elements.Slider) |> ignore
+            setFromPointer args
+            args.Handled <- true)
+
+        elements.Slider.PointerMoved.Add(fun args ->
+            if isDragging then
+                setFromPointer args
+                args.Handled <- true)
+
+        elements.Slider.PointerReleased.Add(fun args ->
+            if isDragging then
+                isDragging <- false
+                args.Pointer.Capture(null) |> ignore
+                setFromPointer args
+                args.Handled <- true)
+
+        elements.Slider.KeyDown.Add(fun args ->
+            let delta =
+                match args.Key with
+                | Key.Left | Key.Down -> Some -5
+                | Key.Right | Key.Up -> Some 5
+                | Key.Home -> Some -100
+                | Key.End -> Some 100
+                | _ -> None
+
+            match delta with
+            | Some change ->
+                let next =
+                    match args.Key with
+                    | Key.Home -> 0
+                    | Key.End -> 100
+                    | _ -> currentPercent() + change
+
+                setPercent next
+                args.Handled <- true
+            | None -> ())
