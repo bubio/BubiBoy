@@ -7,10 +7,8 @@ open Avalonia.Controls
 open Avalonia.Input
 open Avalonia.Media
 open Avalonia.Platform
-open Avalonia.Threading
 open BubiBoy.Audio
 open BubiBoy.Core
-open BubiBoy.IO
 
 type MainWindow() as this =
     inherit Window()
@@ -28,15 +26,6 @@ type MainWindow() as this =
         this.FontFamily <- AppFonts.ui
         this.Focusable <- true
 
-        let viewport = GameViewport.create this
-        let presentFrame = viewport.PresentFrame
-
-        let mutable loadedRom: RomFile.LoadedRom option = None
-        let mutable currentSession: Emulator.Session option = None
-        let mutable isRunning = false
-        let mutable lastSaveStatus: string option = None
-        let performanceCounters = RuntimePerformanceCounters()
-        let traceCounters = RuntimeTraceCounters()
         let loadedSettings = AppSettingsStore.loadDefault ()
         let settingsStore = loadedSettings.Store
         let mutable openRomHandler = fun () -> ()
@@ -56,67 +45,14 @@ type MainWindow() as this =
             )
 
         this.DataContext <- viewModel
-        let mutable outputVolume = VolumeControl.gainFromPercent settingsStore.Current.VolumePercent
-        let sessionGate = obj ()
-        let volumeGate = obj ()
-        let inputState = InputStateController()
-        let perfTrace = PerfTrace.createFromEnvironment ()
-        let audioFramesPerVideoFrame =
-            int (Math.Round(float AudioHost.defaultFormat.SampleRate * float Hardware.CyclesPerFrame / float Hardware.DmgClockHz))
 
-        let maxStepsPerFrame = 250_000
-        let audioBufferTargetFrames = audioFramesPerVideoFrame * 16
-        let audioDevice =
-            match Miniaudio.tryCreateDevice AudioHost.defaultFormat AudioHost.defaultFormat.SampleRate with
-            | Ok device -> device :> AudioHost.AudioDevice
-            | Error _ -> AudioHost.createBufferedDevice AudioHost.defaultFormat.SampleRate :> AudioHost.AudioDevice
-
-        let audioOutput = audioDevice
-        let controllerHost = ControllerInput.GamepadHosts.createDefault ()
-
-        let getCurrentSession () =
-            lock sessionGate (fun () -> currentSession)
-
-        let setCurrentSession session =
-            lock sessionGate (fun () -> currentSession <- Some session)
-
-        let applyInput (session: Emulator.Session) =
-            inputState.ApplyInput session
-
-        let applyVolume (samples: Apu.Sample[]) =
-            let volume = lock volumeGate (fun () -> outputVolume)
-
-            if volume <> 1.0f then
-                // samples is a freshly drained buffer owned by this frame result, so we
-                // scale it in place instead of allocating a new array each frame.
-                for index in 0 .. samples.Length - 1 do
-                    let sample = samples[index]
-                    samples[index] <- { Left = sample.Left * volume; Right = sample.Right * volume }
-
-            samples
-
-        let emulationRunner =
-            EmulationRunner(
-                audioOutput,
-                applyVolume,
-                applyInput,
-                performanceCounters,
-                traceCounters,
-                perfTrace,
-                maxStepsPerFrame,
-                audioBufferTargetFrames
-            )
-
+        let viewport = GameViewport.create this
         let runIndicator = AppChrome.createRunIndicator ()
-
-        viewModel.PropertyChanged.Add(fun args ->
-            if args.PropertyName = "IsRunning" then
-                runIndicator.SetRunning viewModel.IsRunning)
-
         let volumeControl = VolumeControl.create settingsStore.Current.VolumePercent
         let statusBar = AppChrome.createStatusBar false runIndicator.Host volumeControl.Host
         let toast = AppChrome.createToast ()
         let isMacOS = RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
+
         let layoutController =
             WindowLayoutController(
                 this,
@@ -127,61 +63,102 @@ type MainWindow() as this =
                 toast
             )
 
-        let controllerPollTimer = DispatcherTimer(Interval = TimeSpan.FromMilliseconds(16.0))
-
-        let mutable notify = fun (message: string) -> lastSaveStatus <- Some message
+        let notifications =
+            AppNotificationCenter(toast, fun () -> layoutController.IsFloating)
 
         let saveSettings () =
             match settingsStore.Save() with
             | Ok () -> ()
-            | Error message -> notify $"Settings error: {message}"
-
-        let showToast message =
-            if not layoutController.IsFloating then
-                toast.Text.Text <- message
-                toast.Host.IsVisible <- true
-                toast.Timer.Stop()
-                toast.Timer.Start()
-            else
-                lastSaveStatus <- Some message
-
-        notify <- showToast
-
-        toast.Timer.Tick.Add(fun _ ->
-            toast.Timer.Stop()
-            toast.Host.IsVisible <- false)
-
-        let openInputMapping () =
-            task {
-                let! result =
-                    AppDialogs.showInputMapping
-                        this
-                        settingsStore.Current.KeyboardMapping
-                        settingsStore.Current.ControllerMapping
-                        controllerHost
-
-                match result with
-                | Some inputMapping ->
-                    settingsStore.SetInputMappings(
-                        inputMapping.KeyboardMapping,
-                        inputMapping.ControllerMapping
-                    )
-                    |> ignore
-
-                    inputState.ResetKeyboard()
-                    saveSettings ()
-                    showToast "Input mapping saved."
-                | None -> ()
-            }
-            |> ignore
+            | Error message -> notifications.Show $"Settings error: {message}"
 
         loadedSettings.LoadError
-        |> Option.iter (fun message -> showToast $"Settings error: {message}")
+        |> Option.iter (fun message -> notifications.Show $"Settings error: {message}")
 
-        let platformModifier =
-            if isMacOS then KeyModifiers.Meta else KeyModifiers.Control
+        let inputHost =
+            AppInputHost(this, settingsStore, saveSettings, notifications.Show)
+
+        let outputVolume =
+            OutputVolumeController(settingsStore.Current.VolumePercent)
+
+        let performanceCounters = RuntimePerformanceCounters()
+        let traceCounters = RuntimeTraceCounters()
+        let perfTrace = PerfTrace.createFromEnvironment ()
+        let audioFramesPerVideoFrame =
+            int (
+                Math.Round(
+                    float AudioHost.defaultFormat.SampleRate
+                    * float Hardware.CyclesPerFrame
+                    / float Hardware.DmgClockHz
+                )
+            )
+
+        let audioBufferTargetFrames = audioFramesPerVideoFrame * 16
+
+        let audioOutput =
+            match
+                Miniaudio.tryCreateDevice
+                    AudioHost.defaultFormat
+                    AudioHost.defaultFormat.SampleRate
+            with
+            | Ok device -> device :> AudioHost.AudioDevice
+            | Error _ ->
+                AudioHost.createBufferedDevice AudioHost.defaultFormat.SampleRate
+                :> AudioHost.AudioDevice
+
+        let emulationRunner =
+            EmulationRunner(
+                audioOutput,
+                outputVolume.Apply,
+                inputHost.ApplyInput,
+                performanceCounters,
+                traceCounters,
+                perfTrace,
+                250_000,
+                audioBufferTargetFrames
+            )
 
         let mutable refreshMenus = fun () -> ()
+
+        let sessionController =
+            EmulationSessionController(
+                { Owner = this
+                  ViewModel = viewModel
+                  Runner = emulationRunner
+                  AudioOutput = audioOutput
+                  PerformanceCounters = performanceCounters
+                  PresentFrame = viewport.PresentFrame
+                  SettingsStore = settingsStore
+                  SaveSettings = saveSettings
+                  Notifications = notifications
+                  RefreshMenus = fun () -> refreshMenus () }
+            )
+
+        viewModel.PropertyChanged.Add(fun args ->
+            if args.PropertyName = "IsRunning" then
+                runIndicator.SetRunning viewModel.IsRunning)
+
+        let openRomPicker () =
+            async {
+                try
+                    let! selectedPath = AppDialogs.pickRomPath this
+
+                    match selectedPath with
+                    | Some path -> sessionController.LoadRomPath(path, true)
+                    | None -> ()
+                with ex ->
+                    notifications.Show $"ROM picker error: {ex.Message}"
+            }
+            |> Async.StartImmediate
+
+        let clearRecentRoms () =
+            settingsStore.ClearRecentRoms() |> ignore
+            refreshMenus ()
+            saveSettings ()
+
+        openRomHandler <- openRomPicker
+        toggleRunPauseHandler <- sessionController.ToggleRunPause
+        resetHandler <- sessionController.ResetCurrentRom
+        clearRecentHandler <- clearRecentRoms
 
         let setScale scale =
             let normalizedScale = settingsStore.SetScale scale
@@ -195,238 +172,6 @@ type MainWindow() as this =
             viewModel.IsFloating <- enabled
             refreshMenus ()
 
-        let updateSessionState () =
-            let hasSession = lock sessionGate (fun () -> currentSession.IsSome)
-            viewModel.UpdateSessionState(hasSession, loadedRom.IsSome)
-
-        let stopRunning () =
-            isRunning <- false
-            viewModel.IsRunning <- false
-            emulationRunner.StopLoop()
-            audioOutput.Stop()
-
-        let saveCurrentRam () =
-            let session = lock sessionGate (fun () -> currentSession)
-            let outcome = RomWorkflow.saveRam loadedRom session
-            lastSaveStatus <- outcome.LastSaveStatus
-            outcome.ToastMessage |> Option.iter showToast
-
-        let formatRuntimeDiagnostics () =
-            performanceCounters.FormatDiagnostics(audioOutput.Diagnostics())
-
-        let updateFrame (result: Emulator.FrameResult) =
-            presentFrame result.Framebuffer
-            viewModel.DebugDetails <-
-                if isRunning then
-                    formatRuntimeDiagnostics ()
-                else
-                    $"{DebugDisplay.formatFrameResult result}\n{formatRuntimeDiagnostics ()}"
-
-            match result.StopReason with
-            | Emulator.FrameCompleted -> ()
-            | _ -> stopRunning ()
-
-        let pollControllerInput () =
-            inputState.PollController(controllerHost, settingsStore.Current.ControllerMapping)
-            |> Option.iter showToast
-
-        controllerPollTimer.Tick.Add(fun _ ->
-            try
-                pollControllerInput ()
-            with ex ->
-                controllerPollTimer.Stop()
-                inputState.DisableController()
-                showToast $"Controller input disabled: {ex.Message}")
-        controllerPollTimer.Start()
-
-        let startEmulationLoop () =
-            emulationRunner.Start(getCurrentSession, setCurrentSession, stopRunning)
-
-        let primeAudioBuffer () =
-            emulationRunner.PrimeAudioBuffer(getCurrentSession, setCurrentSession)
-
-        let resetCurrentRom () =
-            match loadedRom with
-            | None ->
-                showToast "Load a ROM before resetting."
-            | Some rom ->
-                let wasRunning = isRunning
-                saveCurrentRam ()
-                stopRunning ()
-
-                let outcome = RomWorkflow.reset rom
-
-                lock sessionGate (fun () ->
-                    currentSession <- outcome.Session)
-                emulationRunner.ClearFrames()
-                updateSessionState ()
-
-                performanceCounters.Reset()
-                presentFrame (Video.blankFrame ())
-                showToast outcome.ToastMessage
-                viewModel.DebugDetails <- outcome.DebugDetails
-
-                if wasRunning && outcome.Session.IsSome then
-                    isRunning <- true
-                    viewModel.IsRunning <- true
-                    performanceCounters.Reset()
-                    audioOutput.Start()
-                    primeAudioBuffer ()
-                    startEmulationLoop ()
-                else
-                    viewModel.IsRunning <- false
-
-                refreshMenus ()
-                this.Focus() |> ignore
-
-        let loadRomPath path rememberRecent =
-            if String.IsNullOrWhiteSpace path then
-                showToast "Could not open the selected ROM path."
-            else
-                saveCurrentRam ()
-
-                match RomWorkflow.load path lastSaveStatus with
-                | RomWorkflow.EmptyPath ->
-                    showToast "Could not open the selected ROM path."
-                | RomWorkflow.Loaded outcome ->
-                    loadedRom <- Some outcome.Rom
-
-                    lock sessionGate (fun () ->
-                        currentSession <- outcome.Session)
-                    emulationRunner.ClearFrames()
-                    updateSessionState ()
-
-                    stopRunning ()
-                    presentFrame (Video.blankFrame ())
-
-                    if rememberRecent then
-                        settingsStore.RememberRom outcome.Rom.Path |> ignore
-                        refreshMenus ()
-                        saveSettings ()
-
-                    showToast outcome.ToastMessage
-                    viewModel.RomDetails <- outcome.RomDetails
-                    viewModel.DebugDetails <- outcome.DebugDetails
-                | RomWorkflow.LoadFailed(toastMessage, romDetails, debugDetails) ->
-                    loadedRom <- None
-
-                    lock sessionGate (fun () ->
-                        currentSession <- None)
-                    emulationRunner.ClearFrames()
-                    updateSessionState ()
-
-                    stopRunning ()
-                    showToast toastMessage
-                    viewModel.RomDetails <- romDetails
-                    viewModel.DebugDetails <- debugDetails
-
-        let resumeAfterStateOperation wasRunning =
-            if wasRunning then
-                isRunning <- true
-                viewModel.IsRunning <- true
-                performanceCounters.Reset()
-                audioOutput.Start()
-                primeAudioBuffer ()
-                startEmulationLoop ()
-            else
-                viewModel.IsRunning <- false
-
-            refreshMenus ()
-            this.Focus() |> ignore
-
-        let saveStateForCurrentRom () =
-            let wasRunning = isRunning
-            stopRunning ()
-
-            let session = lock sessionGate (fun () -> currentSession)
-            let outcome = RomWorkflow.saveState loadedRom session
-            showToast outcome.ToastMessage
-
-            if not (String.IsNullOrWhiteSpace outcome.DebugDetails) then
-                viewModel.DebugDetails <- outcome.DebugDetails
-
-            resumeAfterStateOperation wasRunning
-
-        let loadStateForCurrentRom () =
-            let wasRunning = isRunning
-            stopRunning ()
-
-            let session = lock sessionGate (fun () -> currentSession)
-            let outcome = RomWorkflow.loadState loadedRom session
-
-            match outcome.RestoredSession with
-            | Some restored ->
-                lock sessionGate (fun () ->
-                    currentSession <- Some restored)
-                emulationRunner.ClearFrames()
-                performanceCounters.Reset()
-                presentFrame restored.Framebuffer
-                updateSessionState ()
-            | None -> ()
-
-            showToast outcome.ToastMessage
-
-            if not (String.IsNullOrWhiteSpace outcome.DebugDetails) then
-                viewModel.DebugDetails <- outcome.DebugDetails
-
-            resumeAfterStateOperation wasRunning
-
-        let toggleRunPause () =
-            if currentSession.IsNone then
-                showToast "Load a ROM before running."
-            else
-                isRunning <- not isRunning
-                viewModel.IsRunning <- isRunning
-
-                if isRunning then
-                    performanceCounters.Reset()
-                    audioOutput.Start()
-                    primeAudioBuffer ()
-                    startEmulationLoop ()
-                else
-                    saveCurrentRam ()
-                    stopRunning ()
-
-                refreshMenus ()
-                this.Focus() |> ignore
-
-        let openRomPicker () =
-            async {
-                try
-                    let! selectedPath = AppDialogs.pickRomPath this
-
-                    match selectedPath with
-                    | Some path -> loadRomPath path true
-                    | None -> ()
-                with ex ->
-                    showToast $"ROM picker error: {ex.Message}"
-            }
-            |> Async.StartImmediate
-
-        let clearRecentRoms () =
-            settingsStore.ClearRecentRoms() |> ignore
-            refreshMenus ()
-            saveSettings ()
-
-        openRomHandler <- openRomPicker
-        toggleRunPauseHandler <- toggleRunPause
-        resetHandler <- resetCurrentRom
-        clearRecentHandler <- clearRecentRoms
-
-        let frameDisplayTimer =
-            FrameDisplayTimer(
-                { IsRunning = fun () -> isRunning
-                  DequeueFrame = emulationRunner.DequeueFrame
-                  UpdateFrame = updateFrame
-                  UpdateDiagnostics = fun () -> viewModel.DebugDetails <- formatRuntimeDiagnostics ()
-                  AudioDiagnostics = audioOutput.Diagnostics },
-                performanceCounters,
-                traceCounters,
-                perfTrace
-            )
-
-        frameDisplayTimer.Start()
-
         let toggleFullScreen () =
             if layoutController.IsFloating then
                 setFloating false
@@ -434,19 +179,24 @@ type MainWindow() as this =
             layoutController.ToggleFullScreen()
             refreshMenus ()
 
+        let platformModifier =
+            if isMacOS then KeyModifiers.Meta else KeyModifiers.Control
+
         let menuElements =
             MainWindowMenus.create
                 this
                 isMacOS
                 platformModifier
                 viewModel
-                { OpenInputMapping = openInputMapping
-                  SaveState = saveStateForCurrentRom
-                  LoadState = loadStateForCurrentRom
+                { OpenInputMapping = inputHost.OpenMapping
+                  SaveState = sessionController.SaveState
+                  LoadState = sessionController.LoadState
                   SetScale = setScale
                   ToggleFullScreen = toggleFullScreen
-                  ToggleFloating = fun () -> setFloating (not layoutController.IsFloating)
-                  LoadRecent = fun path -> loadRomPath path true
+                  ToggleFloating =
+                    fun () -> setFloating (not layoutController.IsFloating)
+                  LoadRecent =
+                    fun path -> sessionController.LoadRomPath(path, true)
                   Close = fun () -> this.Close()
                   ShowAbout = this.ShowAbout }
 
@@ -459,40 +209,56 @@ type MainWindow() as this =
                       IsFloating = layoutController.IsFloating
                       IsFullScreen = this.WindowState = WindowState.FullScreen }
 
+        let frameDisplayTimer =
+            FrameDisplayTimer(
+                { IsRunning = fun () -> sessionController.IsRunning
+                  DequeueFrame = emulationRunner.DequeueFrame
+                  UpdateFrame = sessionController.UpdateFrame
+                  UpdateDiagnostics =
+                    fun () ->
+                        viewModel.DebugDetails <-
+                            sessionController.FormatRuntimeDiagnostics()
+                  AudioDiagnostics = audioOutput.Diagnostics },
+                performanceCounters,
+                traceCounters,
+                perfTrace
+            )
+
         let executeCommand (command: System.Windows.Input.ICommand) =
             if command.CanExecute null then
                 command.Execute null
-
-        let updateButtonState key pressed =
-            inputState.UpdateKeyboardKey(settingsStore.Current.KeyboardMapping, key, pressed)
 
         this.KeyDown.Add(fun args ->
             if args.Key = Key.P && args.KeyModifiers = platformModifier then
                 executeCommand viewModel.RunPauseCommand
                 args.Handled <- true
-            elif updateButtonState args.Key true then
+            elif inputHost.UpdateKeyboardKey(args.Key, true) then
                 args.Handled <- true)
 
         this.KeyUp.Add(fun args ->
-            if updateButtonState args.Key false then
+            if inputHost.UpdateKeyboardKey(args.Key, false) then
                 args.Handled <- true)
 
         let setVolumePercent percent =
             let clamped = settingsStore.SetVolumePercent percent
-            lock volumeGate (fun () -> outputVolume <- VolumeControl.gainFromPercent clamped)
+            outputVolume.SetPercent clamped
             viewModel.VolumePercent <- clamped
             volumeControl.SetVisual clamped
             saveSettings ()
 
-        VolumeControl.bind volumeControl (fun () -> viewModel.VolumePercent) setVolumePercent
+        VolumeControl.bind
+            volumeControl
+            (fun () -> viewModel.VolumePercent)
+            setVolumePercent
 
         this.Closing.Add(fun _ ->
-            saveCurrentRam ()
+            sessionController.SaveCurrentRam()
             saveSettings ())
+
         this.Closed.Add(fun _ ->
+            sessionController.StopRunning()
             frameDisplayTimer.Stop()
-            controllerPollTimer.Stop()
-            controllerHost.Dispose()
+            inputHost.Dispose()
             PerfTrace.close perfTrace)
 
         let contentGrid =
@@ -505,9 +271,7 @@ type MainWindow() as this =
         contentGrid.Children.Add viewport.Host |> ignore
         contentGrid.Children.Add statusBar |> ignore
 
-        let overlay =
-            Grid()
-
+        let overlay = Grid()
         overlay.Children.Add contentGrid |> ignore
         overlay.Children.Add toast.Host |> ignore
 
@@ -521,6 +285,8 @@ type MainWindow() as this =
 
         refreshMenus ()
         layoutController.ApplyInitialLayout()
+        inputHost.Start()
+        frameDisplayTimer.Start()
 
     member this.ShowAbout() =
         let version =

@@ -50,9 +50,13 @@
     <Compile Include="VolumeControl.fs" />
     <Compile Include="AppChrome.fs" />
     <Compile Include="AppDialogs.fs" />
+    <Compile Include="AppNotificationCenter.fs" />
+    <Compile Include="OutputVolumeController.fs" />
+    <Compile Include="AppInputHost.fs" />
     <Compile Include="WindowLayoutController.fs" />
     <Compile Include="MainWindowMenus.fs" />
     <Compile Include="FrameDisplayTimer.fs" />
+    <Compile Include="EmulationSessionController.fs" />
     <Compile Include="MainWindow.fs" />
     <Compile Include="App.fs" />
     <Compile Include="Program.fs" />
