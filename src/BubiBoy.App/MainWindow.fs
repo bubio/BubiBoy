@@ -1,13 +1,10 @@
 namespace BubiBoy.App
 
 open System
-open System.Diagnostics
 open System.Runtime.InteropServices
 open Avalonia
 open Avalonia.Controls
-open Avalonia.Data
 open Avalonia.Input
-open Avalonia.Layout
 open Avalonia.Media
 open Avalonia.Platform
 open Avalonia.Threading
@@ -30,21 +27,6 @@ type MainWindow() as this =
         this.Background <- SolidColorBrush(Color.Parse("#F4F5F7"))
         this.FontFamily <- AppFonts.ui
         this.Focusable <- true
-
-        let title =
-            TextBlock(
-                Text = "BubiBoy",
-                FontSize = 28.0,
-                FontWeight = FontWeight.SemiBold,
-                Foreground = SolidColorBrush(Color.Parse("#17202B"))
-            )
-
-        let subtitle =
-            TextBlock(
-                Text = "Game Boy / Game Boy Color emulator",
-                FontSize = 15.0,
-                Foreground = SolidColorBrush(Color.Parse("#4F5F72"))
-            )
 
         let viewport = GameViewport.create this
         let presentFrame = viewport.PresentFrame
@@ -74,8 +56,6 @@ type MainWindow() as this =
             )
 
         this.DataContext <- viewModel
-        let mutable selectedScale = settingsStore.Current.Scale
-        let mutable isFloating = false
         let mutable outputVolume = VolumeControl.gainFromPercent settingsStore.Current.VolumePercent
         let sessionGate = obj ()
         let volumeGate = obj ()
@@ -134,32 +114,20 @@ type MainWindow() as this =
                 runIndicator.SetRunning viewModel.IsRunning)
 
         let volumeControl = VolumeControl.create settingsStore.Current.VolumePercent
-        let statusBar = AppChrome.createStatusBar isFloating runIndicator.Host volumeControl.Host
+        let statusBar = AppChrome.createStatusBar false runIndicator.Host volumeControl.Host
         let toast = AppChrome.createToast ()
+        let isMacOS = RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
+        let layoutController =
+            WindowLayoutController(
+                this,
+                isMacOS,
+                settingsStore.Current.Scale,
+                viewport,
+                statusBar,
+                toast
+            )
+
         let controllerPollTimer = DispatcherTimer(Interval = TimeSpan.FromMilliseconds(16.0))
-
-        let romDetails =
-            TextBlock(
-                FontSize = 13.0,
-                Foreground = SolidColorBrush(Color.Parse("#425166")),
-                TextAlignment = TextAlignment.Center,
-                HorizontalAlignment = HorizontalAlignment.Center,
-                Width = 560.0,
-                Height = 50.0
-            )
-        romDetails.Bind(TextBlock.TextProperty, Binding("RomDetails")) |> ignore
-
-        let debugDetails =
-            TextBlock(
-                FontFamily = AppFonts.monospace,
-                FontSize = 12.0,
-                Foreground = SolidColorBrush(Color.Parse("#263448")),
-                TextAlignment = TextAlignment.Center,
-                HorizontalAlignment = HorizontalAlignment.Center,
-                Width = 560.0,
-                Height = 72.0
-            )
-        debugDetails.Bind(TextBlock.TextProperty, Binding("DebugDetails")) |> ignore
 
         let mutable notify = fun (message: string) -> lastSaveStatus <- Some message
 
@@ -169,7 +137,7 @@ type MainWindow() as this =
             | Error message -> notify $"Settings error: {message}"
 
         let showToast message =
-            if not isFloating then
+            if not layoutController.IsFloating then
                 toast.Text.Text <- message
                 toast.Host.IsVisible <- true
                 toast.Timer.Stop()
@@ -210,70 +178,21 @@ type MainWindow() as this =
         loadedSettings.LoadError
         |> Option.iter (fun message -> showToast $"Settings error: {message}")
 
-        let isMacOS = RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
         let platformModifier =
             if isMacOS then KeyModifiers.Meta else KeyModifiers.Control
 
         let mutable refreshMenus = fun () -> ()
-        let mutable updateContentRows = fun () -> ()
-
-        let mutable menuBar = Menu()
-        menuBar.IsVisible <- not isMacOS && not isFloating
-
-        let applyWindowChrome () =
-            if isFloating then
-                if this.WindowState = WindowState.FullScreen then
-                    this.WindowState <- WindowState.Normal
-
-                this.WindowDecorations <- WindowDecorations.BorderOnly
-                this.ExtendClientAreaToDecorationsHint <- true
-                this.ExtendClientAreaTitleBarHeightHint <- 0.0
-                this.CanResize <- false
-                statusBar.IsVisible <- false
-                statusBar.MinHeight <- 0.0
-                statusBar.Height <- 0.0
-                menuBar.IsVisible <- false
-                toast.Host.IsVisible <- false
-            else
-                this.ExtendClientAreaToDecorationsHint <- false
-                this.ExtendClientAreaTitleBarHeightHint <- -1.0
-                this.WindowDecorations <- WindowDecorations.Full
-                this.CanResize <- false
-                statusBar.IsVisible <- true
-                statusBar.MinHeight <- AppChrome.StatusBarHeight
-                statusBar.Height <- AppChrome.StatusBarHeight
-                menuBar.IsVisible <- not isMacOS
-
-            updateContentRows ()
-
-        let applySelectedScale resizeWindow =
-            let videoWidth = float Hardware.ScreenWidth * float selectedScale
-            let videoHeight = float Hardware.ScreenHeight * float selectedScale
-            let isFullScreen = this.WindowState = WindowState.FullScreen
-            viewport.ApplyScale selectedScale this.WindowState
-
-            if resizeWindow && not isFullScreen then
-                let menuHeight =
-                    if isMacOS || isFloating then 0.0 else 28.0
-
-                let statusHeight =
-                    if isFloating then 0.0 else AppChrome.StatusBarHeight
-
-                this.Width <- videoWidth
-                this.Height <- videoHeight + menuHeight + statusHeight
 
         let setScale scale =
-            selectedScale <- settingsStore.SetScale scale
-            viewModel.SelectedScale <- selectedScale
-            applySelectedScale true
+            let normalizedScale = settingsStore.SetScale scale
+            layoutController.SetScale normalizedScale
+            viewModel.SelectedScale <- normalizedScale
             refreshMenus ()
             saveSettings ()
 
         let setFloating enabled =
-            isFloating <- enabled
+            layoutController.SetFloating enabled
             viewModel.IsFloating <- enabled
-            applyWindowChrome ()
-            applySelectedScale true
             refreshMenus ()
 
         let updateSessionState () =
@@ -494,48 +413,25 @@ type MainWindow() as this =
         resetHandler <- resetCurrentRom
         clearRecentHandler <- clearRecentRoms
 
-        let frameTimer = DispatcherTimer()
-        frameTimer.Interval <- TimeSpan.FromMilliseconds(1000.0 * float Hardware.CyclesPerFrame / float Hardware.DmgClockHz)
-        frameTimer.Tick.Add(fun _ ->
-            if isRunning then
-                let tick, tickDelta = traceCounters.NextDisplayTick(perfTrace)
-                let stopwatch = Stopwatch.StartNew()
-                let dequeued = emulationRunner.DequeueFrame()
+        let frameDisplayTimer =
+            FrameDisplayTimer(
+                { IsRunning = fun () -> isRunning
+                  DequeueFrame = emulationRunner.DequeueFrame
+                  UpdateFrame = updateFrame
+                  UpdateDiagnostics = fun () -> viewModel.DebugDetails <- formatRuntimeDiagnostics ()
+                  AudioDiagnostics = audioOutput.Diagnostics },
+                performanceCounters,
+                traceCounters,
+                perfTrace
+            )
 
-                match dequeued.Frame with
-                | Some result ->
-                    traceCounters.RecordDisplayedFrame() |> ignore
-                    performanceCounters.RecordDisplayedFrame()
-                    updateFrame result
-                | None ->
-                    viewModel.DebugDetails <- formatRuntimeDiagnostics ()
-
-                stopwatch.Stop()
-                let diagnostics = audioOutput.Diagnostics()
-
-                PerfTrace.writeDisplay
-                    perfTrace
-                    tick
-                    stopwatch.Elapsed.TotalMilliseconds
-                    tickDelta
-                    traceCounters.DisplayedFrameCount
-                    dequeued.QueueBefore
-                    dequeued.QueueAfter
-                    diagnostics.BufferedFrames
-                    diagnostics.UnderrunFrames
-                    diagnostics.DroppedFrames)
-        frameTimer.Start()
+        frameDisplayTimer.Start()
 
         let toggleFullScreen () =
-            if isFloating then
+            if layoutController.IsFloating then
                 setFloating false
 
-            this.WindowState <-
-                if this.WindowState = WindowState.FullScreen then
-                    WindowState.Normal
-                else
-                    WindowState.FullScreen
-
+            layoutController.ToggleFullScreen()
             refreshMenus ()
 
         let menuElements =
@@ -549,28 +445,19 @@ type MainWindow() as this =
                   LoadState = loadStateForCurrentRom
                   SetScale = setScale
                   ToggleFullScreen = toggleFullScreen
-                  ToggleFloating = fun () -> setFloating (not isFloating)
+                  ToggleFloating = fun () -> setFloating (not layoutController.IsFloating)
                   LoadRecent = fun path -> loadRomPath path true
                   Close = fun () -> this.Close()
                   ShowAbout = this.ShowAbout }
 
-        menuBar <- menuElements.MenuBar
+        let menuBar = menuElements.MenuBar
 
         refreshMenus <-
             fun () ->
                 menuElements.Refresh
                     { RecentRoms = settingsStore.Current.RecentRoms
-                      IsFloating = isFloating
+                      IsFloating = layoutController.IsFloating
                       IsFullScreen = this.WindowState = WindowState.FullScreen }
-
-        this.GetObservable(Window.WindowStateProperty).Subscribe(fun _ ->
-            applySelectedScale false
-            refreshMenus ())
-        |> ignore
-
-        refreshMenus ()
-        applyWindowChrome ()
-        applySelectedScale true
 
         let executeCommand (command: System.Windows.Input.ICommand) =
             if command.CanExecute null then
@@ -603,22 +490,13 @@ type MainWindow() as this =
             saveCurrentRam ()
             saveSettings ())
         this.Closed.Add(fun _ ->
+            frameDisplayTimer.Stop()
             controllerPollTimer.Stop()
             controllerHost.Dispose()
             PerfTrace.close perfTrace)
 
         let contentGrid =
             Grid(RowDefinitions = RowDefinitions("Auto,*,Auto"))
-
-        updateContentRows <-
-            fun () ->
-                contentGrid.RowDefinitions <-
-                    if isFloating then
-                        RowDefinitions("0,*,0")
-                    else
-                        RowDefinitions("Auto,*,Auto")
-
-        updateContentRows ()
 
         Grid.SetRow(menuBar, 0)
         Grid.SetRow(viewport.Host, 1)
@@ -634,6 +512,15 @@ type MainWindow() as this =
         overlay.Children.Add toast.Host |> ignore
 
         this.Content <- overlay
+        layoutController.Attach(menuBar, contentGrid)
+
+        this.GetObservable(Window.WindowStateProperty).Subscribe(fun _ ->
+            layoutController.HandleWindowStateChanged()
+            refreshMenus ())
+        |> ignore
+
+        refreshMenus ()
+        layoutController.ApplyInitialLayout()
 
     member this.ShowAbout() =
         let version =
