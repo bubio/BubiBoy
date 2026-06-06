@@ -362,8 +362,7 @@ module Apu =
     let private audioRegister index =
         index >= 0x10 && index <= 0x25
 
-    /// Applies one write to an audio register and returns updated register and APU state.
-    let writeRegister index value (io: byte[]) (state: State) : byte[] * State =
+    let private writeRegisterCore index value (io: byte[]) (state: State) : byte[] * State =
         if index = 0x26 && value &&& 0x80uy = 0uy then
             clearPoweredOffRegisters io, initial
         elif index <> 0x26 && audioRegister index && io[0x26] &&& 0x80uy = 0uy then
@@ -406,7 +405,7 @@ module Apu =
 
             nextIo, nextState
 
-    let internal statusRegister (io: byte[]) (state: State) =
+    let private statusRegisterCore (io: byte[]) (state: State) =
         if io[0x26] &&& 0x80uy = 0uy then
             0uy
         else
@@ -548,10 +547,10 @@ module Apu =
         else
             clockFrameSequencer state
 
-    let internal skipNextFrameSequencerClock (state: State) =
+    let private skipNextFrameSequencerClockCore (state: State) =
         { state with SkipNextFrameSequencerClock = true }
 
-    let internal resetDiv divider (io: byte[]) (state: State) =
+    let private resetDivCore divider (io: byte[]) (state: State) =
         if io[0x26] &&& 0x80uy = 0uy then
             initial
         else
@@ -674,11 +673,15 @@ module Apu =
 
         { Left = left; Right = right }
 
-    /// Advances channel state and sample generation by the specified hardware cycles.
-    let tick cycles (io: byte[]) (state: State) =
-        if io[0x26] &&& 0x80uy = 0uy then
-            initial
-        else
+    module private RegisterIo =
+        let write = writeRegisterCore
+        let status = statusRegisterCore
+
+    module private FrameSequencer =
+        let skipNextClock = skipNextFrameSequencerClockCore
+        let resetDivider = resetDivCore
+
+        let advance cycles state =
             let mutable current = state
             let mutable frameCycles = current.FrameSequencerCycles + cycles
 
@@ -686,21 +689,48 @@ module Apu =
                 frameCycles <- frameCycles - FrameSequencerPeriodCycles
                 current <- clockDivApuEvent current
 
-            current <-
-                { current with
-                    Pulse1 = tickPulse cycles current.Pulse1
-                    Pulse2 = tickPulse cycles current.Pulse2
-                    Wave = tickWave cycles current.Wave
-                    Noise = tickNoise cycles io[0x22] current.Noise
-                    FrameSequencerCycles = frameCycles }
+            { current with FrameSequencerCycles = frameCycles }
 
-            let mutable sampleCycles = current.SampleCycles + int64 cycles * int64 SampleRate
-            let mutable pendingSamples = current.PendingSamples
+    module private ChannelState =
+        let advance cycles nr43 state =
+            { state with
+                Pulse1 = tickPulse cycles state.Pulse1
+                Pulse2 = tickPulse cycles state.Pulse2
+                Wave = tickWave cycles state.Wave
+                Noise = tickNoise cycles nr43 state.Noise }
+
+    module private SampleMixer =
+        let generate cycles io state =
+            let mutable sampleCycles = state.SampleCycles + int64 cycles * int64 SampleRate
+            let mutable pendingSamples = state.PendingSamples
 
             while sampleCycles >= int64 Hardware.DmgClockHz do
                 sampleCycles <- sampleCycles - int64 Hardware.DmgClockHz
-                pendingSamples <- appendSample (mixSample io current) pendingSamples
+                pendingSamples <- appendSample (mixSample io state) pendingSamples
 
-            { current with
+            { state with
                 SampleCycles = sampleCycles
                 PendingSamples = pendingSamples }
+
+    /// Applies one write to an audio register and returns updated register and APU state.
+    let writeRegister index value io state =
+        RegisterIo.write index value io state
+
+    let internal statusRegister io state =
+        RegisterIo.status io state
+
+    let internal skipNextFrameSequencerClock state =
+        FrameSequencer.skipNextClock state
+
+    let internal resetDiv divider io state =
+        FrameSequencer.resetDivider divider io state
+
+    /// Advances channel state and sample generation by the specified hardware cycles.
+    let tick cycles (io: byte[]) (state: State) =
+        if io[0x26] &&& 0x80uy = 0uy then
+            initial
+        else
+            state
+            |> FrameSequencer.advance cycles
+            |> ChannelState.advance cycles io[0x22]
+            |> SampleMixer.generate cycles io
