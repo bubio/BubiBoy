@@ -10,7 +10,6 @@ open Avalonia.Input
 open Avalonia.Layout
 open Avalonia.Media
 open Avalonia.Platform
-open Avalonia.Platform.Storage
 open Avalonia.Threading
 open BubiBoy.Audio
 open BubiBoy.Core
@@ -56,13 +55,8 @@ type MainWindow() as this =
         let mutable lastSaveStatus: string option = None
         let performanceCounters = RuntimePerformanceCounters()
         let traceCounters = RuntimeTraceCounters()
-        let settingsPath = AppSettings.defaultPath ()
-        let loadedSettings, settingsLoadError =
-            match AppSettings.loadFromPath settingsPath with
-            | Ok settings -> settings, None
-            | Error message -> AppSettings.defaults, Some message
-
-        let mutable appSettings = loadedSettings
+        let loadedSettings = AppSettingsStore.loadDefault ()
+        let settingsStore = loadedSettings.Store
         let mutable openRomHandler = fun () -> ()
         let mutable toggleRunPauseHandler = fun () -> ()
         let mutable resetHandler = fun () -> ()
@@ -70,9 +64,9 @@ type MainWindow() as this =
 
         let viewModel =
             MainWindowViewModel(
-                appSettings.Scale,
+                settingsStore.Current.Scale,
                 false,
-                appSettings.VolumePercent,
+                settingsStore.Current.VolumePercent,
                 (fun () -> openRomHandler ()),
                 (fun () -> toggleRunPauseHandler ()),
                 (fun () -> resetHandler ()),
@@ -80,9 +74,9 @@ type MainWindow() as this =
             )
 
         this.DataContext <- viewModel
-        let mutable selectedScale = appSettings.Scale
+        let mutable selectedScale = settingsStore.Current.Scale
         let mutable isFloating = false
-        let mutable outputVolume = VolumeControl.gainFromPercent appSettings.VolumePercent
+        let mutable outputVolume = VolumeControl.gainFromPercent settingsStore.Current.VolumePercent
         let sessionGate = obj ()
         let volumeGate = obj ()
         let inputState = InputStateController()
@@ -139,7 +133,7 @@ type MainWindow() as this =
             if args.PropertyName = "IsRunning" then
                 runIndicator.SetRunning viewModel.IsRunning)
 
-        let volumeControl = VolumeControl.create appSettings.VolumePercent
+        let volumeControl = VolumeControl.create settingsStore.Current.VolumePercent
         let statusBar = AppChrome.createStatusBar isFloating runIndicator.Host volumeControl.Host
         let toast = AppChrome.createToast ()
         let controllerPollTimer = DispatcherTimer(Interval = TimeSpan.FromMilliseconds(16.0))
@@ -167,17 +161,10 @@ type MainWindow() as this =
             )
         debugDetails.Bind(TextBlock.TextProperty, Binding("DebugDetails")) |> ignore
 
-        let romFileType =
-            FilePickerFileType(
-                "Game Boy ROM",
-                Patterns = [| "*.gb"; "*.gbc" |],
-                MimeTypes = [| "application/octet-stream" |]
-            )
-
         let mutable notify = fun (message: string) -> lastSaveStatus <- Some message
 
         let saveSettings () =
-            match AppSettings.saveToPath settingsPath appSettings with
+            match settingsStore.Save() with
             | Ok () -> ()
             | Error message -> notify $"Settings error: {message}"
 
@@ -199,19 +186,19 @@ type MainWindow() as this =
         let openInputMapping () =
             task {
                 let! result =
-                    InputMappingWindow.Show(
-                        this,
-                        appSettings.KeyboardMapping,
-                        appSettings.ControllerMapping,
+                    AppDialogs.showInputMapping
+                        this
+                        settingsStore.Current.KeyboardMapping
+                        settingsStore.Current.ControllerMapping
                         controllerHost
-                    )
 
                 match result with
                 | Some inputMapping ->
-                    appSettings <-
-                        appSettings
-                        |> AppSettings.withKeyboardMapping inputMapping.KeyboardMapping
-                        |> AppSettings.withControllerMapping inputMapping.ControllerMapping
+                    settingsStore.SetInputMappings(
+                        inputMapping.KeyboardMapping,
+                        inputMapping.ControllerMapping
+                    )
+                    |> ignore
 
                     inputState.ResetKeyboard()
                     saveSettings ()
@@ -220,7 +207,7 @@ type MainWindow() as this =
             }
             |> ignore
 
-        settingsLoadError
+        loadedSettings.LoadError
         |> Option.iter (fun message -> showToast $"Settings error: {message}")
 
         let isMacOS = RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
@@ -276,9 +263,8 @@ type MainWindow() as this =
                 this.Height <- videoHeight + menuHeight + statusHeight
 
         let setScale scale =
-            selectedScale <- (AppSettings.normalize { appSettings with Scale = scale }).Scale
+            selectedScale <- settingsStore.SetScale scale
             viewModel.SelectedScale <- selectedScale
-            appSettings <- AppSettings.withScale selectedScale appSettings
             applySelectedScale true
             refreshMenus ()
             saveSettings ()
@@ -322,7 +308,7 @@ type MainWindow() as this =
             | _ -> stopRunning ()
 
         let pollControllerInput () =
-            inputState.PollController(controllerHost, appSettings.ControllerMapping)
+            inputState.PollController(controllerHost, settingsStore.Current.ControllerMapping)
             |> Option.iter showToast
 
         controllerPollTimer.Tick.Add(fun _ ->
@@ -395,7 +381,7 @@ type MainWindow() as this =
                     presentFrame (Video.blankFrame ())
 
                     if rememberRecent then
-                        appSettings <- AppSettings.rememberRom outcome.Rom.Path appSettings
+                        settingsStore.RememberRom outcome.Rom.Path |> ignore
                         refreshMenus ()
                         saveSettings ()
 
@@ -487,25 +473,19 @@ type MainWindow() as this =
 
         let openRomPicker () =
             async {
-                let options =
-                    FilePickerOpenOptions(
-                        Title = "Open Game Boy ROM",
-                        AllowMultiple = false,
-                        FileTypeFilter = [| romFileType; FilePickerFileTypes.All |]
-                    )
+                try
+                    let! selectedPath = AppDialogs.pickRomPath this
 
-                let! files =
-                    this.StorageProvider.OpenFilePickerAsync(options)
-                    |> Async.AwaitTask
-
-                if files.Count > 0 then
-                    let path = files[0].TryGetLocalPath()
-                    loadRomPath path true
+                    match selectedPath with
+                    | Some path -> loadRomPath path true
+                    | None -> ()
+                with ex ->
+                    showToast $"ROM picker error: {ex.Message}"
             }
             |> Async.StartImmediate
 
         let clearRecentRoms () =
-            appSettings <- { appSettings with RecentRoms = [] } |> AppSettings.normalize
+            settingsStore.ClearRecentRoms() |> ignore
             refreshMenus ()
             saveSettings ()
 
@@ -579,7 +559,7 @@ type MainWindow() as this =
         refreshMenus <-
             fun () ->
                 menuElements.Refresh
-                    { RecentRoms = appSettings.RecentRoms
+                    { RecentRoms = settingsStore.Current.RecentRoms
                       IsFloating = isFloating
                       IsFullScreen = this.WindowState = WindowState.FullScreen }
 
@@ -597,7 +577,7 @@ type MainWindow() as this =
                 command.Execute null
 
         let updateButtonState key pressed =
-            inputState.UpdateKeyboardKey(appSettings.KeyboardMapping, key, pressed)
+            inputState.UpdateKeyboardKey(settingsStore.Current.KeyboardMapping, key, pressed)
 
         this.KeyDown.Add(fun args ->
             if args.Key = Key.P && args.KeyModifiers = platformModifier then
@@ -611,10 +591,9 @@ type MainWindow() as this =
                 args.Handled <- true)
 
         let setVolumePercent percent =
-            let clamped = Math.Clamp(percent, 0, 100)
+            let clamped = settingsStore.SetVolumePercent percent
             lock volumeGate (fun () -> outputVolume <- VolumeControl.gainFromPercent clamped)
             viewModel.VolumePercent <- clamped
-            appSettings <- AppSettings.withVolumePercent clamped appSettings
             volumeControl.SetVisual clamped
             saveSettings ()
 
