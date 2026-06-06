@@ -1,6 +1,8 @@
 namespace BubiBoy.Core
 
+/// Models the Game Boy joypad matrix and P1 register.
 module Joypad =
+    /// Identifies a Game Boy input button.
     type Button =
         | Right
         | Left
@@ -11,21 +13,25 @@ module Joypad =
         | Select
         | Start
 
+    /// Holds P1 selection lines and the set of pressed buttons.
     type State =
         { SelectAction: bool
           SelectDirection: bool
           Pressed: Set<Button> }
 
+    /// The joypad state after hardware reset.
     let initial =
         { SelectAction = true
           SelectDirection = true
           Pressed = Set.empty }
 
+    /// Applies a value written to the P1 selection register.
     let writeP1 value state =
         { state with
             SelectAction = value &&& 0x20uy = 0uy
             SelectDirection = value &&& 0x10uy = 0uy }
 
+    /// Updates the pressed state of one button.
     let setButton button pressed state =
         if pressed then
             { state with Pressed = state.Pressed.Add button }
@@ -38,6 +44,7 @@ module Joypad =
         else
             0x0Fuy
 
+    /// Reads the active-low P1 register value for the selected button group.
     let readP1 state =
         let selectBits =
             0xC0uy

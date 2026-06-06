@@ -1,11 +1,14 @@
 namespace BubiBoy.Core
 
+/// Models the divider and programmable timer hardware.
 module Timer =
+    /// Holds internal timer counters that are not directly memory mapped.
     [<Struct>]
     type State =
         { Divider: uint16
           TimaCounter: int }
 
+    /// Contains the memory-mapped registers consumed and produced by a timer tick.
     [<Struct>]
     type Registers =
         { Div: byte
@@ -14,11 +17,13 @@ module Timer =
           Tac: byte
           InterruptFlags: byte }
 
+    /// Contains the timer state and register values after a tick.
     [<Struct>]
     type TickResult =
         { State: State
           Registers: Registers }
 
+    /// The timer state after hardware reset.
     let initial =
         { Divider = 0us
           TimaCounter = 0 }
@@ -33,12 +38,13 @@ module Timer =
         | 0x02uy -> 64
         | _ -> 256
 
-    let div state =
+    let internal div state =
         byte (state.Divider >>> 8)
 
-    let resetDiv state =
+    let internal resetDiv state =
         { state with Divider = 0us }
 
+    /// Advances the timer by the specified number of CPU cycles.
     let tick cycles state registers =
         let divider =
             uint16 ((int state.Divider + cycles) &&& 0xFFFF)

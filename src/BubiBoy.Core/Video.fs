@@ -1,15 +1,19 @@
 namespace BubiBoy.Core
 
+/// Renders DMG and CGB scanlines from bus-visible video state.
 module Video =
+    /// The number of pixels in a complete framebuffer.
     [<Literal>]
     let FramebufferPixels = Hardware.ScreenWidth * Hardware.ScreenHeight
 
+    /// The default DMG palette as opaque BGRA colors.
     let DmgColors: uint32[] =
         [| 0xFFE0F8D0u
            0xFF88C070u
            0xFF346856u
            0xFF081820u |]
 
+    /// Creates a framebuffer filled with the lightest DMG color.
     let blankFrame () =
         Array.create FramebufferPixels DmgColors[0]
 
@@ -82,13 +86,13 @@ module Video =
           Palette: int
           Priority: bool }
 
-    type RenderScratch =
+    type private RenderScratch =
         private
             { Sprites: Sprite[]
               BackgroundShades: byte[]
               BackgroundPriority: bool[] }
 
-    let createScratch () =
+    let private createScratch () =
         { Sprites = Array.zeroCreate<Sprite> 10
           BackgroundShades = Array.zeroCreate<byte> Hardware.ScreenWidth
           BackgroundPriority = Array.zeroCreate<bool> Hardware.ScreenWidth }
@@ -256,7 +260,7 @@ module Video =
                                         else
                                             pixelColor palette colorNumber
 
-    let renderScanlineWithScratch y memory (framebuffer: uint32[]) scratch =
+    let private renderScanlineWithScratch y memory (framebuffer: uint32[]) scratch =
         let lcdc = io 0x40 memory
 
         if y >= 0 && y < Hardware.ScreenHeight then
@@ -282,12 +286,14 @@ module Video =
                 for x in 0 .. Hardware.ScreenWidth - 1 do
                     framebuffer[lineStart + x] <- DmgColors[0]
 
+    /// Renders one scanline using temporary scratch storage.
     let renderScanline y memory (framebuffer: uint32[]) =
         renderScanlineWithScratch y memory framebuffer (createScratch ())
 
-    let renderScanlineReusable y memory (framebuffer: uint32[]) =
+    let internal renderScanlineReusable y memory (framebuffer: uint32[]) =
         renderScanlineWithScratch y memory framebuffer threadScratch.Value
 
+    /// Renders a complete frame from the current bus state.
     let renderFrame memory =
         let lcdc = io 0x40 memory
         let framebuffer = blankFrame ()

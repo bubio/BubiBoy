@@ -1,8 +1,11 @@
 namespace BubiBoy.Core
 
+/// Implements the LR35902 CPU execution state and instruction stepper.
 module Cpu =
+    /// Raised when execution reaches an opcode that is not implemented.
     exception UnsupportedOpcode of opcode: byte * pc: uint16
 
+    /// Holds the LR35902 registers.
     [<Struct>]
     type Registers =
         { A: byte
@@ -16,29 +19,36 @@ module Cpu =
           SP: uint16
           PC: uint16 }
 
+    /// Holds CPU registers and execution control state.
     [<Struct>]
     type State =
         { Registers: Registers
           Halted: bool
           InterruptsEnabled: bool }
 
+    /// Contains the CPU, bus, and cycle count after one instruction.
     type StepResult =
         { Cpu: State
           Bus: Bus.Memory
           Cycles: int }
 
+    /// The mask of the zero flag in register F.
     [<Literal>]
     let ZeroFlag = 0x80uy
 
+    /// The mask of the subtraction flag in register F.
     [<Literal>]
     let SubtractFlag = 0x40uy
 
+    /// The mask of the half-carry flag in register F.
     [<Literal>]
     let HalfCarryFlag = 0x20uy
 
+    /// The mask of the carry flag in register F.
     [<Literal>]
     let CarryFlag = 0x10uy
 
+    /// The DMG CPU register values after the boot ROM has completed.
     let initialRegisters =
         { A = 0x01uy
           F = 0xB0uy
@@ -51,6 +61,7 @@ module Cpu =
           SP = 0xFFFEus
           PC = 0x0100us }
 
+    /// The initial DMG CPU execution state.
     let initialState =
         { Registers = initialRegisters
           Halted = false
@@ -386,6 +397,7 @@ module Cpu =
 
         uint16 (int pc + 2 + signedOffset)
 
+    /// Executes one instruction or interrupt service operation.
     let step cpu bus =
         match pendingInterrupt bus with
         | Some(flag, vector) when cpu.InterruptsEnabled ->

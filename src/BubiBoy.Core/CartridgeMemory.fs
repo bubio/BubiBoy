@@ -1,20 +1,25 @@
 namespace BubiBoy.Core
 
+/// Models cartridge ROM, external RAM, bank controllers, and MBC3 real-time clock state.
 module CartridgeMemory =
+    /// Selects whether MBC1 upper bank bits affect ROM or RAM banking.
     type BankingMode =
         | RomBanking
         | RamBanking
 
+    /// Holds mutable MBC1 banking register state.
     type Mbc1State =
         { RamEnabled: bool
           RomBankLow5: int
           BankHigh2: int
           BankingMode: BankingMode }
 
+    /// Holds mutable MBC2 banking register state.
     type Mbc2State =
         { RamEnabled: bool
           RomBank: int }
 
+    /// Holds mutable MBC3 banking and real-time clock state.
     type Mbc3State =
         { RamEnabled: bool
           RomBank: int
@@ -24,12 +29,14 @@ module CartridgeMemory =
           LatchedRtcRegisters: byte[] option
           RtcLatchPrepared: bool }
 
+    /// Holds mutable MBC5 banking register state.
     type Mbc5State =
         { RamEnabled: bool
           RomBankLow8: int
           RomBankHigh1: int
           RamBank: int }
 
+    /// Identifies the active memory bank controller state.
     type MbcState =
         | NoMbc
         | Mbc1 of Mbc1State
@@ -37,11 +44,13 @@ module CartridgeMemory =
         | Mbc3 of Mbc3State
         | Mbc5 of Mbc5State
 
+    /// Contains the persistent portion of an MBC3 real-time clock.
     type RtcSave =
         { Registers: byte[]
           LatchedRegisters: byte[] option
           LatchPrepared: bool }
 
+    /// Represents a loaded cartridge and its current controller state.
     type CartridgeImage =
         private
             { Header: Cartridge.CartridgeHeader
@@ -51,6 +60,7 @@ module CartridgeMemory =
               RamBanks: int
               Mbc: MbcState }
 
+    /// Contains the serializable cartridge state, excluding ROM contents.
     type Snapshot =
         { HeaderSnapshot: Cartridge.CartridgeHeader
           RomLengthSnapshot: int
@@ -59,6 +69,7 @@ module CartridgeMemory =
           RamBanksSnapshot: int
           MbcSnapshot: MbcState }
 
+    /// Exposes the effective bank selection for diagnostics.
     type BankDebug =
         | NoBanking
         | Mbc1Debug of romBankLow5: int * bankHigh2: int * bankingMode: BankingMode * rom0Bank: int * romXBank: int
@@ -160,6 +171,7 @@ module CartridgeMemory =
         elif supportsMbc5 kind then Mbc5 defaultMbc5
         else NoMbc
 
+    /// Creates a cartridge image from ROM bytes after validating its header and declared size.
     let create (rom: byte[]) =
         match Cartridge.parseHeader rom with
         | Error message -> Error message
@@ -327,16 +339,18 @@ module CartridgeMemory =
         else
             { state with RtcLatchPrepared = false }
 
+    /// Reports whether the cartridge has persistent external RAM.
     let hasBatteryBackedRam image =
         hasBattery image.Header.CartridgeKind && image.Ram.Length > 0
 
+    /// Returns the parsed header for a loaded cartridge.
     let header image =
         image.Header
 
-    let romLength image =
+    let internal romLength image =
         image.Rom.Length
 
-    let snapshot (image: CartridgeImage) : Snapshot =
+    let internal snapshot (image: CartridgeImage) : Snapshot =
         { HeaderSnapshot = image.Header
           RomLengthSnapshot = image.Rom.Length
           RomBanksSnapshot = image.RomBanks
@@ -344,7 +358,7 @@ module CartridgeMemory =
           RamBanksSnapshot = image.RamBanks
           MbcSnapshot = image.Mbc }
 
-    let restoreSnapshot (snapshot: Snapshot) (image: CartridgeImage) =
+    let internal restoreSnapshot (snapshot: Snapshot) (image: CartridgeImage) =
         if snapshot.RomLengthSnapshot <> image.Rom.Length then
             Error $"ROM size mismatch: expected {snapshot.RomLengthSnapshot} bytes, got {image.Rom.Length} bytes."
         elif snapshot.HeaderSnapshot.CartridgeTypeCode <> image.Header.CartridgeTypeCode
@@ -365,6 +379,7 @@ module CartridgeMemory =
                     RomBanks = snapshot.RomBanksSnapshot
                     Mbc = snapshot.MbcSnapshot }
 
+    /// Returns the effective bank selection used by the current controller.
     let bankDebug image =
         match image.Mbc with
         | NoMbc -> NoBanking
@@ -389,12 +404,14 @@ module CartridgeMemory =
             let romBank = (state.RomBankHigh1 <<< 8) ||| state.RomBankLow8
             Mbc5Debug(normalizeBankForDebug image.RomBanks romBank, state.RamBank, state.RamEnabled)
 
+    /// Exports a defensive copy of battery-backed RAM when present.
     let exportSaveRam image =
         if hasBatteryBackedRam image then
             Some(Array.copy image.Ram)
         else
             None
 
+    /// Imports battery-backed RAM after validating cartridge capability and size.
     let importSaveRam (saveRam: byte[]) image =
         if isNull saveRam then
             Error "Save RAM data is null."
@@ -405,11 +422,12 @@ module CartridgeMemory =
         else
             Ok { image with Ram = Array.copy saveRam }
 
-    let hasRtc image =
+    let internal hasRtc image =
         match image.Mbc with
         | Mbc3 state -> state.HasRtc
         | _ -> false
 
+    /// Exports a defensive copy of the MBC3 real-time clock when present.
     let exportRtc image =
         match image.Mbc with
         | Mbc3 state when state.HasRtc ->
@@ -419,6 +437,7 @@ module CartridgeMemory =
                   LatchPrepared = state.RtcLatchPrepared }
         | _ -> None
 
+    /// Imports MBC3 real-time clock state after validating register dimensions.
     let importRtc rtc image =
         let validRegisters (registers: byte[]) =
             not (isNull registers) && registers.Length = 5
@@ -442,12 +461,14 @@ module CartridgeMemory =
                                         RtcLatchPrepared = rtc.LatchPrepared } }
         | _ -> Error "Cartridge does not have an MBC3 RTC."
 
+    /// Advances the MBC3 real-time clock by a number of elapsed seconds.
     let advanceRtcSeconds seconds image =
         match image.Mbc with
         | Mbc3 state when state.HasRtc ->
             { image with Mbc = Mbc3 { state with RtcRegisters = advanceRtcRegisters seconds state.RtcRegisters } }
         | _ -> image
 
+    /// Reads one byte from cartridge ROM, external RAM, or a selected RTC register.
     let readByte (address: uint16) image =
         let address = int address
 
@@ -489,6 +510,7 @@ module CartridgeMemory =
             | _ -> 0xFFuy
         | _ -> 0xFFuy
 
+    /// Applies one cartridge bus write and returns the resulting controller state.
     let writeByte (address: uint16) (value: byte) image =
         let address = int address
         let numericValue = int value

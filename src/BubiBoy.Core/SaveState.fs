@@ -4,12 +4,15 @@ open System
 open System.IO
 open System.Text
 
+/// Captures, serializes, validates, and restores deterministic emulator state.
 module SaveState =
+    /// The current binary save-state format version.
     [<Literal>]
     let CurrentVersion = 1
 
     let private magic = [| 0x42uy; 0x55uy; 0x42uy; 0x49uy; 0x53uy; 0x54uy; 0x41uy; 0x54uy; 0x45uy |]
 
+    /// Contains all session state stored in a save-state payload.
     type Snapshot =
         { Cpu: Cpu.State
           Bus: Bus.Snapshot
@@ -17,6 +20,7 @@ module SaveState =
           TotalCycles: int64
           Steps: int }
 
+    /// Captures a defensive snapshot of an emulator session.
     let capture (session: Emulator.Session) : Snapshot =
         { Cpu = session.Cpu
           Bus = Bus.snapshot session.Bus
@@ -24,6 +28,7 @@ module SaveState =
           TotalCycles = session.TotalCycles
           Steps = session.Steps }
 
+    /// Restores a validated snapshot into a session with the same cartridge.
     let restore (snapshot: Snapshot) (session: Emulator.Session) =
         if isNull snapshot.Framebuffer then
             Error "Save state framebuffer is null."
@@ -41,6 +46,7 @@ module SaveState =
 
                 restored)
 
+    /// Encodes a snapshot using the current binary save-state format.
     let encode (snapshot: Snapshot) =
         use stream = new MemoryStream()
         use writer = new BinaryWriter(stream, Encoding.UTF8, true)
@@ -299,6 +305,7 @@ module SaveState =
         writeInt snapshot.Steps
         stream.ToArray()
 
+    /// Decodes and validates a binary save-state payload.
     let decode (bytes: byte[]) =
         if isNull bytes then
             Error "Save state data is null."
@@ -627,6 +634,7 @@ module SaveState =
             | :? NotSupportedException as ex -> Error $"Invalid save state data: {ex.Message}"
             | ex -> Error $"Invalid save state data: {ex.Message}"
 
+    /// Decodes and restores a binary save-state payload into a session.
     let restoreBytes bytes session =
         decode bytes
         |> Result.bind (fun snapshot -> restore snapshot session)

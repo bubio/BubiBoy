@@ -1,6 +1,8 @@
 namespace BubiBoy.Core
 
+/// Models the four audio channels, frame sequencer, and stereo sample generation.
 module Apu =
+    /// The output sample rate in hertz.
     [<Literal>]
     let SampleRate = 48_000
 
@@ -10,20 +12,24 @@ module Apu =
     [<Literal>]
     let private MaxVolume = 15
 
+    /// Contains one normalized stereo audio sample.
     [<Struct>]
     type Sample =
         { Left: single
           Right: single }
 
+    /// Owns the buffered samples that have not yet been drained.
     type PendingSamples =
         private
             { Buffer: Sample[]
               Count: int }
 
+    /// Identifies whether an envelope raises or lowers channel volume.
     type EnvelopeDirection =
         | Decrease
         | Increase
 
+    /// Holds a channel volume envelope's configuration and current state.
     type Envelope =
         { InitialVolume: int
           Direction: EnvelopeDirection
@@ -31,6 +37,7 @@ module Apu =
           Timer: int
           Volume: int }
 
+    /// Holds pulse channel 1 frequency sweep state.
     type Sweep =
         { Period: int
           Negate: bool
@@ -39,6 +46,7 @@ module Apu =
           ShadowFrequency: int
           Enabled: bool }
 
+    /// Holds the state of a square-wave pulse channel.
     type PulseChannel =
         { Enabled: bool
           DacEnabled: bool
@@ -51,6 +59,7 @@ module Apu =
           Envelope: Envelope
           Sweep: Sweep option }
 
+    /// Holds the state of the programmable wave channel.
     type WaveChannel =
         { Enabled: bool
           DacEnabled: bool
@@ -61,6 +70,7 @@ module Apu =
           Position: int
           OutputLevel: int }
 
+    /// Holds the state of the noise channel.
     type NoiseChannel =
         { Enabled: bool
           DacEnabled: bool
@@ -70,6 +80,7 @@ module Apu =
           Lfsr: uint16
           Envelope: Envelope }
 
+    /// Holds complete deterministic APU state.
     type State =
         { FrameSequencerStep: int
           FrameSequencerCycles: int
@@ -81,9 +92,11 @@ module Apu =
           Noise: NoiseChannel
           PendingSamples: PendingSamples }
 
+    /// Contains the serializable pending audio samples.
     type PendingSamplesSnapshot =
         { Samples: Sample[] }
 
+    /// Contains complete serializable APU state.
     type StateSnapshot =
         { SnapshotFrameSequencerStep: int
           SnapshotFrameSequencerCycles: int
@@ -141,6 +154,7 @@ module Apu =
           Envelope = emptyEnvelope
           Sweep = None }
 
+    /// The APU state after hardware reset.
     let initial: State =
         { FrameSequencerStep = 0
           FrameSequencerCycles = 0
@@ -167,7 +181,7 @@ module Apu =
               Envelope = emptyEnvelope }
           PendingSamples = emptyPendingSamples () }
 
-    let snapshot (state: State) : StateSnapshot =
+    let internal snapshot (state: State) : StateSnapshot =
         { SnapshotFrameSequencerStep = state.FrameSequencerStep
           SnapshotFrameSequencerCycles = state.FrameSequencerCycles
           SnapshotSkipNextFrameSequencerClock = state.SkipNextFrameSequencerClock
@@ -178,7 +192,7 @@ module Apu =
           SnapshotNoise = state.Noise
           SnapshotPendingSamples = { Samples = state.PendingSamples.Buffer[0 .. state.PendingSamples.Count - 1] } }
 
-    let restore (snapshot: StateSnapshot) : State =
+    let internal restore (snapshot: StateSnapshot) : State =
         { FrameSequencerStep = snapshot.SnapshotFrameSequencerStep
           FrameSequencerCycles = snapshot.SnapshotFrameSequencerCycles
           SkipNextFrameSequencerClock = snapshot.SnapshotSkipNextFrameSequencerClock
@@ -316,7 +330,7 @@ module Apu =
         else
             next
 
-    let applyRegisters (io: byte[]) (state: State) : State =
+    let private applyRegisters (io: byte[]) (state: State) : State =
         let nr52 = io[0x26]
 
         if nr52 &&& 0x80uy = 0uy then
@@ -348,6 +362,7 @@ module Apu =
     let private audioRegister index =
         index >= 0x10 && index <= 0x25
 
+    /// Applies one write to an audio register and returns updated register and APU state.
     let writeRegister index value (io: byte[]) (state: State) : byte[] * State =
         if index = 0x26 && value &&& 0x80uy = 0uy then
             clearPoweredOffRegisters io, initial
@@ -391,7 +406,7 @@ module Apu =
 
             nextIo, nextState
 
-    let statusRegister (io: byte[]) (state: State) =
+    let internal statusRegister (io: byte[]) (state: State) =
         if io[0x26] &&& 0x80uy = 0uy then
             0uy
         else
@@ -403,12 +418,13 @@ module Apu =
 
             0xF0uy ||| channelBits
 
+    /// Copies all generated samples that have not yet been drained.
     let pendingSamples (state: State) =
         let samples = Array.zeroCreate<Sample> state.PendingSamples.Count
         System.Array.Copy(state.PendingSamples.Buffer, samples, state.PendingSamples.Count)
         samples
 
-    let clearPendingSamples (state: State) =
+    let internal clearPendingSamples (state: State) =
         { state with
             PendingSamples =
                 { state.PendingSamples with
@@ -532,10 +548,10 @@ module Apu =
         else
             clockFrameSequencer state
 
-    let skipNextFrameSequencerClock (state: State) =
+    let internal skipNextFrameSequencerClock (state: State) =
         { state with SkipNextFrameSequencerClock = true }
 
-    let resetDiv divider (io: byte[]) (state: State) =
+    let internal resetDiv divider (io: byte[]) (state: State) =
         if io[0x26] &&& 0x80uy = 0uy then
             initial
         else
@@ -658,6 +674,7 @@ module Apu =
 
         { Left = left; Right = right }
 
+    /// Advances channel state and sample generation by the specified hardware cycles.
     let tick cycles (io: byte[]) (state: State) =
         if io[0x26] &&& 0x80uy = 0uy then
             initial

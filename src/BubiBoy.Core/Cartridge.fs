@@ -3,16 +3,20 @@ namespace BubiBoy.Core
 open System
 open System.Text
 
+/// Parses cartridge headers and classifies cartridge capabilities.
 module Cartridge =
+    /// Describes the cartridge's Game Boy Color compatibility.
     type CgbSupport =
         | DmgOnly
         | CgbEnhanced
         | CgbOnly
 
+    /// Describes the cartridge's Super Game Boy enhancement flag.
     type SgbSupport =
         | NoSgb
         | SgbEnhanced
 
+    /// Identifies the supported memory bank controller and storage combination.
     type CartridgeKind =
         | RomOnly
         | Mbc1
@@ -30,6 +34,7 @@ module Cartridge =
         | Mbc5RamBattery
         | Unknown of byte
 
+    /// Contains the cartridge metadata used by the emulator.
     type CartridgeHeader =
         { Title: string
           CgbSupport: CgbSupport
@@ -41,11 +46,13 @@ module Cartridge =
           DestinationCode: byte
           HeaderChecksum: byte }
 
+    /// Describes a ROM size code in bytes and 16 KiB banks.
     type RomSize =
         { Code: byte
           Bytes: int
           Banks: int }
 
+    /// Describes a cartridge RAM size code in bytes and 8 KiB banks.
     type RamSize =
         { Code: byte
           Bytes: int
@@ -75,11 +82,13 @@ module Cartridge =
         | 0xC0uy -> CgbOnly
         | _ -> DmgOnly
 
+    /// Decodes the SGB support byte from a cartridge header.
     let sgbSupportFromCode code =
         match code with
         | 0x03uy -> SgbEnhanced
         | _ -> NoSgb
 
+    /// Decodes a cartridge ROM size code.
     let romSizeFromCode code =
         match code with
         | value when value <= 0x08uy ->
@@ -91,6 +100,7 @@ module Cartridge =
                   Banks = banks }
         | _ -> Error $"Unsupported ROM size code: 0x{code:X2}"
 
+    /// Decodes a cartridge RAM size code.
     let ramSizeFromCode code =
         match code with
         | 0x00uy ->
@@ -133,6 +143,7 @@ module Cartridge =
         |> Array.takeWhile (fun value -> value <> 0uy)
         |> Encoding.ASCII.GetString
 
+    /// Parses the metadata fields from a complete cartridge ROM image.
     let parseHeader (rom: byte[]) =
         if isNull rom then
             Error "ROM data is null."

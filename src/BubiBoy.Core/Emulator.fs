@@ -1,12 +1,15 @@
 namespace BubiBoy.Core
 
+/// Coordinates CPU, bus, video, and audio state into deterministic emulator steps.
 module Emulator =
+    /// Explains why an emulator run loop stopped.
     type StopReason =
         | StepLimitReached
         | FrameCompleted
         | Halted
         | UnsupportedOpcode of opcode: byte * pc: uint16
 
+    /// Holds all deterministic state needed to continue emulation.
     [<Struct>]
     type Session =
         { Cpu: Cpu.State
@@ -15,16 +18,19 @@ module Emulator =
           TotalCycles: int64
           Steps: int }
 
+    /// Contains the session and stop reason produced by a bounded run.
     type RunResult =
         { Session: Session
           StopReason: StopReason }
 
+    /// Contains the completed frame outputs and resulting session.
     type FrameResult =
         { Session: Session
           Framebuffer: uint32[]
           AudioSamples: Apu.Sample[]
           StopReason: StopReason }
 
+    /// Creates an emulator session from a complete ROM image.
     let createSession rom =
         rom
         |> CartridgeMemory.create
@@ -59,6 +65,7 @@ module Emulator =
         && ((afterLcd.Line = beforeLcd.Line && afterLcd.Mode = Lcd.HBlank)
             || afterLcd.Line <> beforeLcd.Line)
 
+    /// Executes one CPU instruction and advances attached hardware.
     let step session =
         let beforeBus = session.Bus
         let result = Cpu.step session.Cpu session.Bus
@@ -76,6 +83,7 @@ module Emulator =
           TotalCycles = session.TotalCycles + int64 (Bus.hardwareCyclesForCpuCycles result.Cycles beforeBus)
           Steps = session.Steps + 1 }
 
+    /// Executes at most the specified number of CPU instructions.
     let run maxSteps session =
         let mutable remaining = maxSteps
         let mutable current = session
@@ -95,6 +103,7 @@ module Emulator =
         { Session = current
           StopReason = stopReason.Value }
 
+    /// Executes until one frame elapses or the instruction limit is reached.
     let runFrame maxSteps session =
         let targetCycles = session.TotalCycles + int64 Hardware.CyclesPerFrame
         let mutable remaining = maxSteps

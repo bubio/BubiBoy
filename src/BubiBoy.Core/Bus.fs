@@ -1,6 +1,8 @@
 namespace BubiBoy.Core
 
+/// Maps CPU addresses to cartridge and hardware devices and advances shared hardware state.
 module Bus =
+    /// Represents the complete mutable-memory and device state visible through the CPU bus.
     type Memory =
         private
             { Cartridge: CartridgeMemory.CartridgeImage
@@ -26,6 +28,7 @@ module Bus =
               Apu: Apu.State
               InterruptEnable: byte }
 
+    /// Contains a serializable copy of bus-owned memory and device state.
     type Snapshot =
         { CartridgeSnapshot: CartridgeMemory.Snapshot
           ModeSnapshot: Hardware.GameBoyMode
@@ -50,24 +53,31 @@ module Bus =
           ApuSnapshot: Apu.StateSnapshot
           InterruptEnableSnapshot: byte }
 
+    /// The size of one CGB video RAM bank in bytes.
     [<Literal>]
     let VramBankSize = 8 * 1024
 
+    /// The total CGB video RAM size in bytes.
     [<Literal>]
     let VramSize = 2 * VramBankSize
 
+    /// The size of one CGB work RAM bank in bytes.
     [<Literal>]
     let WramBankSize = 4 * 1024
 
+    /// The total CGB work RAM size in bytes.
     [<Literal>]
     let WramSize = 8 * WramBankSize
 
+    /// The object attribute memory size in bytes.
     [<Literal>]
     let OamSize = 160
 
+    /// The memory-mapped I/O register area size in bytes.
     [<Literal>]
     let IoSize = 128
 
+    /// The high RAM size in bytes.
     [<Literal>]
     let HramSize = 127
 
@@ -125,6 +135,7 @@ module Bus =
         | Cartridge.CgbEnhanced
         | Cartridge.CgbOnly -> Hardware.Cgb
 
+    /// Creates reset bus state for a loaded cartridge.
     let create cartridge =
         let mode = modeForCartridge cartridge
         { Cartridge = cartridge
@@ -158,7 +169,7 @@ module Bus =
         else
             Ok()
 
-    let snapshot (memory: Memory) : Snapshot =
+    let internal snapshot (memory: Memory) : Snapshot =
         { CartridgeSnapshot = CartridgeMemory.snapshot memory.Cartridge
           ModeSnapshot = memory.Mode
           VramSnapshot = Array.copy memory.Vram
@@ -182,7 +193,7 @@ module Bus =
           ApuSnapshot = Apu.snapshot memory.Apu
           InterruptEnableSnapshot = memory.InterruptEnable }
 
-    let restoreSnapshot (snapshot: Snapshot) (current: Memory) =
+    let internal restoreSnapshot (snapshot: Snapshot) (current: Memory) =
         validateArray "VRAM" VramSize snapshot.VramSnapshot
         |> Result.bind (fun () -> validateArray "WRAM" WramSize snapshot.WramSnapshot)
         |> Result.bind (fun () -> validateArray "OAM" OamSize snapshot.OamSnapshot)
@@ -220,66 +231,75 @@ module Bus =
     let private lcdEnabled memory =
         memory.Io[0x40] &&& 0x80uy <> 0uy
 
+    /// Returns the loaded cartridge state.
     let cartridge memory =
         memory.Cartridge
 
+    /// Returns the current joypad state.
     let joypad memory =
         memory.Joypad
 
+    /// Returns the active DMG or CGB hardware mode.
     let mode memory =
         memory.Mode
 
-    let hardwareCyclesForCpuCycles cycles memory =
+    let internal hardwareCyclesForCpuCycles cycles memory =
         if memory.DoubleSpeed then
             cycles / 2
         else
             cycles
 
+    /// Replaces cartridge state while preserving all other bus state.
     let withCartridge cartridge memory =
         { memory with Cartridge = cartridge }
 
-    let lcdState memory =
+    let internal lcdState memory =
         memory.Lcd
 
-    let rawIoByte index memory =
+    let internal rawIoByte index memory =
         memory.Io[index]
 
-    let rawVramByte address memory =
+    let internal rawVramByte address memory =
         memory.Vram[memory.VramBank * VramBankSize + address - 0x8000]
 
-    let rawVramBankByte bank address memory =
+    let internal rawVramBankByte bank address memory =
         memory.Vram[(bank &&& 0x01) * VramBankSize + address - 0x8000]
 
-    let rawOamByte index memory =
+    let internal rawOamByte index memory =
         memory.Oam[index]
 
-    let rawBgPaletteByte index memory =
+    let internal rawBgPaletteByte index memory =
         memory.BgPaletteRam[index &&& 0x3F]
 
-    let rawObjPaletteByte index memory =
+    let internal rawObjPaletteByte index memory =
         memory.ObjPaletteRam[index &&& 0x3F]
 
+    /// Copies all audio samples currently waiting on the bus.
     let pendingAudioSamples memory =
         Apu.pendingSamples memory.Apu
 
-    let drainAudioSamples memory =
+    let internal drainAudioSamples memory =
         Apu.pendingSamples memory.Apu, { memory with Apu = Apu.clearPendingSamples memory.Apu }
 
+    /// Returns bus state with one I/O byte replaced.
     let withIoByte index value memory =
         let next = Array.copy memory.Io
         next[index] <- value
         { memory with Io = next }
 
+    /// Returns bus state with one byte in the selected VRAM bank replaced.
     let withVramByte address value memory =
         let next = Array.copy memory.Vram
         next[memory.VramBank * VramBankSize + address - 0x8000] <- value
         { memory with Vram = next }
 
+    /// Returns bus state with one byte in an explicit VRAM bank replaced.
     let withVramBankByte bank address value memory =
         let next = Array.copy memory.Vram
         next[(bank &&& 0x01) * VramBankSize + address - 0x8000] <- value
         { memory with Vram = next }
 
+    /// Returns bus state with one object attribute memory byte replaced.
     let withOamByte index value memory =
         let next = Array.copy memory.Oam
         next[index] <- value
@@ -383,6 +403,7 @@ module Bus =
             HdmaRemaining = 0
             HdmaActive = false }
 
+    /// Reads one byte through the CPU-visible memory map.
     let readByte (address: uint16) memory =
         let address = int address
 
@@ -440,6 +461,7 @@ module Bus =
         | _ ->
             unusableRead
 
+    /// Writes one byte through the CPU-visible memory map.
     let writeByte (address: uint16) (value: byte) memory =
         let address = int address
 
@@ -571,6 +593,7 @@ module Bus =
         | _ ->
             memory
 
+    /// Advances all bus-owned hardware by the specified CPU cycles.
     let tick cycles memory =
         let hardwareCycles = hardwareCyclesForCpuCycles cycles memory
 
@@ -635,6 +658,7 @@ module Bus =
         else
             next
 
+    /// Executes the CGB speed-switch behavior associated with the STOP instruction.
     let stop memory =
         if isCgb memory && memory.SpeedSwitchPrepared then
             let nextDoubleSpeed = not memory.DoubleSpeed
@@ -646,6 +670,7 @@ module Bus =
         else
             memory
 
+    /// Updates one joypad button and requests an interrupt on a new press.
     let setButton button pressed memory =
         let wasPressed = Set.contains button memory.Joypad.Pressed
         let joypad = Joypad.setButton button pressed memory.Joypad

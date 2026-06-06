@@ -1,12 +1,15 @@
 namespace BubiBoy.Core
 
+/// Models LCD scanline timing and mode transitions.
 module Lcd =
+    /// Identifies the current LCD controller mode.
     type Mode =
         | HBlank
         | VBlank
         | OamSearch
         | Transfer
 
+    /// Holds the current LCD timing and STAT interrupt signal state.
     [<Struct>]
     type State =
         { Line: byte
@@ -14,19 +17,22 @@ module Lcd =
           Mode: Mode
           StatSignal: bool }
 
+    /// The number of hardware cycles in one scanline.
     [<Literal>]
     let CyclesPerLine = 456
 
+    /// The total number of visible and vertical-blank lines in one frame.
     [<Literal>]
     let LinesPerFrame = 154
 
+    /// The LCD state after hardware reset.
     let initial =
         { Line = 0uy
           DotCounter = 0
           Mode = OamSearch
           StatSignal = false }
 
-    let modeBits mode =
+    let internal modeBits mode =
         match mode with
         | HBlank -> 0uy
         | VBlank -> 1uy
@@ -43,20 +49,21 @@ module Lcd =
         else
             HBlank
 
-    let resetLine state =
+    let internal resetLine state =
         { state with
             Line = 0uy
             DotCounter = 0
             Mode = OamSearch
             StatSignal = false }
 
-    let disabled state =
+    let internal disabled state =
         { state with
             Line = 0uy
             DotCounter = 0
             Mode = HBlank
             StatSignal = false }
 
+    /// Advances LCD timing by the specified number of hardware cycles.
     let tick cycles state =
         let totalDots = state.DotCounter + cycles
         let advancedLines = totalDots / CyclesPerLine
