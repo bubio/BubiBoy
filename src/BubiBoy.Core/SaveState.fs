@@ -10,8 +10,6 @@ module SaveState =
     [<Literal>]
     let CurrentVersion = 1
 
-    let private magic = [| 0x42uy; 0x55uy; 0x42uy; 0x49uy; 0x53uy; 0x54uy; 0x41uy; 0x54uy; 0x45uy |]
-
     /// Contains all session state stored in a save-state payload.
     type Snapshot =
         { Cpu: Cpu.State
@@ -46,37 +44,101 @@ module SaveState =
 
                 restored)
 
-    /// Encodes a snapshot using the current binary save-state format.
-    let encode (snapshot: Snapshot) =
-        use stream = new MemoryStream()
-        use writer = new BinaryWriter(stream, Encoding.UTF8, true)
+    type private PrimitiveWriter(writer: BinaryWriter) =
+        member _.WriteBool value = writer.Write(value: bool)
+        member _.WriteByte value = writer.Write(value: byte)
+        member _.WriteInt value = writer.Write(value: int)
+        member _.WriteInt64 value = writer.Write(value: int64)
+        member _.WriteUInt16 value = writer.Write(value: uint16)
+        member _.WriteUInt32 value = writer.Write(value: uint32)
+        member _.WriteSingle value = writer.Write(value: single)
+        member _.WriteRawBytes(bytes: byte[]) = writer.Write bytes
 
-        let writeBool value = writer.Write(value: bool)
-        let writeByte value = writer.Write(value: byte)
-        let writeInt value = writer.Write(value: int)
-        let writeInt64 value = writer.Write(value: int64)
-        let writeUInt16 value = writer.Write(value: uint16)
-        let writeUInt32 value = writer.Write(value: uint32)
-        let writeSingle value = writer.Write(value: single)
-
-        let writeBytes (bytes: byte[]) =
+        member this.WriteBytes(bytes: byte[]) =
             if isNull bytes then
-                writeInt -1
+                this.WriteInt -1
             else
-                writeInt bytes.Length
-                writer.Write bytes
+                this.WriteInt bytes.Length
+                this.WriteRawBytes bytes
 
-        let writeString (value: string) =
+        member this.WriteString(value: string) =
             let bytes = Encoding.UTF8.GetBytes(if isNull value then "" else value)
-            writeInt bytes.Length
-            writer.Write bytes
+            this.WriteInt bytes.Length
+            this.WriteRawBytes bytes
 
-        let writeUInt32Array (values: uint32[]) =
+        member this.WriteUInt32Array(values: uint32[]) =
             if isNull values then
-                writeInt -1
+                this.WriteInt -1
             else
-                writeInt values.Length
-                values |> Array.iter writeUInt32
+                this.WriteInt values.Length
+                values |> Array.iter this.WriteUInt32
+
+    type private PrimitiveReader(reader: BinaryReader) =
+        member _.ReadBool() = reader.ReadBoolean()
+        member _.ReadByte() = reader.ReadByte()
+        member _.ReadInt() = reader.ReadInt32()
+        member _.ReadInt64() = reader.ReadInt64()
+        member _.ReadUInt16() = reader.ReadUInt16()
+        member _.ReadUInt32() = reader.ReadUInt32()
+        member _.ReadSingle() = reader.ReadSingle()
+        member _.ReadRawBytes length = reader.ReadBytes length
+
+        member this.ReadBytes() =
+            let length = this.ReadInt()
+
+            if length < 0 then
+                null
+            else
+                let data = this.ReadRawBytes length
+
+                if data.Length <> length then
+                    raise (EndOfStreamException("Save state ended inside a byte array."))
+
+                data
+
+        member this.ReadString() =
+            let bytes = this.ReadBytes()
+            if isNull bytes then "" else Encoding.UTF8.GetString bytes
+
+        member this.ReadUInt32Array() =
+            let length = this.ReadInt()
+
+            if length < 0 then
+                null
+            else
+                Array.init length (fun _ -> this.ReadUInt32())
+
+    module private VersionHeader =
+        let private magic = [| 0x42uy; 0x55uy; 0x42uy; 0x49uy; 0x53uy; 0x54uy; 0x41uy; 0x54uy; 0x45uy |]
+
+        let write (writer: PrimitiveWriter) =
+            writer.WriteRawBytes magic
+            writer.WriteInt CurrentVersion
+
+        let read (reader: PrimitiveReader) =
+            let fileMagic = reader.ReadRawBytes magic.Length
+
+            if fileMagic.Length <> magic.Length || fileMagic <> magic then
+                Error "File is not a BubiBoy save state."
+            else
+                let version = reader.ReadInt()
+
+                if version <> CurrentVersion then
+                    Error $"Unsupported save state version: {version}."
+                else
+                    Ok()
+
+    type private DomainSnapshotWriter(primitives: PrimitiveWriter) =
+        let writeBool value = primitives.WriteBool value
+        let writeByte value = primitives.WriteByte value
+        let writeInt value = primitives.WriteInt value
+        let writeInt64 value = primitives.WriteInt64 value
+        let writeUInt16 value = primitives.WriteUInt16 value
+        let writeUInt32 value = primitives.WriteUInt32 value
+        let writeSingle value = primitives.WriteSingle value
+        let writeBytes bytes = primitives.WriteBytes bytes
+        let writeString value = primitives.WriteString value
+        let writeUInt32Array values = primitives.WriteUInt32Array values
 
         let writeGameBoyMode mode =
             match mode with
@@ -296,54 +358,26 @@ module SaveState =
             writeBool state.Halted
             writeBool state.InterruptsEnabled
 
-        writer.Write magic
-        writeInt CurrentVersion
-        writeCpuState snapshot.Cpu
-        writeBusSnapshot snapshot.Bus
-        writeUInt32Array snapshot.Framebuffer
-        writeInt64 snapshot.TotalCycles
-        writeInt snapshot.Steps
-        stream.ToArray()
+        member _.Write(snapshot: Snapshot) =
+            writeCpuState snapshot.Cpu
+            writeBusSnapshot snapshot.Bus
+            writeUInt32Array snapshot.Framebuffer
+            writeInt64 snapshot.TotalCycles
+            writeInt snapshot.Steps
 
-    /// Decodes and validates a binary save-state payload.
-    let decode (bytes: byte[]) =
-        if isNull bytes then
-            Error "Save state data is null."
-        else
-            try
-                use stream = new MemoryStream(bytes)
-                use reader = new BinaryReader(stream, Encoding.UTF8, true)
+    type private DomainSnapshotReader(primitives: PrimitiveReader) =
+        let readBool () = primitives.ReadBool()
+        let readByte () = primitives.ReadByte()
+        let readInt () = primitives.ReadInt()
+        let readInt64 () = primitives.ReadInt64()
+        let readUInt16 () = primitives.ReadUInt16()
+        let readUInt32 () = primitives.ReadUInt32()
+        let readSingle () = primitives.ReadSingle()
+        let readBytes () = primitives.ReadBytes()
+        let readString () = primitives.ReadString()
+        let readUInt32Array () = primitives.ReadUInt32Array()
 
-                let readBool () = reader.ReadBoolean()
-                let readByte () = reader.ReadByte()
-                let readInt () = reader.ReadInt32()
-                let readInt64 () = reader.ReadInt64()
-                let readUInt16 () = reader.ReadUInt16()
-                let readUInt32 () = reader.ReadUInt32()
-                let readSingle () = reader.ReadSingle()
-
-                let readBytes () =
-                    let length = readInt ()
-                    if length < 0 then
-                        null
-                    else
-                        let data = reader.ReadBytes length
-                        if data.Length <> length then
-                            raise (EndOfStreamException("Save state ended inside a byte array."))
-
-                        data
-
-                let readString () =
-                    let bytes = readBytes ()
-                    if isNull bytes then "" else Encoding.UTF8.GetString bytes
-
-                let readUInt32Array () =
-                    let length = readInt ()
-                    if length < 0 then
-                        null
-                    else
-                        Array.init length (fun _ -> readUInt32 ())
-
+        member _.Read() =
                 let readGameBoyMode () =
                     match readByte () with
                     | 0uy -> Hardware.Dmg
@@ -612,20 +646,33 @@ module SaveState =
                       Halted = readBool ()
                       InterruptsEnabled = readBool () }
 
-                let fileMagic = reader.ReadBytes magic.Length
-                if fileMagic.Length <> magic.Length || fileMagic <> magic then
-                    Error "File is not a BubiBoy save state."
-                else
-                    let version = readInt ()
-                    if version <> CurrentVersion then
-                        Error $"Unsupported save state version: {version}."
-                    else
-                        Ok
-                            { Cpu = readCpuState ()
-                              Bus = readBusSnapshot ()
-                              Framebuffer = readUInt32Array ()
-                              TotalCycles = readInt64 ()
-                              Steps = readInt () }
+                { Cpu = readCpuState ()
+                  Bus = readBusSnapshot ()
+                  Framebuffer = readUInt32Array ()
+                  TotalCycles = readInt64 ()
+                  Steps = readInt () }
+
+    /// Encodes a snapshot using the current binary save-state format.
+    let encode (snapshot: Snapshot) =
+        use stream = new MemoryStream()
+        use binaryWriter = new BinaryWriter(stream, Encoding.UTF8, true)
+        let writer = PrimitiveWriter binaryWriter
+        VersionHeader.write writer
+        DomainSnapshotWriter(writer).Write snapshot
+        stream.ToArray()
+
+    /// Decodes and validates a binary save-state payload.
+    let decode (bytes: byte[]) =
+        if isNull bytes then
+            Error "Save state data is null."
+        else
+            try
+                use stream = new MemoryStream(bytes)
+                use binaryReader = new BinaryReader(stream, Encoding.UTF8, true)
+                let reader = PrimitiveReader binaryReader
+
+                VersionHeader.read reader
+                |> Result.map (fun () -> DomainSnapshotReader(reader).Read())
             with
             | :? EndOfStreamException -> Error "Save state data is truncated."
             | :? IOException as ex -> Error $"Could not read save state data: {ex.Message}"

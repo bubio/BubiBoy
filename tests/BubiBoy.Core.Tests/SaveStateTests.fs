@@ -1,5 +1,7 @@
 module BubiBoy.Core.Tests.SaveStateTests
 
+open System
+open System.Security.Cryptography
 open BubiBoy.Core
 open Xunit
 
@@ -25,11 +27,22 @@ let private createSession rom =
     | Ok session -> session
     | Error message -> failwith message
 
+let private encodeSession session =
+    session |> SaveState.capture |> SaveState.encode
+
+[<Fact>]
+let ``version 1 wire format remains stable`` () =
+    let bytes = makeRom "S" Array.empty |> createSession |> encodeSession
+    let hash = SHA256.HashData bytes |> Convert.ToHexString
+
+    Assert.Equal(142_151, bytes.Length)
+    Assert.Equal("88715516B745DC40375D1749E7DF5DFF98DB8D7F144C40B2D38831E8EF299712", hash)
+
 [<Fact>]
 let ``save state round trips session and can continue deterministically`` () =
     let rom = makeRom "STATE" [| 0x3Cuy; 0xEAuy; 0x00uy; 0xC0uy; 0x00uy |]
     let session = createSession rom |> Emulator.run 3 |> fun result -> result.Session
-    let encoded = session |> SaveState.capture |> SaveState.encode
+    let encoded = encodeSession session
 
     let restored =
         createSession rom
@@ -54,16 +67,45 @@ let ``save state round trips session and can continue deterministically`` () =
 let ``save state rejects different ROM identity`` () =
     let first = createSession (makeRom "STATE-A" [| 0x00uy |])
     let second = createSession (makeRom "STATE-B" [| 0x00uy |])
-    let encoded = first |> SaveState.capture |> SaveState.encode
+    let encoded = encodeSession first
 
     match SaveState.restoreBytes encoded second with
     | Ok _ -> failwith "Expected ROM identity mismatch."
     | Error message -> Assert.Contains("ROM identity", message)
 
 [<Fact>]
-let ``save state rejects corrupt magic`` () =
-    let bytes = [| 0x00uy; 0x01uy; 0x02uy |]
+let ``save state rejects magic mismatch`` () =
+    let bytes = makeRom "MAGIC" Array.empty |> createSession |> encodeSession
+    bytes[0] <- bytes[0] ^^^ 0xFFuy
 
     match SaveState.decode bytes with
-    | Ok _ -> failwith "Expected corrupt save state to fail."
-    | Error message -> Assert.Contains("save state", message)
+    | Ok _ -> failwith "Expected save-state magic mismatch."
+    | Error message -> Assert.Equal("File is not a BubiBoy save state.", message)
+
+[<Fact>]
+let ``save state rejects version mismatch`` () =
+    let bytes = makeRom "VERSION" Array.empty |> createSession |> encodeSession
+    BitConverter.GetBytes(SaveState.CurrentVersion + 1).CopyTo(bytes, 9)
+
+    match SaveState.decode bytes with
+    | Ok _ -> failwith "Expected save-state version mismatch."
+    | Error message -> Assert.Equal($"Unsupported save state version: {SaveState.CurrentVersion + 1}.", message)
+
+[<Fact>]
+let ``save state restore rejects framebuffer size mismatch`` () =
+    let session = makeRom "FRAME" Array.empty |> createSession
+    let snapshot = { SaveState.capture session with Framebuffer = Array.empty }
+
+    match SaveState.restore snapshot session with
+    | Ok _ -> failwith "Expected framebuffer size mismatch."
+    | Error message -> Assert.Contains("framebuffer size mismatch", message)
+
+[<Fact>]
+let ``save state restore rejects bus array size mismatch`` () =
+    let session = makeRom "VRAM" Array.empty |> createSession
+    let snapshot = SaveState.capture session
+    let invalidBus = { snapshot.Bus with VramSnapshot = Array.empty }
+
+    match SaveState.restore { snapshot with Bus = invalidBus } session with
+    | Ok _ -> failwith "Expected VRAM size mismatch."
+    | Error message -> Assert.Contains("VRAM size mismatch", message)
