@@ -86,6 +86,8 @@ module Apu =
           FrameSequencerCycles: int
           SkipNextFrameSequencerClock: bool
           SampleCycles: int64
+          WaveSampleArea: int64
+          WaveSampleCycles: int
           NoiseSampleArea: int64
           NoiseSampleCycles: int
           Pulse1: PulseChannel
@@ -104,6 +106,8 @@ module Apu =
           SnapshotFrameSequencerCycles: int
           SnapshotSkipNextFrameSequencerClock: bool
           SnapshotSampleCycles: int64
+          SnapshotWaveSampleArea: int64
+          SnapshotWaveSampleCycles: int
           SnapshotNoiseSampleArea: int64
           SnapshotNoiseSampleCycles: int
           SnapshotPulse1: PulseChannel
@@ -164,6 +168,8 @@ module Apu =
           FrameSequencerCycles = 0
           SkipNextFrameSequencerClock = false
           SampleCycles = 0L
+          WaveSampleArea = 0L
+          WaveSampleCycles = 0
           NoiseSampleArea = 0L
           NoiseSampleCycles = 0
           Pulse1 = emptyPulse
@@ -192,6 +198,8 @@ module Apu =
           SnapshotFrameSequencerCycles = state.FrameSequencerCycles
           SnapshotSkipNextFrameSequencerClock = state.SkipNextFrameSequencerClock
           SnapshotSampleCycles = state.SampleCycles
+          SnapshotWaveSampleArea = state.WaveSampleArea
+          SnapshotWaveSampleCycles = state.WaveSampleCycles
           SnapshotNoiseSampleArea = state.NoiseSampleArea
           SnapshotNoiseSampleCycles = state.NoiseSampleCycles
           SnapshotPulse1 = state.Pulse1
@@ -205,6 +213,8 @@ module Apu =
           FrameSequencerCycles = snapshot.SnapshotFrameSequencerCycles
           SkipNextFrameSequencerClock = snapshot.SnapshotSkipNextFrameSequencerClock
           SampleCycles = snapshot.SnapshotSampleCycles
+          WaveSampleArea = snapshot.SnapshotWaveSampleArea
+          WaveSampleCycles = snapshot.SnapshotWaveSampleCycles
           NoiseSampleArea = snapshot.SnapshotNoiseSampleArea
           NoiseSampleCycles = snapshot.SnapshotNoiseSampleCycles
           Pulse1 = snapshot.SnapshotPulse1
@@ -620,18 +630,46 @@ module Apu =
 
             { channel with Timer = timer; DutyStep = dutyStep }
 
-    let private tickWave cycles (channel: WaveChannel) : WaveChannel =
-        if not channel.Enabled then
-            channel
+    let private waveOutputUnits (io: byte[]) (channel: WaveChannel) =
+        if not channel.Enabled || not channel.DacEnabled || channel.OutputLevel = 0 then
+            0
         else
-            let mutable timer = channel.Timer - cycles
+            let sampleByte = io[0x30 + (channel.Position / 2)]
+            let sample =
+                if channel.Position &&& 1 = 0 then
+                    int (sampleByte >>> 4)
+                else
+                    int (sampleByte &&& 0x0Fuy)
+
+            let shifted =
+                match channel.OutputLevel with
+                | 1 -> sample
+                | 2 -> sample >>> 1
+                | _ -> sample >>> 2
+
+            2 * shifted - 15
+
+    let private tickWave cycles (io: byte[]) (channel: WaveChannel) : WaveChannel * int64 =
+        if not channel.Enabled then
+            channel, 0L
+        else
+            let mutable remaining = cycles
+            let mutable timer = channel.Timer
             let mutable position = channel.Position
+            let mutable area = 0L
 
-            while timer <= 0 do
-                timer <- timer + waveTimer channel.Frequency
-                position <- (position + 1) &&& 0x1F
+            while remaining > 0 do
+                let span = min remaining timer
+                let current = { channel with Timer = timer; Position = position }
+                area <- area + int64 (waveOutputUnits io current) * int64 span
+                timer <- timer - span
+                remaining <- remaining - span
 
-            { channel with Timer = timer; Position = position }
+                if timer = 0 then
+                    timer <- waveTimer channel.Frequency
+                    position <- (position + 1) &&& 0x1F
+
+            { channel with Timer = timer; Position = position }, area
 
     let private tickNoise cycles nr43 (channel: NoiseChannel) : NoiseChannel * int64 =
         if not channel.Enabled then
@@ -674,23 +712,19 @@ module Apu =
             if bit = 0 then -single channel.Envelope.Volume / single MaxVolume else single channel.Envelope.Volume / single MaxVolume
 
     let private waveOutput (io: byte[]) (channel: WaveChannel) =
-        if not channel.Enabled || not channel.DacEnabled || channel.OutputLevel = 0 then
-            0.0f
-        else
-            let sampleByte = io[0x30 + (channel.Position / 2)]
-            let sample =
-                if channel.Position &&& 1 = 0 then
-                    int (sampleByte >>> 4)
-                else
-                    int (sampleByte &&& 0x0Fuy)
+        single (waveOutputUnits io channel) / 15.0f
 
-            let shifted =
-                match channel.OutputLevel with
-                | 1 -> sample
-                | 2 -> sample >>> 1
-                | _ -> sample >>> 2
+    let private waveCycleAverage (io: byte[]) (channel: WaveChannel) =
+        let mutable units = 0
 
-            (single shifted - 7.5f) / 7.5f
+        for position in 0..31 do
+            units <- units + waveOutputUnits io { channel with Position = position }
+
+        single units / (32.0f * 15.0f)
+
+    let private waveAboveNyquist (channel: WaveChannel) =
+        let periodCycles = waveTimer channel.Frequency * 32
+        2L * int64 Hardware.DmgClockHz >= int64 SampleRate * int64 periodCycles
 
     let private noiseOutput (channel: NoiseChannel) =
         if not channel.Enabled || not channel.DacEnabled then
@@ -700,14 +734,14 @@ module Apu =
         else
             -single channel.Envelope.Volume / single MaxVolume
 
-    let private mixSample noiseOverride (io: byte[]) (state: State) =
+    let private mixSample waveOverride noiseOverride (io: byte[]) (state: State) =
         let nr50 = io[0x24]
         let nr51 = io[0x25]
         let leftVolume = single ((int (nr50 >>> 4) &&& 0x07) + 1) / 8.0f
         let rightVolume = single ((int nr50 &&& 0x07) + 1) / 8.0f
         let channel1 = pulseOutput state.Pulse1
         let channel2 = pulseOutput state.Pulse2
-        let channel3 = waveOutput io state.Wave
+        let channel3 = waveOverride |> Option.defaultWith (fun () -> waveOutput io state.Wave)
         let channel4 = noiseOverride |> Option.defaultWith (fun () -> noiseOutput state.Noise)
         let left =
             ((if nr51 &&& 0x10uy <> 0uy then channel1 else 0.0f)
@@ -772,22 +806,33 @@ module Apu =
 
                 let chunk = min remaining cyclesUntilSample
                 let sequenced = FrameSequencer.advance chunk current
+                let wave, waveArea = tickWave chunk io sequenced.Wave
                 let noise, noiseArea = tickNoise chunk io[0x22] sequenced.Noise
                 let sampleCycles = sequenced.SampleCycles + int64 chunk * int64 SampleRate
 
                 current <-
                     { sequenced with
                         SampleCycles = sampleCycles
+                        WaveSampleArea = sequenced.WaveSampleArea + waveArea
+                        WaveSampleCycles = sequenced.WaveSampleCycles + chunk
                         NoiseSampleArea = sequenced.NoiseSampleArea + noiseArea
                         NoiseSampleCycles = sequenced.NoiseSampleCycles + chunk
                         Pulse1 = tickPulse chunk sequenced.Pulse1
                         Pulse2 = tickPulse chunk sequenced.Pulse2
-                        Wave = tickWave chunk sequenced.Wave
+                        Wave = wave
                         Noise = noise }
 
                 remaining <- remaining - chunk
 
                 if current.SampleCycles >= int64 Hardware.DmgClockHz then
+                    let averagedWave =
+                        if current.WaveSampleCycles = 0 then
+                            None
+                        elif waveAboveNyquist current.Wave then
+                            Some(waveCycleAverage io current.Wave)
+                        else
+                            Some(single current.WaveSampleArea / single current.WaveSampleCycles / 15.0f)
+
                     let averagedNoise =
                         if current.NoiseSampleCycles = 0 then
                             None
@@ -801,11 +846,13 @@ module Apu =
                     current <-
                         { current with
                             SampleCycles = current.SampleCycles - int64 Hardware.DmgClockHz
+                            WaveSampleArea = 0L
+                            WaveSampleCycles = 0
                             NoiseSampleArea = 0L
                             NoiseSampleCycles = 0
                             PendingSamples =
                                 appendSample
-                                    (mixSample averagedNoise io current)
+                                    (mixSample averagedWave averagedNoise io current)
                                     current.PendingSamples }
 
             current

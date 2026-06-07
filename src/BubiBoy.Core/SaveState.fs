@@ -8,7 +8,7 @@ open System.Text
 module SaveState =
     /// The current binary save-state format version.
     [<Literal>]
-    let CurrentVersion = 2
+    let CurrentVersion = 3
 
     /// Contains all session state stored in a save-state payload.
     type Snapshot =
@@ -123,10 +123,10 @@ module SaveState =
             else
                 let version = reader.ReadInt()
 
-                if version <> CurrentVersion then
+                if version <> 2 && version <> CurrentVersion then
                     Error $"Unsupported save state version: {version}."
                 else
-                    Ok()
+                    Ok version
 
     type private DomainSnapshotWriter(primitives: PrimitiveWriter) =
         let writeBool value = primitives.WriteBool value
@@ -310,6 +310,8 @@ module SaveState =
             writeInt value.SnapshotFrameSequencerCycles
             writeBool value.SnapshotSkipNextFrameSequencerClock
             writeInt64 value.SnapshotSampleCycles
+            writeInt64 value.SnapshotWaveSampleArea
+            writeInt value.SnapshotWaveSampleCycles
             writeInt64 value.SnapshotNoiseSampleArea
             writeInt value.SnapshotNoiseSampleCycles
             writePulseChannel value.SnapshotPulse1
@@ -367,7 +369,7 @@ module SaveState =
             writeInt64 snapshot.TotalCycles
             writeInt snapshot.Steps
 
-    type private DomainSnapshotReader(primitives: PrimitiveReader) =
+    type private DomainSnapshotReader(primitives: PrimitiveReader, version: int) =
         let readBool () = primitives.ReadBool()
         let readByte () = primitives.ReadByte()
         let readInt () = primitives.ReadInt()
@@ -591,6 +593,11 @@ module SaveState =
                     let frameSequencerCycles = readInt ()
                     let skipNextFrameSequencerClock = readBool ()
                     let sampleCycles = readInt64 ()
+                    let waveSampleArea, waveSampleCycles =
+                        if version >= 3 then
+                            readInt64 (), readInt ()
+                        else
+                            0L, 0
                     let noiseSampleArea = readInt64 ()
                     let noiseSampleCycles = readInt ()
                     let pulse1 = readPulseChannel ()
@@ -603,6 +610,8 @@ module SaveState =
                       SnapshotFrameSequencerCycles = frameSequencerCycles
                       SnapshotSkipNextFrameSequencerClock = skipNextFrameSequencerClock
                       SnapshotSampleCycles = sampleCycles
+                      SnapshotWaveSampleArea = waveSampleArea
+                      SnapshotWaveSampleCycles = waveSampleCycles
                       SnapshotNoiseSampleArea = noiseSampleArea
                       SnapshotNoiseSampleCycles = noiseSampleCycles
                       SnapshotPulse1 = pulse1
@@ -678,7 +687,7 @@ module SaveState =
                 let reader = PrimitiveReader binaryReader
 
                 VersionHeader.read reader
-                |> Result.map (fun () -> DomainSnapshotReader(reader).Read())
+                |> Result.map (fun version -> DomainSnapshotReader(reader, version).Read())
             with
             | :? EndOfStreamException -> Error "Save state data is truncated."
             | :? IOException as ex -> Error $"Could not read save state data: {ex.Message}"

@@ -123,6 +123,11 @@ module Program =
                         Bus.readByte 0xFF12us session.Bus,
                         Bus.readByte 0xFF13us session.Bus,
                         Bus.readByte 0xFF14us session.Bus,
+                        Bus.readByte 0xFF1Aus session.Bus,
+                        Bus.readByte 0xFF1Bus session.Bus,
+                        Bus.readByte 0xFF1Cus session.Bus,
+                        Bus.readByte 0xFF1Dus session.Bus,
+                        Bus.readByte 0xFF1Eus session.Bus,
                         apu.SnapshotPulse1.Enabled,
                         apu.SnapshotPulse1.Envelope.Volume,
                         apu.SnapshotPulse1.Frequency,
@@ -147,8 +152,17 @@ module Program =
                         let nr12 = Bus.readByte 0xFF12us session.Bus
                         let nr13 = Bus.readByte 0xFF13us session.Bus
                         let nr14 = Bus.readByte 0xFF14us session.Bus
+                        let nr30 = Bus.readByte 0xFF1Aus session.Bus
+                        let nr31 = Bus.readByte 0xFF1Bus session.Bus
+                        let nr32 = Bus.readByte 0xFF1Cus session.Bus
+                        let nr33 = Bus.readByte 0xFF1Dus session.Bus
+                        let nr34 = Bus.readByte 0xFF1Eus session.Bus
+                        let waveRam =
+                            [| for address in 0xFF30us..0xFF3Fus -> Bus.readByte address session.Bus |]
+                            |> Array.map (fun value -> value.ToString("X2"))
+                            |> String.concat ""
                         eprintfn
-                            $"channels t={time:F6} NR10={nr10:X2} NR11={nr11:X2} NR12={nr12:X2} NR13={nr13:X2} NR14={nr14:X2} ch1={apu.SnapshotPulse1.Enabled}/{apu.SnapshotPulse1.Envelope.Volume}/f{apu.SnapshotPulse1.Frequency}/l{apu.SnapshotPulse1.LengthCounter}/{apu.SnapshotPulse1.LengthEnabled}/s{apu.SnapshotPulse1.Sweep} ch2={apu.SnapshotPulse2.Enabled}/{apu.SnapshotPulse2.Envelope.Volume}/f{apu.SnapshotPulse2.Frequency}/l{apu.SnapshotPulse2.LengthCounter}/{apu.SnapshotPulse2.LengthEnabled} ch3={apu.SnapshotWave.Enabled}/f{apu.SnapshotWave.Frequency}/p{apu.SnapshotWave.Position}/l{apu.SnapshotWave.LengthCounter}/{apu.SnapshotWave.LengthEnabled}"
+                            $"channels t={time:F6} NR10={nr10:X2} NR11={nr11:X2} NR12={nr12:X2} NR13={nr13:X2} NR14={nr14:X2} NR30={nr30:X2} NR31={nr31:X2} NR32={nr32:X2} NR33={nr33:X2} NR34={nr34:X2} wave={waveRam} ch1={apu.SnapshotPulse1.Enabled}/{apu.SnapshotPulse1.Envelope.Volume}/f{apu.SnapshotPulse1.Frequency}/l{apu.SnapshotPulse1.LengthCounter}/{apu.SnapshotPulse1.LengthEnabled}/s{apu.SnapshotPulse1.Sweep} ch2={apu.SnapshotPulse2.Enabled}/{apu.SnapshotPulse2.Envelope.Volume}/f{apu.SnapshotPulse2.Frequency}/l{apu.SnapshotPulse2.LengthCounter}/{apu.SnapshotPulse2.LengthEnabled} ch3={apu.SnapshotWave.Enabled}/f{apu.SnapshotWave.Frequency}/p{apu.SnapshotWave.Position}/l{apu.SnapshotWave.LengthCounter}/{apu.SnapshotWave.LengthEnabled}/v{apu.SnapshotWave.OutputLevel}"
 
                         lastChannelState <- Some channelState
 
