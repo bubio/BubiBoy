@@ -101,6 +101,7 @@ type EmulationSessionController(dependencies: EmulationSessionDependencies) =
             dependencies.Notifications.Show "Could not open the selected ROM path."
         else
             saveCurrentRam ()
+            stopRunning ()
 
             match RomWorkflow.load path dependencies.Notifications.LastStatus with
             | RomWorkflow.EmptyPath ->
@@ -110,26 +111,30 @@ type EmulationSessionController(dependencies: EmulationSessionDependencies) =
                 setCurrentSession outcome.Session
                 dependencies.Runner.ClearFrames()
                 updateSessionState ()
-                stopRunning ()
                 dependencies.PresentFrame(Video.blankFrame ())
 
                 if rememberRecent then
                     dependencies.SettingsStore.RememberRom outcome.Rom.Path |> ignore
-                    dependencies.RefreshMenus()
                     dependencies.SaveSettings()
 
                 dependencies.Notifications.Show outcome.ToastMessage
                 dependencies.ViewModel.RomDetails <- outcome.RomDetails
                 dependencies.ViewModel.DebugDetails <- outcome.DebugDetails
+
+                if outcome.Session.IsSome then
+                    startRunning ()
+
+                dependencies.RefreshMenus()
+                dependencies.Owner.Focus() |> ignore
             | RomWorkflow.LoadFailed(toastMessage, romDetails, debugDetails) ->
                 loadedRom <- None
                 setCurrentSession None
                 dependencies.Runner.ClearFrames()
                 updateSessionState ()
-                stopRunning ()
                 dependencies.Notifications.Show toastMessage
                 dependencies.ViewModel.RomDetails <- romDetails
                 dependencies.ViewModel.DebugDetails <- debugDetails
+                dependencies.RefreshMenus()
 
     /// Resets the currently loaded ROM.
     member _.ResetCurrentRom() =
