@@ -254,9 +254,8 @@ module Apu =
         let frequency = int nr13 ||| ((int nr14 &&& 0x07) <<< 8)
         let dacEnabled = nr12 &&& 0xF8uy <> 0uy
         let lengthCounter =
-            if trigger then
-                let loaded = 64 - int (nr11 &&& 0x3Fuy)
-                if loaded = 0 then 64 else loaded
+            if trigger && pulse.LengthCounter = 0 then
+                64
             else
                 pulse.LengthCounter
 
@@ -286,13 +285,12 @@ module Apu =
         else
             next
 
-    let private updateWaveFromRegisters trigger nr30 nr31 nr32 nr33 nr34 (wave: WaveChannel) : WaveChannel =
+    let private updateWaveFromRegisters trigger nr30 _nr31 nr32 nr33 nr34 (wave: WaveChannel) : WaveChannel =
         let frequency = int nr33 ||| ((int nr34 &&& 0x07) <<< 8)
         let dacEnabled = bitSet 7 nr30
         let lengthCounter =
-            if trigger then
-                let loaded = 256 - int nr31
-                if loaded = 0 then 256 else loaded
+            if trigger && wave.LengthCounter = 0 then
+                256
             else
                 wave.LengthCounter
 
@@ -314,12 +312,11 @@ module Apu =
         else
             next
 
-    let private updateNoiseFromRegisters trigger nr41 nr42 nr43 nr44 (noise: NoiseChannel) : NoiseChannel =
+    let private updateNoiseFromRegisters trigger _nr41 nr42 nr43 nr44 (noise: NoiseChannel) : NoiseChannel =
         let dacEnabled = nr42 &&& 0xF8uy <> 0uy
         let lengthCounter =
-            if trigger then
-                let loaded = 64 - int (nr41 &&& 0x3Fuy)
-                if loaded = 0 then 64 else loaded
+            if trigger && noise.LengthCounter = 0 then
+                64
             else
                 noise.LengthCounter
 
@@ -383,6 +380,30 @@ module Apu =
 
             let nextState =
                 match index with
+                | 0x11 ->
+                    applyRegisters nextIo
+                        { state with
+                            Pulse1 =
+                                { state.Pulse1 with
+                                    LengthCounter = 64 - int (value &&& 0x3Fuy) } }
+                | 0x16 ->
+                    applyRegisters nextIo
+                        { state with
+                            Pulse2 =
+                                { state.Pulse2 with
+                                    LengthCounter = 64 - int (value &&& 0x3Fuy) } }
+                | 0x1B ->
+                    applyRegisters nextIo
+                        { state with
+                            Wave =
+                                { state.Wave with
+                                    LengthCounter = 256 - int value } }
+                | 0x20 ->
+                    applyRegisters nextIo
+                        { state with
+                            Noise =
+                                { state.Noise with
+                                    LengthCounter = 64 - int (value &&& 0x3Fuy) } }
                 | 0x14 ->
                     applyRegisters nextIo
                         { state with
@@ -500,27 +521,35 @@ module Apu =
             if timer > 0 then
                 { channel with Sweep = Some { sweep with Timer = timer } }
             else
-                let delta = sweep.ShadowFrequency >>> sweep.Shift
-                let nextFrequency =
+                let calculate frequency =
+                    let delta = frequency >>> sweep.Shift
+
                     if sweep.Negate then
-                        sweep.ShadowFrequency - delta
+                        frequency - delta
                     else
-                        sweep.ShadowFrequency + delta
+                        frequency + delta
 
-                let nextSweep =
+                let nextFrequency = calculate sweep.ShadowFrequency
+                let reloadedSweep =
                     { sweep with
-                        Timer = if sweep.Period = 0 then 8 else sweep.Period
-                        ShadowFrequency = nextFrequency }
+                        Timer = if sweep.Period = 0 then 8 else sweep.Period }
 
-                if sweep.Shift <> 0 && (nextFrequency < 0 || nextFrequency > 2047) then
-                    { channel with Enabled = false; Sweep = Some nextSweep }
+                if nextFrequency < 0 || nextFrequency > 2047 then
+                    { channel with Enabled = false; Sweep = Some reloadedSweep }
                 elif sweep.Shift <> 0 then
-                    { channel with
-                        Frequency = nextFrequency
-                        Timer = pulseTimer nextFrequency
-                        Sweep = Some nextSweep }
+                    let nextSweep =
+                        { reloadedSweep with
+                            ShadowFrequency = nextFrequency }
+
+                    if calculate nextFrequency > 2047 then
+                        { channel with Enabled = false; Sweep = Some nextSweep }
+                    else
+                        { channel with
+                            Frequency = nextFrequency
+                            Timer = pulseTimer nextFrequency
+                            Sweep = Some nextSweep }
                 else
-                    { channel with Sweep = Some nextSweep }
+                    { channel with Sweep = Some reloadedSweep }
         | _ -> channel
 
     let private clockFrameSequencer (state: State) : State =

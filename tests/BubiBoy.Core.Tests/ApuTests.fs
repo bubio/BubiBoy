@@ -119,6 +119,14 @@ let ``sweep overflow disables pulse channel`` () =
     Assert.False(result.Pulse1.Enabled)
 
 [<Fact>]
+let ``zero shift sweep still disables pulse channel on overflow`` () =
+    let io, state = triggerPulse1 0x20uy 0x40uy 0xF0uy 0x00uy 0x84uy
+
+    let result = Apu.tick (7 * 8192) io state
+
+    Assert.False(result.Pulse1.Enabled)
+
+[<Fact>]
 let ``clearing pulse DAC disables pulse channel`` () =
     let io, state = triggerPulse1 0uy 0x80uy 0xF0uy 0x00uy 0x80uy
 
@@ -155,6 +163,32 @@ let ``length counter disables wave channel`` () =
 
     Assert.False(result.Wave.Enabled)
     Assert.Equal(0, result.Wave.LengthCounter)
+
+[<Fact>]
+let ``length register writes load channel counters`` () =
+    let _, pulseState = write 0x11 0x3Fuy (emptyIo (), Apu.initial)
+    let _, waveState = write 0x1B 0xFFuy (emptyIo (), Apu.initial)
+    let _, noiseState = write 0x20 0x3Fuy (emptyIo (), Apu.initial)
+
+    Assert.Equal(1, pulseState.Pulse1.LengthCounter)
+    Assert.Equal(1, waveState.Wave.LengthCounter)
+    Assert.Equal(1, noiseState.Noise.LengthCounter)
+
+[<Fact>]
+let ``retrigger preserves nonzero wave length counter`` () =
+    let io, state =
+        (emptyIo (), Apu.initial)
+        |> write 0x1A 0x80uy
+        |> write 0x1B 0xF0uy
+        |> write 0x1C 0x20uy
+        |> write 0x1D 0x00uy
+        |> write 0x1E 0xC0uy
+
+    let advanced = Apu.tick 8192 io state
+    let _, retriggered = write 0x1E 0xC0uy (io, advanced)
+
+    Assert.Equal(15, advanced.Wave.LengthCounter)
+    Assert.Equal(advanced.Wave.LengthCounter, retriggered.Wave.LengthCounter)
 
 [<Fact>]
 let ``triggered noise channel contributes samples`` () =
