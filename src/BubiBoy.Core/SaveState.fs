@@ -8,7 +8,7 @@ open System.Text
 module SaveState =
     /// The current binary save-state format version.
     [<Literal>]
-    let CurrentVersion = 1
+    let CurrentVersion = 2
 
     /// Contains all session state stored in a save-state payload.
     type Snapshot =
@@ -310,6 +310,8 @@ module SaveState =
             writeInt value.SnapshotFrameSequencerCycles
             writeBool value.SnapshotSkipNextFrameSequencerClock
             writeInt64 value.SnapshotSampleCycles
+            writeInt64 value.SnapshotNoiseSampleArea
+            writeInt value.SnapshotNoiseSampleCycles
             writePulseChannel value.SnapshotPulse1
             writePulseChannel value.SnapshotPulse2
             writeWaveChannel value.SnapshotWave
@@ -589,6 +591,8 @@ module SaveState =
                     let frameSequencerCycles = readInt ()
                     let skipNextFrameSequencerClock = readBool ()
                     let sampleCycles = readInt64 ()
+                    let noiseSampleArea = readInt64 ()
+                    let noiseSampleCycles = readInt ()
                     let pulse1 = readPulseChannel ()
                     let pulse2 = readPulseChannel ()
                     let wave = readWaveChannel ()
@@ -599,6 +603,8 @@ module SaveState =
                       SnapshotFrameSequencerCycles = frameSequencerCycles
                       SnapshotSkipNextFrameSequencerClock = skipNextFrameSequencerClock
                       SnapshotSampleCycles = sampleCycles
+                      SnapshotNoiseSampleArea = noiseSampleArea
+                      SnapshotNoiseSampleCycles = noiseSampleCycles
                       SnapshotPulse1 = pulse1
                       SnapshotPulse2 = pulse2
                       SnapshotWave = wave

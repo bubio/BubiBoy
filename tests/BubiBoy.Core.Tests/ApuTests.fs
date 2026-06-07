@@ -168,6 +168,20 @@ let ``triggered noise channel contributes samples`` () =
     Assert.Contains(samples, fun sample -> sample.Left <> 0.0f || sample.Right <> 0.0f)
 
 [<Fact>]
+let ``short period noise is averaged across output sample intervals`` () =
+    let io, state = triggerNoise 0xF0uy 0x08uy 0x80uy
+
+    let result = Apu.tick Hardware.DmgClockHz io state
+    let samples = Apu.pendingSamples result
+
+    Assert.Contains(
+        samples,
+        fun sample ->
+            let magnitude = abs sample.Left
+            magnitude > 0.0f && magnitude < 0.20f
+    )
+
+[<Fact>]
 let ``clearing noise DAC disables noise channel`` () =
     let io, state = triggerNoise 0xF0uy 0x00uy 0x80uy
 

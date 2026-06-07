@@ -31,12 +31,12 @@ let private encodeSession session =
     session |> SaveState.capture |> SaveState.encode
 
 [<Fact>]
-let ``version 1 wire format remains stable`` () =
+let ``version 2 wire format remains stable`` () =
     let bytes = makeRom "S" Array.empty |> createSession |> encodeSession
     let hash = SHA256.HashData bytes |> Convert.ToHexString
 
-    Assert.Equal(142_151, bytes.Length)
-    Assert.Equal("88715516B745DC40375D1749E7DF5DFF98DB8D7F144C40B2D38831E8EF299712", hash)
+    Assert.Equal(142_163, bytes.Length)
+    Assert.Equal("A7850A9FBD1D4201A03B7300C0147F5B753642CC459C8C33819374E2C1D9F4A6", hash)
 
 [<Fact>]
 let ``save state round trips session and can continue deterministically`` () =

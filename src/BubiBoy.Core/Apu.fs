@@ -86,6 +86,8 @@ module Apu =
           FrameSequencerCycles: int
           SkipNextFrameSequencerClock: bool
           SampleCycles: int64
+          NoiseSampleArea: int64
+          NoiseSampleCycles: int
           Pulse1: PulseChannel
           Pulse2: PulseChannel
           Wave: WaveChannel
@@ -102,6 +104,8 @@ module Apu =
           SnapshotFrameSequencerCycles: int
           SnapshotSkipNextFrameSequencerClock: bool
           SnapshotSampleCycles: int64
+          SnapshotNoiseSampleArea: int64
+          SnapshotNoiseSampleCycles: int
           SnapshotPulse1: PulseChannel
           SnapshotPulse2: PulseChannel
           SnapshotWave: WaveChannel
@@ -160,6 +164,8 @@ module Apu =
           FrameSequencerCycles = 0
           SkipNextFrameSequencerClock = false
           SampleCycles = 0L
+          NoiseSampleArea = 0L
+          NoiseSampleCycles = 0
           Pulse1 = emptyPulse
           Pulse2 = emptyPulse
           Wave =
@@ -186,6 +192,8 @@ module Apu =
           SnapshotFrameSequencerCycles = state.FrameSequencerCycles
           SnapshotSkipNextFrameSequencerClock = state.SkipNextFrameSequencerClock
           SnapshotSampleCycles = state.SampleCycles
+          SnapshotNoiseSampleArea = state.NoiseSampleArea
+          SnapshotNoiseSampleCycles = state.NoiseSampleCycles
           SnapshotPulse1 = state.Pulse1
           SnapshotPulse2 = state.Pulse2
           SnapshotWave = state.Wave
@@ -197,6 +205,8 @@ module Apu =
           FrameSequencerCycles = snapshot.SnapshotFrameSequencerCycles
           SkipNextFrameSequencerClock = snapshot.SnapshotSkipNextFrameSequencerClock
           SampleCycles = snapshot.SnapshotSampleCycles
+          NoiseSampleArea = snapshot.SnapshotNoiseSampleArea
+          NoiseSampleCycles = snapshot.SnapshotNoiseSampleCycles
           Pulse1 = snapshot.SnapshotPulse1
           Pulse2 = snapshot.SnapshotPulse2
           Wave = snapshot.SnapshotWave
@@ -594,24 +604,38 @@ module Apu =
 
             { channel with Timer = timer; Position = position }
 
-    let private tickNoise cycles nr43 (channel: NoiseChannel) : NoiseChannel =
+    let private tickNoise cycles nr43 (channel: NoiseChannel) : NoiseChannel * int64 =
         if not channel.Enabled then
-            channel
+            channel, 0L
         else
-            let mutable timer = channel.Timer - cycles
+            let mutable remaining = cycles
+            let mutable timer = channel.Timer
             let mutable lfsr = channel.Lfsr
+            let mutable area = 0L
             let period = noiseTimer nr43
             let widthMode = bitSet 3 nr43
 
-            while timer <= 0 do
-                timer <- timer + period
-                let feedback = (lfsr &&& 0x0001us) ^^^ ((lfsr >>> 1) &&& 0x0001us)
-                lfsr <- (lfsr >>> 1) ||| (feedback <<< 14)
+            while remaining > 0 do
+                let span = min remaining timer
+                let amplitude =
+                    if lfsr &&& 0x0001us = 0us then
+                        channel.Envelope.Volume
+                    else
+                        -channel.Envelope.Volume
 
-                if widthMode then
-                    lfsr <- (lfsr &&& ~~~0x0040us) ||| (feedback <<< 6)
+                area <- area + int64 amplitude * int64 span
+                timer <- timer - span
+                remaining <- remaining - span
 
-            { channel with Timer = timer; Lfsr = lfsr }
+                if timer = 0 then
+                    timer <- period
+                    let feedback = (lfsr &&& 0x0001us) ^^^ ((lfsr >>> 1) &&& 0x0001us)
+                    lfsr <- (lfsr >>> 1) ||| (feedback <<< 14)
+
+                    if widthMode then
+                        lfsr <- (lfsr &&& ~~~0x0040us) ||| (feedback <<< 6)
+
+            { channel with Timer = timer; Lfsr = lfsr }, area
 
     let private pulseOutput (channel: PulseChannel) =
         if not channel.Enabled || not channel.DacEnabled then
@@ -647,7 +671,7 @@ module Apu =
         else
             -single channel.Envelope.Volume / single MaxVolume
 
-    let private mixSample (io: byte[]) (state: State) =
+    let private mixSample noiseOverride (io: byte[]) (state: State) =
         let nr50 = io[0x24]
         let nr51 = io[0x25]
         let leftVolume = single ((int (nr50 >>> 4) &&& 0x07) + 1) / 8.0f
@@ -655,7 +679,7 @@ module Apu =
         let channel1 = pulseOutput state.Pulse1
         let channel2 = pulseOutput state.Pulse2
         let channel3 = waveOutput io state.Wave
-        let channel4 = noiseOutput state.Noise
+        let channel4 = noiseOverride |> Option.defaultWith (fun () -> noiseOutput state.Noise)
         let left =
             ((if nr51 &&& 0x10uy <> 0uy then channel1 else 0.0f)
              + (if nr51 &&& 0x20uy <> 0uy then channel2 else 0.0f)
@@ -691,27 +715,6 @@ module Apu =
 
             { current with FrameSequencerCycles = frameCycles }
 
-    module private ChannelState =
-        let advance cycles nr43 state =
-            { state with
-                Pulse1 = tickPulse cycles state.Pulse1
-                Pulse2 = tickPulse cycles state.Pulse2
-                Wave = tickWave cycles state.Wave
-                Noise = tickNoise cycles nr43 state.Noise }
-
-    module private SampleMixer =
-        let generate cycles io state =
-            let mutable sampleCycles = state.SampleCycles + int64 cycles * int64 SampleRate
-            let mutable pendingSamples = state.PendingSamples
-
-            while sampleCycles >= int64 Hardware.DmgClockHz do
-                sampleCycles <- sampleCycles - int64 Hardware.DmgClockHz
-                pendingSamples <- appendSample (mixSample io state) pendingSamples
-
-            { state with
-                SampleCycles = sampleCycles
-                PendingSamples = pendingSamples }
-
     /// Applies one write to an audio register and returns updated register and APU state.
     let writeRegister index value io state =
         RegisterIo.write index value io state
@@ -730,7 +733,50 @@ module Apu =
         if io[0x26] &&& 0x80uy = 0uy then
             initial
         else
-            state
-            |> FrameSequencer.advance cycles
-            |> ChannelState.advance cycles io[0x22]
-            |> SampleMixer.generate cycles io
+            let mutable current = state
+            let mutable remaining = cycles
+
+            while remaining > 0 do
+                let sampleUnitsRemaining = int64 Hardware.DmgClockHz - current.SampleCycles
+                let cyclesUntilSample =
+                    int ((sampleUnitsRemaining + int64 SampleRate - 1L) / int64 SampleRate)
+
+                let chunk = min remaining cyclesUntilSample
+                let sequenced = FrameSequencer.advance chunk current
+                let noise, noiseArea = tickNoise chunk io[0x22] sequenced.Noise
+                let sampleCycles = sequenced.SampleCycles + int64 chunk * int64 SampleRate
+
+                current <-
+                    { sequenced with
+                        SampleCycles = sampleCycles
+                        NoiseSampleArea = sequenced.NoiseSampleArea + noiseArea
+                        NoiseSampleCycles = sequenced.NoiseSampleCycles + chunk
+                        Pulse1 = tickPulse chunk sequenced.Pulse1
+                        Pulse2 = tickPulse chunk sequenced.Pulse2
+                        Wave = tickWave chunk sequenced.Wave
+                        Noise = noise }
+
+                remaining <- remaining - chunk
+
+                if current.SampleCycles >= int64 Hardware.DmgClockHz then
+                    let averagedNoise =
+                        if current.NoiseSampleCycles = 0 then
+                            None
+                        else
+                            Some(
+                                single current.NoiseSampleArea
+                                / single current.NoiseSampleCycles
+                                / single MaxVolume
+                            )
+
+                    current <-
+                        { current with
+                            SampleCycles = current.SampleCycles - int64 Hardware.DmgClockHz
+                            NoiseSampleArea = 0L
+                            NoiseSampleCycles = 0
+                            PendingSamples =
+                                appendSample
+                                    (mixSample averagedNoise io current)
+                                    current.PendingSamples }
+
+            current
