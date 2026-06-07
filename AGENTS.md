@@ -69,7 +69,8 @@ The core must not depend on Avalonia or miniaudio.
 - Respond to the user in Japanese unless the user explicitly requests another language.
 - Inspect the existing code before changing structure.
 - Keep changes small and cohesive.
-- Use `dotnet format` when available after code changes.
+- Use the repository-local Fantomas tool after F# code changes. Run `dotnet tool restore`, then
+  `dotnet fantomas .`; use `dotnet fantomas . --check` for verification.
 - Run focused tests first, then broader `dotnet test` before finishing substantial work.
 - In Codex sandbox sessions on macOS, prefer the repository-local CLI home and disabled build servers for
   repeatable verification:
