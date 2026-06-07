@@ -45,4 +45,3 @@ module RomFile =
                 { Path = path
                   Bytes = bytes
                   Header = header })
-

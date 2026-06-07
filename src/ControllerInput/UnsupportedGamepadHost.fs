@@ -13,7 +13,8 @@ type UnsupportedGamepadHost(reason: string) =
     member _.Reason = reason
 
     interface GamepadHost with
-        member _.Poll() = Array.Empty<GamepadSnapshot>() :> IReadOnlyList<GamepadSnapshot>
+        member _.Poll() =
+            Array.Empty<GamepadSnapshot>() :> IReadOnlyList<GamepadSnapshot>
 
     interface IDisposable with
         member _.Dispose() = ()

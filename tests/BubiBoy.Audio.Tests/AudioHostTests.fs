@@ -68,15 +68,14 @@ let ``buffered device rejects samples while stopped and clears on stop`` () =
 [<Fact>]
 let ``PCM conversion clips and writes little endian stereo frames`` () =
     let bytes =
-        AudioHost.toPcm16StereoBytes
-            [| { Left = -2.0f; Right = 0.0f }
-               { Left = 0.5f; Right = 2.0f } |]
+        AudioHost.toPcm16StereoBytes [| { Left = -2.0f; Right = 0.0f }; { Left = 0.5f; Right = 2.0f } |]
 
     Assert.Equal<byte>([| 0x01uy; 0x80uy; 0x00uy; 0x00uy; 0x00uy; 0x40uy; 0xFFuy; 0x7Fuy |], bytes)
 
 [<Fact>]
 let ``WAV writer emits PCM header and payload`` () =
-    let path = Path.Combine(Path.GetTempPath(), $"bubiboy-audio-{System.Guid.NewGuid():N}.wav")
+    let path =
+        Path.Combine(Path.GetTempPath(), $"bubiboy-audio-{System.Guid.NewGuid():N}.wav")
 
     try
         AudioHost.writeWav path AudioHost.defaultFormat [| sample 1; sample -1 |]
@@ -107,7 +106,7 @@ let ``miniaudio availability probe is safe without native library`` () =
 [<Fact>]
 let ``miniaudio native library is available when required by environment`` () =
     if Environment.GetEnvironmentVariable("BUBIBOY_EXPECT_NATIVE_AUDIO") = "1" then
-        Assert.True(Miniaudio.isNativeLibraryAvailable())
+        Assert.True(Miniaudio.isNativeLibraryAvailable ())
 
 [<Fact>]
 let ``miniaudio device accepts samples before start for priming when native library is available`` () =

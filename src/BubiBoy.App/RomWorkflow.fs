@@ -38,8 +38,7 @@ module RomWorkflow =
           ToastMessage: string
           DebugDetails: string }
 
-    let private romFileName (rom: RomFile.LoadedRom) =
-        Path.GetFileName rom.Path
+    let private romFileName (rom: RomFile.LoadedRom) = Path.GetFileName rom.Path
 
     let private formatHeaderDetails (header: Cartridge.CartridgeHeader) =
         $"Title: {header.Title}\nCGB: {header.CgbSupport}\nSGB: {header.SgbSupport}\nCartridge: {header.CartridgeKind} (0x{header.CartridgeTypeCode:X2})\nROM: {HeaderDisplay.formatRomSize header.RomSizeCode} (0x{header.RomSizeCode:X2})\nRAM: {HeaderDisplay.formatRamSize header.RamSizeCode} (0x{header.RamSizeCode:X2})"

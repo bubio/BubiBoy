@@ -31,6 +31,7 @@ module VolumeControl =
                 Stretch = Stretch.Uniform,
                 VerticalAlignment = VerticalAlignment.Center
             )
+
         AppTheme.bindBrush volumeIcon Shape.FillProperty AppTheme.SecondaryText
 
         ToolTip.SetTip(volumeIcon, "Volume")
@@ -63,11 +64,8 @@ module VolumeControl =
             )
 
         let track =
-            Border(
-                Width = trackWidth,
-                Height = trackHeight,
-                CornerRadius = CornerRadius(trackHeight / 2.0)
-            )
+            Border(Width = trackWidth, Height = trackHeight, CornerRadius = CornerRadius(trackHeight / 2.0))
+
         AppTheme.bindBrush track Border.BackgroundProperty AppTheme.SliderTrack
 
         let fill =
@@ -78,11 +76,7 @@ module VolumeControl =
             )
 
         let thumb =
-            Ellipse(
-                Width = thumbSize,
-                Height = thumbSize,
-                Fill = SolidColorBrush(Color.Parse("#9E3364"))
-            )
+            Ellipse(Width = thumbSize, Height = thumbSize, Fill = SolidColorBrush(Color.Parse("#9E3364")))
 
         let trackTop = (sliderHeight - trackHeight) / 2.0
         let thumbTop = (sliderHeight - thumbSize) / 2.0
@@ -158,8 +152,10 @@ module VolumeControl =
         elements.Slider.KeyDown.Add(fun args ->
             let delta =
                 match args.Key with
-                | Key.Left | Key.Down -> Some -5
-                | Key.Right | Key.Up -> Some 5
+                | Key.Left
+                | Key.Down -> Some -5
+                | Key.Right
+                | Key.Up -> Some 5
                 | Key.Home -> Some -100
                 | Key.End -> Some 100
                 | _ -> None
@@ -170,7 +166,7 @@ module VolumeControl =
                     match args.Key with
                     | Key.Home -> 0
                     | Key.End -> 100
-                    | _ -> currentPercent() + change
+                    | _ -> currentPercent () + change
 
                 setPercent next
                 args.Handled <- true

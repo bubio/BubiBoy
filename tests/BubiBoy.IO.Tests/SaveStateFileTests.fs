@@ -35,7 +35,7 @@ let ``defaultStatePath replaces ROM extension with state`` () =
 [<Fact>]
 let ``saveToPath writes state and loadFromPath restores it`` () =
     let path = tempPath "game.state"
-    let session = createSession () |> Emulator.run 1 |> fun result -> result.Session
+    let session = createSession () |> Emulator.run 1 |> (fun result -> result.Session)
 
     match SaveStateFile.saveToPath path session with
     | Error message -> failwith message
@@ -51,8 +51,8 @@ let ``saveToPath writes state and loadFromPath restores it`` () =
 [<Fact>]
 let ``saveToPath backs up previous state before overwriting`` () =
     let path = tempPath "game.state"
-    let first = createSession () |> Emulator.run 1 |> fun result -> result.Session
-    let second = first |> Emulator.run 1 |> fun result -> result.Session
+    let first = createSession () |> Emulator.run 1 |> (fun result -> result.Session)
+    let second = first |> Emulator.run 1 |> (fun result -> result.Session)
 
     match SaveStateFile.saveToPath path first with
     | Error message -> failwith message

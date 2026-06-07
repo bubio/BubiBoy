@@ -47,16 +47,10 @@ module Cartridge =
           HeaderChecksum: byte }
 
     /// Describes a ROM size code in bytes and 16 KiB banks.
-    type RomSize =
-        { Code: byte
-          Bytes: int
-          Banks: int }
+    type RomSize = { Code: byte; Bytes: int; Banks: int }
 
     /// Describes a cartridge RAM size code in bytes and 8 KiB banks.
-    type RamSize =
-        { Code: byte
-          Bytes: int
-          Banks: int }
+    type RamSize = { Code: byte; Bytes: int; Banks: int }
 
     let private classifyCartridgeType code =
         match code with
@@ -103,11 +97,7 @@ module Cartridge =
     /// Decodes a cartridge RAM size code.
     let ramSizeFromCode code =
         match code with
-        | 0x00uy ->
-            Ok
-                { Code = code
-                  Bytes = 0
-                  Banks = 0 }
+        | 0x00uy -> Ok { Code = code; Bytes = 0; Banks = 0 }
         | 0x01uy ->
             Ok
                 { Code = code

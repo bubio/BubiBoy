@@ -36,8 +36,8 @@ type EmulationRunner
         | Some cts ->
             try
                 cts.Cancel()
-            with
-            | :? System.ObjectDisposedException -> ()
+            with :? System.ObjectDisposedException ->
+                ()
 
             emulationLoop <- None
         | None -> ()
@@ -77,7 +77,9 @@ type EmulationRunner
 
         result
 
-    member this.FillAudioLead(token: CancellationToken, session: Emulator.Session, initialDiagnostics: AudioHost.AudioDiagnostics) =
+    member this.FillAudioLead
+        (token: CancellationToken, session: Emulator.Session, initialDiagnostics: AudioHost.AudioDiagnostics)
+        =
         let stopwatch = Stopwatch.StartNew()
         let mutable current = session
         let mutable latest = None
@@ -85,10 +87,9 @@ type EmulationRunner
         let mutable framesGenerated = 0
         let mutable keepGoing = diagnostics.IsRunning
 
-        while
-            keepGoing
-            && not token.IsCancellationRequested
-            && diagnostics.BufferedFrames < audioBufferTargetFrames do
+        while keepGoing
+              && not token.IsCancellationRequested
+              && diagnostics.BufferedFrames < audioBufferTargetFrames do
             let result = this.EnqueueFrameAudio current
             current <- result.Session
             latest <- Some result
@@ -104,7 +105,7 @@ type EmulationRunner
         current, latest, keepGoing
 
     member this.PrimeAudioBuffer(getSession: unit -> Emulator.Session option, setSession: Emulator.Session -> unit) =
-        match getSession() with
+        match getSession () with
         | None -> ()
         | Some session ->
             let current, _, _ =
@@ -112,7 +113,9 @@ type EmulationRunner
 
             setSession current
 
-    member this.Start(getSession: unit -> Emulator.Session option, setSession: Emulator.Session -> unit, requestStop: unit -> unit) =
+    member this.Start
+        (getSession: unit -> Emulator.Session option, setSession: Emulator.Session -> unit, requestStop: unit -> unit)
+        =
         let cts = new CancellationTokenSource()
         let token = cts.Token
         emulationLoop <- Some cts
@@ -121,7 +124,7 @@ type EmulationRunner
             Task.Run(
                 (fun () ->
                     while not token.IsCancellationRequested do
-                        match getSession() with
+                        match getSession () with
                         | None -> Thread.Sleep 1
                         | Some session ->
                             let diagnostics = audioOutput.Diagnostics()

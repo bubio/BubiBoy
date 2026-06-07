@@ -4,9 +4,7 @@ namespace BubiBoy.Core
 module Timer =
     /// Holds internal timer counters that are not directly memory mapped.
     [<Struct>]
-    type State =
-        { Divider: uint16
-          TimaCounter: int }
+    type State = { Divider: uint16; TimaCounter: int }
 
     /// Contains the memory-mapped registers consumed and produced by a timer tick.
     [<Struct>]
@@ -19,17 +17,12 @@ module Timer =
 
     /// Contains the timer state and register values after a tick.
     [<Struct>]
-    type TickResult =
-        { State: State
-          Registers: Registers }
+    type TickResult = { State: State; Registers: Registers }
 
     /// The timer state after hardware reset.
-    let initial =
-        { Divider = 0us
-          TimaCounter = 0 }
+    let initial = { Divider = 0us; TimaCounter = 0 }
 
-    let private timerEnabled tac =
-        tac &&& 0x04uy <> 0uy
+    let private timerEnabled tac = tac &&& 0x04uy <> 0uy
 
     let private period tac =
         match tac &&& 0x03uy with
@@ -38,20 +31,19 @@ module Timer =
         | 0x02uy -> 64
         | _ -> 256
 
-    let internal div state =
-        byte (state.Divider >>> 8)
+    let internal div state = byte (state.Divider >>> 8)
 
-    let internal resetDiv state =
-        { state with Divider = 0us }
+    let internal resetDiv state = { state with Divider = 0us }
 
     /// Advances the timer by the specified number of CPU cycles.
     let tick cycles state registers =
-        let divider =
-            uint16 ((int state.Divider + cycles) &&& 0xFFFF)
+        let divider = uint16 ((int state.Divider + cycles) &&& 0xFFFF)
 
         if not (timerEnabled registers.Tac) then
             { State = { state with Divider = divider }
-              Registers = { registers with Div = byte (divider >>> 8) } }
+              Registers =
+                { registers with
+                    Div = byte (divider >>> 8) } }
         else
             let timerPeriod = period registers.Tac
             let total = state.TimaCounter + cycles
@@ -61,7 +53,7 @@ module Timer =
             let mutable tima = registers.Tima
             let mutable interruptFlags = registers.InterruptFlags
 
-            for _ in 1 .. increments do
+            for _ in 1..increments do
                 if tima = 0xFFuy then
                     tima <- registers.Tma
                     interruptFlags <- Interrupt.request Interrupt.TimerBit interruptFlags

@@ -113,6 +113,7 @@ module Bus =
         io[0x47] <- 0xFCuy
         io[0x48] <- 0xFFuy
         io[0x49] <- 0xFFuy
+
         match mode with
         | Hardware.Dmg -> ()
         | Hardware.Cgb ->
@@ -127,6 +128,7 @@ module Bus =
             io[0x6A] <- 0xC0uy
             io[0x6C] <- 0xFEuy
             io[0x70] <- 0xF8uy
+
         io
 
     let private modeForCartridge cartridge =
@@ -138,6 +140,7 @@ module Bus =
     /// Creates reset bus state for a loaded cartridge.
     let create cartridge =
         let mode = modeForCartridge cartridge
+
         { Cartridge = cartridge
           Mode = mode
           Vram = Array.zeroCreate<byte> VramSize
@@ -212,7 +215,11 @@ module Bus =
                   Io = Array.copy snapshot.IoSnapshot
                   Hram = Array.copy snapshot.HramSnapshot
                   VramBank = snapshot.VramBankSnapshot &&& 0x01
-                  WramBank = if snapshot.WramBankSnapshot = 0 then 1 else snapshot.WramBankSnapshot &&& 0x07
+                  WramBank =
+                    if snapshot.WramBankSnapshot = 0 then
+                        1
+                    else
+                        snapshot.WramBankSnapshot &&& 0x07
                   BgPaletteRam = Array.copy snapshot.BgPaletteRamSnapshot
                   ObjPaletteRam = Array.copy snapshot.ObjPaletteRamSnapshot
                   DoubleSpeed = snapshot.DoubleSpeedSnapshot
@@ -227,44 +234,32 @@ module Bus =
                   Apu = Apu.restore snapshot.ApuSnapshot
                   InterruptEnable = snapshot.InterruptEnableSnapshot })
 
-    let internal snapshot memory =
-        MemorySnapshot.capture memory
+    let internal snapshot memory = MemorySnapshot.capture memory
 
-    let internal restoreSnapshot snapshot current =
-        MemorySnapshot.restore snapshot current
+    let internal restoreSnapshot snapshot current = MemorySnapshot.restore snapshot current
 
     let private unusableRead = 0xFFuy
 
-    let private lcdEnabled memory =
-        memory.Io[0x40] &&& 0x80uy <> 0uy
+    let private lcdEnabled memory = memory.Io[0x40] &&& 0x80uy <> 0uy
 
     /// Returns the loaded cartridge state.
-    let cartridge memory =
-        memory.Cartridge
+    let cartridge memory = memory.Cartridge
 
     /// Returns the current joypad state.
-    let joypad memory =
-        memory.Joypad
+    let joypad memory = memory.Joypad
 
     /// Returns the active DMG or CGB hardware mode.
-    let mode memory =
-        memory.Mode
+    let mode memory = memory.Mode
 
     let internal hardwareCyclesForCpuCycles cycles memory =
-        if memory.DoubleSpeed then
-            cycles / 2
-        else
-            cycles
+        if memory.DoubleSpeed then cycles / 2 else cycles
 
     /// Replaces cartridge state while preserving all other bus state.
-    let withCartridge cartridge memory =
-        { memory with Cartridge = cartridge }
+    let withCartridge cartridge memory = { memory with Cartridge = cartridge }
 
-    let internal lcdState memory =
-        memory.Lcd
+    let internal lcdState memory = memory.Lcd
 
-    let internal rawIoByte index memory =
-        memory.Io[index]
+    let internal rawIoByte index memory = memory.Io[index]
 
     let internal rawVramByte address memory =
         memory.Vram[memory.VramBank * VramBankSize + address - 0x8000]
@@ -272,21 +267,19 @@ module Bus =
     let internal rawVramBankByte bank address memory =
         memory.Vram[(bank &&& 0x01) * VramBankSize + address - 0x8000]
 
-    let internal rawOamByte index memory =
-        memory.Oam[index]
+    let internal rawOamByte index memory = memory.Oam[index]
 
-    let internal rawBgPaletteByte index memory =
-        memory.BgPaletteRam[index &&& 0x3F]
+    let internal rawBgPaletteByte index memory = memory.BgPaletteRam[index &&& 0x3F]
 
-    let internal rawObjPaletteByte index memory =
-        memory.ObjPaletteRam[index &&& 0x3F]
+    let internal rawObjPaletteByte index memory = memory.ObjPaletteRam[index &&& 0x3F]
 
     /// Copies all audio samples currently waiting on the bus.
-    let pendingAudioSamples memory =
-        Apu.pendingSamples memory.Apu
+    let pendingAudioSamples memory = Apu.pendingSamples memory.Apu
 
     let internal drainAudioSamples memory =
-        Apu.pendingSamples memory.Apu, { memory with Apu = Apu.clearPendingSamples memory.Apu }
+        Apu.pendingSamples memory.Apu,
+        { memory with
+            Apu = Apu.clearPendingSamples memory.Apu }
 
     /// Returns bus state with one I/O byte replaced.
     let withIoByte index value memory =
@@ -325,17 +318,16 @@ module Bus =
     module private IoRegisters =
         let lcdStatus memory (lcd: Lcd.State) =
             let raw = memory.Io[0x41] &&& 0xF8uy
-            let coincidence =
-                if lcd.Line = memory.Io[0x45] then
-                    0x04uy
-                else
-                    0uy
+            let coincidence = if lcd.Line = memory.Io[0x45] then 0x04uy else 0uy
 
             raw ||| coincidence ||| Lcd.modeBits lcd.Mode
 
         let lcdStatusInterruptSignal (memory: Memory) (lcd: Lcd.State) =
             let statRegister = memory.Io[0x41] &&& 0xF8uy
-            let coincidenceSelected = statRegister &&& 0x40uy <> 0uy && lcd.Line = memory.Io[0x45]
+
+            let coincidenceSelected =
+                statRegister &&& 0x40uy <> 0uy && lcd.Line = memory.Io[0x45]
+
             let modeSelected =
                 match lcd.Mode with
                 | Lcd.HBlank -> statRegister &&& 0x08uy <> 0uy
@@ -350,6 +342,7 @@ module Bus =
             let nextIo, apu = Apu.writeRegister (address - 0xFF00) value memory.Io memory.Apu
             let isApuPowered = nextIo[0x26] &&& 0x80uy <> 0uy
             let dividerApuBitHigh = memory.Timer.Divider &&& 0x1000us <> 0us
+
             let apu =
                 if address = 0xFF26 && not wasApuPowered && isApuPowered && dividerApuBitHigh then
                     Apu.skipNextFrameSequencerClock apu
@@ -359,8 +352,7 @@ module Bus =
             { memory with Io = nextIo; Apu = apu }
 
     module private CgbMemory =
-        let isCgb memory =
-            memory.Mode = Hardware.Cgb
+        let isCgb memory = memory.Mode = Hardware.Cgb
 
         let selectedWramBank memory =
             if isCgb memory then memory.WramBank else 1
@@ -368,8 +360,7 @@ module Bus =
         let wramOffset address memory =
             match address with
             | value when value >= 0xC000 && value <= 0xCFFF -> value - 0xC000
-            | value when value >= 0xD000 && value <= 0xDFFF ->
-                selectedWramBank memory * WramBankSize + value - 0xD000
+            | value when value >= 0xD000 && value <= 0xDFFF -> selectedWramBank memory * WramBankSize + value - 0xD000
             | value when value >= 0xE000 && value <= 0xEFFF -> value - 0xE000
             | value -> selectedWramBank memory * WramBankSize + value - 0xF000
 
@@ -403,7 +394,7 @@ module Bus =
             | _ -> 0xFFuy
 
         let copyBlock source destination memory =
-            for offset in 0 .. 0x0F do
+            for offset in 0..0x0F do
                 let value = readByte (source + uint16 offset) memory
                 memory.Vram[memory.VramBank * VramBankSize + int destination - 0x8000 + offset] <- value
 
@@ -420,6 +411,7 @@ module Bus =
                 destination <- 0x8000us + ((destination + 0x10us - 0x8000us) &&& 0x1FF0us)
 
             current.Io[0x55] <- 0xFFuy
+
             { current with
                 HdmaSource = source
                 HdmaDestination = destination
@@ -431,58 +423,43 @@ module Bus =
         let address = int address
 
         match address with
-        | value when value <= 0x7FFF ->
-            CartridgeMemory.readByte (uint16 value) memory.Cartridge
+        | value when value <= 0x7FFF -> CartridgeMemory.readByte (uint16 value) memory.Cartridge
         | value when value >= 0x8000 && value <= 0x9FFF ->
             if vramBlocked memory then
                 unusableRead
             else
                 memory.Vram[memory.VramBank * VramBankSize + value - 0x8000]
-        | value when value >= 0xA000 && value <= 0xBFFF ->
-            CartridgeMemory.readByte (uint16 value) memory.Cartridge
-        | value when value >= 0xC000 && value <= 0xDFFF ->
-            memory.Wram[CgbMemory.wramOffset value memory]
-        | value when value >= 0xE000 && value <= 0xFDFF ->
-            memory.Wram[CgbMemory.wramOffset value memory]
+        | value when value >= 0xA000 && value <= 0xBFFF -> CartridgeMemory.readByte (uint16 value) memory.Cartridge
+        | value when value >= 0xC000 && value <= 0xDFFF -> memory.Wram[CgbMemory.wramOffset value memory]
+        | value when value >= 0xE000 && value <= 0xFDFF -> memory.Wram[CgbMemory.wramOffset value memory]
         | value when value >= 0xFE00 && value <= 0xFE9F ->
             if oamBlocked memory then
                 unusableRead
             else
                 memory.Oam[value - 0xFE00]
-        | value when value >= 0xFEA0 && value <= 0xFEFF ->
-            unusableRead
-        | 0xFF00 ->
-            Joypad.readP1 memory.Joypad
-        | 0xFF04 ->
-            Timer.div memory.Timer
-        | 0xFF41 ->
-            IoRegisters.lcdStatus memory memory.Lcd
-        | 0xFF44 ->
-            memory.Lcd.Line
+        | value when value >= 0xFEA0 && value <= 0xFEFF -> unusableRead
+        | 0xFF00 -> Joypad.readP1 memory.Joypad
+        | 0xFF04 -> Timer.div memory.Timer
+        | 0xFF41 -> IoRegisters.lcdStatus memory memory.Lcd
+        | 0xFF44 -> memory.Lcd.Line
         | 0xFF4D when CgbMemory.isCgb memory ->
             0x7Euy
             ||| (if memory.DoubleSpeed then 0x80uy else 0uy)
             ||| (if memory.SpeedSwitchPrepared then 0x01uy else 0uy)
-        | 0xFF4F when CgbMemory.isCgb memory ->
-            0xFEuy ||| byte memory.VramBank
+        | 0xFF4F when CgbMemory.isCgb memory -> 0xFEuy ||| byte memory.VramBank
         | 0xFF55 when CgbMemory.isCgb memory ->
-            if memory.HdmaActive then byte (memory.HdmaRemaining - 1) else 0xFFuy
-        | 0xFF69 when CgbMemory.isCgb memory ->
-            CgbMemory.paletteRead memory.Io[0x68] memory.BgPaletteRam
-        | 0xFF6B when CgbMemory.isCgb memory ->
-            CgbMemory.paletteRead memory.Io[0x6A] memory.ObjPaletteRam
-        | 0xFF6C when CgbMemory.isCgb memory ->
-            0xFEuy ||| (memory.Io[0x6C] &&& 0x01uy)
-        | 0xFF70 when CgbMemory.isCgb memory ->
-            0xF8uy ||| byte memory.WramBank
-        | value when value >= 0xFF00 && value <= 0xFF7F ->
-            memory.Io[value - 0xFF00]
-        | value when value >= 0xFF80 && value <= 0xFFFE ->
-            memory.Hram[value - 0xFF80]
-        | 0xFFFF ->
-            memory.InterruptEnable
-        | _ ->
-            unusableRead
+            if memory.HdmaActive then
+                byte (memory.HdmaRemaining - 1)
+            else
+                0xFFuy
+        | 0xFF69 when CgbMemory.isCgb memory -> CgbMemory.paletteRead memory.Io[0x68] memory.BgPaletteRam
+        | 0xFF6B when CgbMemory.isCgb memory -> CgbMemory.paletteRead memory.Io[0x6A] memory.ObjPaletteRam
+        | 0xFF6C when CgbMemory.isCgb memory -> 0xFEuy ||| (memory.Io[0x6C] &&& 0x01uy)
+        | 0xFF70 when CgbMemory.isCgb memory -> 0xF8uy ||| byte memory.WramBank
+        | value when value >= 0xFF00 && value <= 0xFF7F -> memory.Io[value - 0xFF00]
+        | value when value >= 0xFF80 && value <= 0xFFFE -> memory.Hram[value - 0xFF80]
+        | 0xFFFF -> memory.InterruptEnable
+        | _ -> unusableRead
 
     /// Writes one byte through the CPU-visible memory map.
     let writeByte (address: uint16) (value: byte) memory =
@@ -490,7 +467,8 @@ module Bus =
 
         match address with
         | addr when addr <= 0x7FFF ->
-            { memory with Cartridge = CartridgeMemory.writeByte (uint16 addr) value memory.Cartridge }
+            { memory with
+                Cartridge = CartridgeMemory.writeByte (uint16 addr) value memory.Cartridge }
         | addr when addr >= 0x8000 && addr <= 0x9FFF ->
             if vramBlocked memory then
                 memory
@@ -498,7 +476,8 @@ module Bus =
                 memory.Vram[memory.VramBank * VramBankSize + addr - 0x8000] <- value
                 memory
         | addr when addr >= 0xA000 && addr <= 0xBFFF ->
-            { memory with Cartridge = CartridgeMemory.writeByte (uint16 addr) value memory.Cartridge }
+            { memory with
+                Cartridge = CartridgeMemory.writeByte (uint16 addr) value memory.Cartridge }
         | addr when addr >= 0xC000 && addr <= 0xDFFF ->
             memory.Wram[CgbMemory.wramOffset addr memory] <- value
             memory
@@ -511,10 +490,10 @@ module Bus =
             else
                 memory.Oam[addr - 0xFE00] <- value
                 memory
-        | addr when addr >= 0xFEA0 && addr <= 0xFEFF ->
-            memory
+        | addr when addr >= 0xFEA0 && addr <= 0xFEFF -> memory
         | 0xFF00 ->
-            { memory with Joypad = Joypad.writeP1 value memory.Joypad }
+            { memory with
+                Joypad = Joypad.writeP1 value memory.Joypad }
         | 0xFF04 ->
             memory.Io[0x04] <- 0uy
             let apu = Apu.resetDiv memory.Timer.Divider memory.Io memory.Apu
@@ -528,7 +507,9 @@ module Bus =
             memory
         | 0xFF44 ->
             memory.Io[0x44] <- 0uy
-            { memory with Lcd = Lcd.resetLine memory.Lcd }
+
+            { memory with
+                Lcd = Lcd.resetLine memory.Lcd }
         | 0xFF46 ->
             let sourceBase = uint16 value <<< 8
 
@@ -539,25 +520,41 @@ module Bus =
             memory
         | 0xFF4D when CgbMemory.isCgb memory ->
             memory.Io[0x4D] <- 0x7Euy ||| (value &&& 0x01uy)
-            { memory with SpeedSwitchPrepared = value &&& 0x01uy <> 0uy }
+
+            { memory with
+                SpeedSwitchPrepared = value &&& 0x01uy <> 0uy }
         | 0xFF4F when CgbMemory.isCgb memory ->
             memory.Io[0x4F] <- 0xFEuy ||| (value &&& 0x01uy)
-            { memory with VramBank = int (value &&& 0x01uy) }
+
+            { memory with
+                VramBank = int (value &&& 0x01uy) }
         | 0xFF51 when CgbMemory.isCgb memory ->
             memory.Io[0x51] <- value
-            { memory with HdmaSource = (uint16 value <<< 8) ||| (memory.HdmaSource &&& 0x00F0us) }
+
+            { memory with
+                HdmaSource = (uint16 value <<< 8) ||| (memory.HdmaSource &&& 0x00F0us) }
         | 0xFF52 when CgbMemory.isCgb memory ->
             let source = (memory.HdmaSource &&& 0xFF00us) ||| (uint16 (value &&& 0xF0uy))
             memory.Io[0x52] <- value &&& 0xF0uy
             { memory with HdmaSource = source }
         | 0xFF53 when CgbMemory.isCgb memory ->
-            let destination = 0x8000us ||| ((uint16 (value &&& 0x1Fuy)) <<< 8) ||| (memory.HdmaDestination &&& 0x00F0us)
+            let destination =
+                0x8000us
+                ||| ((uint16 (value &&& 0x1Fuy)) <<< 8)
+                ||| (memory.HdmaDestination &&& 0x00F0us)
+
             memory.Io[0x53] <- value &&& 0x1Fuy
-            { memory with HdmaDestination = destination }
+
+            { memory with
+                HdmaDestination = destination }
         | 0xFF54 when CgbMemory.isCgb memory ->
-            let destination = 0x8000us ||| (memory.HdmaDestination &&& 0x1F00us) ||| uint16 (value &&& 0xF0uy)
+            let destination =
+                0x8000us ||| (memory.HdmaDestination &&& 0x1F00us) ||| uint16 (value &&& 0xF0uy)
+
             memory.Io[0x54] <- value &&& 0xF0uy
-            { memory with HdmaDestination = destination }
+
+            { memory with
+                HdmaDestination = destination }
         | 0xFF55 when CgbMemory.isCgb memory ->
             if memory.HdmaActive && value &&& 0x80uy = 0uy then
                 memory.Io[0x55] <- byte (memory.HdmaRemaining - 1) ||| 0x80uy
@@ -565,6 +562,7 @@ module Bus =
             else
                 let length = int (value &&& 0x7Fuy) + 1
                 memory.Io[0x55] <- value &&& 0x7Fuy
+
                 let next =
                     { memory with
                         HdmaRemaining = length
@@ -577,14 +575,18 @@ module Bus =
         | 0xFF69 when CgbMemory.isCgb memory ->
             let paletteRam = CgbMemory.paletteWrite memory.Io[0x68] value memory.BgPaletteRam
             memory.Io[0x68] <- CgbMemory.incrementPaletteIndex memory.Io[0x68]
-            { memory with BgPaletteRam = paletteRam }
+
+            { memory with
+                BgPaletteRam = paletteRam }
         | 0xFF6A when CgbMemory.isCgb memory ->
             memory.Io[0x6A] <- value ||| 0x40uy
             memory
         | 0xFF6B when CgbMemory.isCgb memory ->
             let paletteRam = CgbMemory.paletteWrite memory.Io[0x6A] value memory.ObjPaletteRam
             memory.Io[0x6A] <- CgbMemory.incrementPaletteIndex memory.Io[0x6A]
-            { memory with ObjPaletteRam = paletteRam }
+
+            { memory with
+                ObjPaletteRam = paletteRam }
         | 0xFF6C when CgbMemory.isCgb memory ->
             memory.Io[0x6C] <- 0xFEuy ||| (value &&& 0x01uy)
             memory
@@ -593,18 +595,15 @@ module Bus =
             let bank = if bank = 0 then 1 else bank
             memory.Io[0x70] <- 0xF8uy ||| byte bank
             { memory with WramBank = bank }
-        | addr when addr >= 0xFF10 && addr <= 0xFF26 ->
-            IoRegisters.writeApu addr value memory
+        | addr when addr >= 0xFF10 && addr <= 0xFF26 -> IoRegisters.writeApu addr value memory
         | addr when addr >= 0xFF00 && addr <= 0xFF7F ->
             memory.Io[addr - 0xFF00] <- value
             memory
         | addr when addr >= 0xFF80 && addr <= 0xFFFE ->
             memory.Hram[addr - 0xFF80] <- value
             memory
-        | 0xFFFF ->
-            { memory with InterruptEnable = value }
-        | _ ->
-            memory
+        | 0xFFFF -> { memory with InterruptEnable = value }
+        | _ -> memory
 
     /// Advances all bus-owned hardware by the specified CPU cycles.
     let tick cycles memory =
@@ -618,6 +617,7 @@ module Bus =
               InterruptFlags = readByte 0xFF0Fus memory }
 
         let timerResult = Timer.tick cycles memory.Timer registers
+
         let lcd =
             if lcdEnabled memory then
                 Lcd.tick hardwareCycles memory.Lcd
@@ -660,7 +660,10 @@ module Bus =
             let copied = Hdma.copyBlock next.HdmaSource next.HdmaDestination next
             let remaining = next.HdmaRemaining - 1
             let source = next.HdmaSource + 0x10us
-            let destination = 0x8000us + ((next.HdmaDestination + 0x10us - 0x8000us) &&& 0x1FF0us)
+
+            let destination =
+                0x8000us + ((next.HdmaDestination + 0x10us - 0x8000us) &&& 0x1FF0us)
+
             copied.Io[0x55] <- if remaining = 0 then 0xFFuy else byte (remaining - 1)
 
             { copied with

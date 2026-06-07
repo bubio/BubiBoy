@@ -10,6 +10,7 @@ trim_trailing_whitespace = true
 
 [*.{fs,fsx,fsi}]
 indent_size = 4
+max_line_length = 120
 
 [*.{fsproj,props,targets,slnx,xml}]
 indent_size = 2

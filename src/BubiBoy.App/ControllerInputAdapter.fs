@@ -8,6 +8,4 @@ module ControllerInputAdapter =
         InputMapping.mapControllerControl mapping control
 
     let joypadButtonsForSnapshot mapping (snapshot: GamepadSnapshot) =
-        snapshot.Pressed
-        |> Seq.choose (joypadButtonForControl mapping)
-        |> Set.ofSeq
+        snapshot.Pressed |> Seq.choose (joypadButtonForControl mapping) |> Set.ofSeq

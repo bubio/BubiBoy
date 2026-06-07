@@ -26,7 +26,10 @@ let ``GamepadControl parses stable storage names`` () =
 [<Fact>]
 let ``GamepadSnapshot creates defensive pressed set copy`` () =
     let pressed = ResizeArray([ GamepadControl.South ])
-    let snapshot = GamepadSnapshot.create (GamepadId.create "one") "  Test Pad  " pressed
+
+    let snapshot =
+        GamepadSnapshot.create (GamepadId.create "one") "  Test Pad  " pressed
+
     pressed.Add GamepadControl.East
 
     Assert.Equal("Test Pad", snapshot.Name)
@@ -56,9 +59,7 @@ let ``ControllerInputAdapter applies custom controller mapping`` () =
         GamepadSnapshot.create
             (GamepadId.create "one")
             "Test Pad"
-            [ GamepadControl.West
-              GamepadControl.North
-              GamepadControl.South ]
+            [ GamepadControl.West; GamepadControl.North; GamepadControl.South ]
 
     let buttons = ControllerInputAdapter.joypadButtonsForSnapshot mapping snapshot
 
@@ -81,8 +82,16 @@ let ``Linux evdev key codes map to standard gamepad controls`` () =
 
 [<Fact>]
 let ``Linux evdev hat axes map negative and positive directions`` () =
-    Assert.Equal<GamepadControl list>([ GamepadControl.DPadLeft ], LinuxEvdev.controlsForHatAxis LinuxEvdev.ABS_HAT0X -1)
-    Assert.Equal<GamepadControl list>([ GamepadControl.DPadRight ], LinuxEvdev.controlsForHatAxis LinuxEvdev.ABS_HAT0X 1)
+    Assert.Equal<GamepadControl list>(
+        [ GamepadControl.DPadLeft ],
+        LinuxEvdev.controlsForHatAxis LinuxEvdev.ABS_HAT0X -1
+    )
+
+    Assert.Equal<GamepadControl list>(
+        [ GamepadControl.DPadRight ],
+        LinuxEvdev.controlsForHatAxis LinuxEvdev.ABS_HAT0X 1
+    )
+
     Assert.Equal<GamepadControl list>([ GamepadControl.DPadUp ], LinuxEvdev.controlsForHatAxis LinuxEvdev.ABS_HAT0Y -1)
     Assert.Equal<GamepadControl list>([ GamepadControl.DPadDown ], LinuxEvdev.controlsForHatAxis LinuxEvdev.ABS_HAT0Y 1)
     Assert.Empty(LinuxEvdev.controlsForHatAxis LinuxEvdev.ABS_HAT0X 0)
@@ -96,10 +105,26 @@ let ``Linux evdev left stick axes use deadzone before digital directions`` () =
     let down = LinuxEvdev.AbsInfo(32767, -32768, 32767, 0, 0, 0)
 
     Assert.Empty(LinuxEvdev.controlsForStickAxis LinuxEvdev.ABS_X centered)
-    Assert.Equal<GamepadControl list>([ GamepadControl.LeftStickLeft ], LinuxEvdev.controlsForStickAxis LinuxEvdev.ABS_X left)
-    Assert.Equal<GamepadControl list>([ GamepadControl.LeftStickRight ], LinuxEvdev.controlsForStickAxis LinuxEvdev.ABS_X right)
-    Assert.Equal<GamepadControl list>([ GamepadControl.LeftStickUp ], LinuxEvdev.controlsForStickAxis LinuxEvdev.ABS_Y up)
-    Assert.Equal<GamepadControl list>([ GamepadControl.LeftStickDown ], LinuxEvdev.controlsForStickAxis LinuxEvdev.ABS_Y down)
+
+    Assert.Equal<GamepadControl list>(
+        [ GamepadControl.LeftStickLeft ],
+        LinuxEvdev.controlsForStickAxis LinuxEvdev.ABS_X left
+    )
+
+    Assert.Equal<GamepadControl list>(
+        [ GamepadControl.LeftStickRight ],
+        LinuxEvdev.controlsForStickAxis LinuxEvdev.ABS_X right
+    )
+
+    Assert.Equal<GamepadControl list>(
+        [ GamepadControl.LeftStickUp ],
+        LinuxEvdev.controlsForStickAxis LinuxEvdev.ABS_Y up
+    )
+
+    Assert.Equal<GamepadControl list>(
+        [ GamepadControl.LeftStickDown ],
+        LinuxEvdev.controlsForStickAxis LinuxEvdev.ABS_Y down
+    )
 
 [<Fact>]
 let ``Linux evdev trigger axes map above midpoint`` () =
@@ -107,5 +132,13 @@ let ``Linux evdev trigger axes map above midpoint`` () =
     let pressed = LinuxEvdev.AbsInfo(255, 0, 255, 0, 0, 0)
 
     Assert.Empty(LinuxEvdev.controlsForTriggerAxis LinuxEvdev.ABS_Z released)
-    Assert.Equal<GamepadControl list>([ GamepadControl.LeftTrigger ], LinuxEvdev.controlsForTriggerAxis LinuxEvdev.ABS_Z pressed)
-    Assert.Equal<GamepadControl list>([ GamepadControl.RightTrigger ], LinuxEvdev.controlsForTriggerAxis LinuxEvdev.ABS_RZ pressed)
+
+    Assert.Equal<GamepadControl list>(
+        [ GamepadControl.LeftTrigger ],
+        LinuxEvdev.controlsForTriggerAxis LinuxEvdev.ABS_Z pressed
+    )
+
+    Assert.Equal<GamepadControl list>(
+        [ GamepadControl.RightTrigger ],
+        LinuxEvdev.controlsForTriggerAxis LinuxEvdev.ABS_RZ pressed
+    )

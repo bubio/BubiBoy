@@ -24,7 +24,9 @@ module SyntheticRom =
     //   0x10B: RRCA            0F
     //   0x10C: JP 0x0100       C3 00 01
     let private program =
-        [| 0x21uy; 0x00uy; 0xC0uy
+        [| 0x21uy
+           0x00uy
+           0xC0uy
            0x78uy
            0x81uy
            0x82uy
@@ -34,7 +36,9 @@ module SyntheticRom =
            0x04uy
            0x0Duy
            0x0Fuy
-           0xC3uy; 0x00uy; 0x01uy |]
+           0xC3uy
+           0x00uy
+           0x01uy |]
 
     /// Produces the synthetic ROM image as a fresh byte array.
     let build () : byte[] =

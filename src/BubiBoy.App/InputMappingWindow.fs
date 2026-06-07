@@ -19,17 +19,29 @@ type private CaptureTarget =
     | Keyboard of Joypad.Button
     | Controller of Joypad.Button
 
-type InputMappingWindow(initialKeyboardMapping: Map<string, string>, initialControllerMapping: Map<string, string>, controllerHost: GamepadHost) as this =
+type InputMappingWindow
+    (
+        initialKeyboardMapping: Map<string, string>,
+        initialControllerMapping: Map<string, string>,
+        controllerHost: GamepadHost
+    ) as this =
     inherit Window()
 
-    let mutable keyboardMapping = InputMapping.normalizeKeyMapping initialKeyboardMapping
-    let mutable controllerMapping = InputMapping.normalizeControllerMapping initialControllerMapping
+    let mutable keyboardMapping =
+        InputMapping.normalizeKeyMapping initialKeyboardMapping
+
+    let mutable controllerMapping =
+        InputMapping.normalizeControllerMapping initialControllerMapping
+
     let mutable captureTarget: CaptureTarget option = None
     let keyboardCells = Dictionary<Joypad.Button, Border>()
     let controllerCells = Dictionary<Joypad.Button, Border>()
     let keyboardLabels = Dictionary<Joypad.Button, TextBlock>()
     let controllerLabels = Dictionary<Joypad.Button, TextBlock>()
-    let controllerCaptureTimer = DispatcherTimer(Interval = TimeSpan.FromMilliseconds(16.0))
+
+    let controllerCaptureTimer =
+        DispatcherTimer(Interval = TimeSpan.FromMilliseconds(16.0))
+
     let mutable controllerCaptureBaseline: Set<GamepadControl> = Set.empty
 
     let statusText =
@@ -39,6 +51,7 @@ type InputMappingWindow(initialKeyboardMapping: Map<string, string>, initialCont
             TextWrapping = TextWrapping.Wrap,
             MinHeight = 20.0
         )
+
     do AppTheme.bindBrush statusText TextBlock.ForegroundProperty AppTheme.SecondaryText
 
     let keyFor button =
@@ -101,8 +114,10 @@ type InputMappingWindow(initialKeyboardMapping: Map<string, string>, initialCont
             controllerMapping <- InputMapping.setControllerControl button control controllerMapping
             captureTarget <- None
             stopControllerCapture ()
+
             statusText.Text <-
                 $"{InputMapping.buttonDisplayName button} assigned to {InputMapping.controllerControlDisplayName control}."
+
             refreshRows ()
 
     let pollControllerCapture () =
@@ -113,9 +128,7 @@ type InputMappingWindow(initialKeyboardMapping: Map<string, string>, initialCont
                 let newlyPressed = Set.difference pressed controllerCaptureBaseline
                 controllerCaptureBaseline <- Set.intersect controllerCaptureBaseline pressed
 
-                newlyPressed
-                |> Seq.tryHead
-                |> Option.iter (assignControllerControl button)
+                newlyPressed |> Seq.tryHead |> Option.iter (assignControllerControl button)
             with ex ->
                 captureTarget <- None
                 stopControllerCapture ()
@@ -138,36 +151,22 @@ type InputMappingWindow(initialKeyboardMapping: Map<string, string>, initialCont
         controllerCaptureTimer.Tick.Add(fun _ -> pollControllerCapture ())
 
         let root =
-            Grid(
-                RowDefinitions = RowDefinitions("Auto,12,Auto,12,Auto,*,Auto"),
-                Margin = Thickness(16.0)
-            )
+            Grid(RowDefinitions = RowDefinitions("Auto,12,Auto,12,Auto,*,Auto"), Margin = Thickness(16.0))
 
         let title =
-            TextBlock(
-                Text = "Input Mapping",
-                FontSize = 20.0,
-                FontWeight = FontWeight.SemiBold
-            )
+            TextBlock(Text = "Input Mapping", FontSize = 20.0, FontWeight = FontWeight.SemiBold)
+
         AppTheme.bindBrush title TextBlock.ForegroundProperty AppTheme.PrimaryText
 
         let list =
-            Border(
-                BorderThickness = Thickness(1.0),
-                CornerRadius = CornerRadius(8.0),
-                ClipToBounds = true
-            )
+            Border(BorderThickness = Thickness(1.0), CornerRadius = CornerRadius(8.0), ClipToBounds = true)
+
         AppTheme.bindBrush list Border.BackgroundProperty AppTheme.SurfaceBackground
         AppTheme.bindBrush list Border.BorderBrushProperty AppTheme.SurfaceBorder
 
-        let rows =
-            StackPanel(Spacing = 0.0)
+        let rows = StackPanel(Spacing = 0.0)
 
-        let header =
-            Grid(
-                ColumnDefinitions = ColumnDefinitions("*,122,170"),
-                Height = 32.0
-            )
+        let header = Grid(ColumnDefinitions = ColumnDefinitions("*,122,170"), Height = 32.0)
         AppTheme.bindBrush header Panel.BackgroundProperty AppTheme.HeaderBackground
 
         let addHeader column text =
@@ -179,6 +178,7 @@ type InputMappingWindow(initialKeyboardMapping: Map<string, string>, initialCont
                     VerticalAlignment = VerticalAlignment.Center,
                     Margin = Thickness(12.0, 0.0)
                 )
+
             AppTheme.bindBrush label TextBlock.ForegroundProperty AppTheme.SecondaryText
 
             Grid.SetColumn(label, column)
@@ -191,11 +191,7 @@ type InputMappingWindow(initialKeyboardMapping: Map<string, string>, initialCont
 
         for index, button in InputMapping.allJoypadButtons |> List.indexed do
             let rowGrid =
-                Grid(
-                    ColumnDefinitions = ColumnDefinitions("*,122,170"),
-                    Height = 42.0,
-                    Margin = Thickness(0.0)
-                )
+                Grid(ColumnDefinitions = ColumnDefinitions("*,122,170"), Height = 42.0, Margin = Thickness(0.0))
 
             let buttonLabel =
                 TextBlock(
@@ -204,6 +200,7 @@ type InputMappingWindow(initialKeyboardMapping: Map<string, string>, initialCont
                     VerticalAlignment = VerticalAlignment.Center,
                     Margin = Thickness(12.0, 0.0)
                 )
+
             AppTheme.bindBrush buttonLabel TextBlock.ForegroundProperty AppTheme.PrimaryText
 
             let createCell width =
@@ -214,6 +211,7 @@ type InputMappingWindow(initialKeyboardMapping: Map<string, string>, initialCont
                         VerticalAlignment = VerticalAlignment.Center,
                         TextTrimming = TextTrimming.CharacterEllipsis
                     )
+
                 AppTheme.bindBrush label TextBlock.ForegroundProperty AppTheme.PrimaryText
 
                 let cell =
@@ -228,6 +226,7 @@ type InputMappingWindow(initialKeyboardMapping: Map<string, string>, initialCont
                         Margin = Thickness(8.0, 0.0),
                         Cursor = new Cursor(StandardCursorType.Hand)
                     )
+
                 AppTheme.bindBrush cell Border.BackgroundProperty AppTheme.CellBackground
 
                 cell, label
@@ -245,13 +244,16 @@ type InputMappingWindow(initialKeyboardMapping: Map<string, string>, initialCont
 
             controllerCell.PointerPressed.Add(fun args ->
                 captureTarget <- Some(Controller button)
+
                 controllerCaptureBaseline <-
                     try
                         pressedControllerControls ()
                     with _ ->
                         Set.empty
 
-                statusText.Text <- $"Press a controller input for {InputMapping.buttonDisplayName button}. Escape cancels capture."
+                statusText.Text <-
+                    $"Press a controller input for {InputMapping.buttonDisplayName button}. Escape cancels capture."
+
                 args.Handled <- true
                 refreshRows ()
                 this.Focus() |> ignore
@@ -273,6 +275,7 @@ type InputMappingWindow(initialKeyboardMapping: Map<string, string>, initialCont
                         else
                             Thickness(0.0, 0.0, 0.0, 1.0)
                 )
+
             AppTheme.bindBrush row Border.BackgroundProperty AppTheme.SurfaceBackground
             AppTheme.bindBrush row Border.BorderBrushProperty AppTheme.SurfaceBorder
 
@@ -285,10 +288,7 @@ type InputMappingWindow(initialKeyboardMapping: Map<string, string>, initialCont
         list.Child <- rows
 
         let buttonBar =
-            Grid(
-                ColumnDefinitions = ColumnDefinitions("Auto,*,Auto,8,Auto"),
-                Height = 34.0
-            )
+            Grid(ColumnDefinitions = ColumnDefinitions("Auto,*,Auto,8,Auto"), Height = 34.0)
 
         let resetButton = Button(Content = "Reset Defaults", MinWidth = 112.0)
         let cancelButton = Button(Content = "Cancel", MinWidth = 78.0)
@@ -347,7 +347,10 @@ type InputMappingWindow(initialKeyboardMapping: Map<string, string>, initialCont
                     | None ->
                         keyboardMapping <- InputMapping.setKey button args.Key keyboardMapping
                         captureTarget <- None
-                        statusText.Text <- $"{InputMapping.buttonDisplayName button} assigned to {InputMapping.keyDisplayName args.Key}."
+
+                        statusText.Text <-
+                            $"{InputMapping.buttonDisplayName button} assigned to {InputMapping.keyDisplayName args.Key}."
+
                         refreshRows ()
             | Some(Controller _) ->
                 if args.Key = Key.Escape then
@@ -365,6 +368,12 @@ type InputMappingWindow(initialKeyboardMapping: Map<string, string>, initialCont
 
         refreshRows ()
 
-    static member Show(owner: Window, keyboardMapping: Map<string, string>, controllerMapping: Map<string, string>, controllerHost: GamepadHost) =
+    static member Show
+        (
+            owner: Window,
+            keyboardMapping: Map<string, string>,
+            controllerMapping: Map<string, string>,
+            controllerHost: GamepadHost
+        ) =
         let dialog = InputMappingWindow(keyboardMapping, controllerMapping, controllerHost)
         dialog.ShowDialog<InputMappingResult option>(owner)

@@ -18,6 +18,7 @@ type OutputVolumeController(initialPercent: int) =
         if currentGain <> 1.0f then
             for index in 0 .. samples.Length - 1 do
                 let sample = samples[index]
+
                 samples[index] <-
                     { Left = sample.Left * currentGain
                       Right = sample.Right * currentGain }

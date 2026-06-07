@@ -80,5 +80,4 @@ type RuntimeTraceCounters() =
         displayedFrameCounter <- displayedFrameCounter + 1
         displayedFrameCounter
 
-    member _.DisplayedFrameCount =
-        displayedFrameCounter
+    member _.DisplayedFrameCount = displayedFrameCounter

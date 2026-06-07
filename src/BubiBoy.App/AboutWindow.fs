@@ -28,6 +28,7 @@ type AboutWindow(version: string) as this =
                 FontWeight = FontWeight.SemiBold,
                 HorizontalAlignment = HorizontalAlignment.Center
             )
+
         AppTheme.bindBrush title TextBlock.ForegroundProperty AppTheme.PrimaryText
 
         let description =
@@ -36,14 +37,12 @@ type AboutWindow(version: string) as this =
                 FontSize = 13.0,
                 HorizontalAlignment = HorizontalAlignment.Center
             )
+
         AppTheme.bindBrush description TextBlock.ForegroundProperty AppTheme.SecondaryText
 
         let versionText =
-            TextBlock(
-                Text = $"Version {version}",
-                FontSize = 12.0,
-                HorizontalAlignment = HorizontalAlignment.Center
-            )
+            TextBlock(Text = $"Version {version}", FontSize = 12.0, HorizontalAlignment = HorizontalAlignment.Center)
+
         AppTheme.bindBrush versionText TextBlock.ForegroundProperty AppTheme.MutedText
 
         let closeButton =

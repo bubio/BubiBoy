@@ -7,21 +7,15 @@ module Video =
     let FramebufferPixels = Hardware.ScreenWidth * Hardware.ScreenHeight
 
     /// The default DMG palette as opaque BGRA colors.
-    let DmgColors: uint32[] =
-        [| 0xFFE0F8D0u
-           0xFF88C070u
-           0xFF346856u
-           0xFF081820u |]
+    let DmgColors: uint32[] = [| 0xFFE0F8D0u; 0xFF88C070u; 0xFF346856u; 0xFF081820u |]
 
     /// Creates a framebuffer filled with the lightest DMG color.
     let blankFrame () =
         Array.create FramebufferPixels DmgColors[0]
 
-    let private bitSet bit value =
-        value &&& (1uy <<< bit) <> 0uy
+    let private bitSet bit value = value &&& (1uy <<< bit) <> 0uy
 
-    let private io index (memory: Bus.Memory) =
-        Bus.rawIoByte index memory
+    let private io index (memory: Bus.Memory) = Bus.rawIoByte index memory
 
     let private paletteShade palette colorNumber =
         int ((palette >>> (colorNumber * 2)) &&& 0x03uy)
@@ -40,8 +34,7 @@ module Video =
         let blue = scale (int ((raw >>> 10) &&& 0x001Fus))
         0xFF000000u ||| (red <<< 16) ||| (green <<< 8) ||| blue
 
-    let private unsignedTileAddress tileIndex row =
-        0x8000 + int tileIndex * 16 + row * 2
+    let private unsignedTileAddress tileIndex row = 0x8000 + int tileIndex * 16 + row * 2
 
     let private signedTileAddress tileIndex row =
         let signedIndex =
@@ -132,6 +125,7 @@ module Video =
                       X = int (Bus.rawOamByte (baseIndex + 1) memory) - 8
                       TileIndex = Bus.rawOamByte (baseIndex + 2) memory
                       Attributes = Bus.rawOamByte (baseIndex + 3) memory }
+
                 count <- count + 1
 
             spriteIndex <- spriteIndex + 1
@@ -152,7 +146,9 @@ module Video =
 
     let private renderBackgroundPixel memory lcdc x y =
         if not (bitSet 0 lcdc) then
-            { ColorNumber = 0; Palette = 0; Priority = false }
+            { ColorNumber = 0
+              Palette = 0
+              Priority = false }
         else
             let scx = int (io 0x43 memory)
             let scy = int (io 0x42 memory)
@@ -162,14 +158,25 @@ module Video =
             let tileRow = sourceY / 8
             let tileMapAddress = backgroundTileMapBase lcdc + tileRow * 32 + tileColumn
             let tileIndex = Bus.rawVramBankByte 0 tileMapAddress memory
+
             let attributes =
                 if Bus.mode memory = Hardware.Cgb then
                     Bus.rawVramBankByte 1 tileMapAddress memory
                 else
                     0uy
 
-            let row = if bitSet 6 attributes then 7 - (sourceY % 8) else sourceY % 8
-            let column = if bitSet 5 attributes then 7 - (sourceX % 8) else sourceX % 8
+            let row =
+                if bitSet 6 attributes then
+                    7 - (sourceY % 8)
+                else
+                    sourceY % 8
+
+            let column =
+                if bitSet 5 attributes then
+                    7 - (sourceX % 8)
+                else
+                    sourceX % 8
+
             let address = tileAddress lcdc tileIndex row
 
             { ColorNumber = tilePixel memory (int ((attributes >>> 3) &&& 0x01uy)) address column
@@ -190,14 +197,25 @@ module Video =
             let tileRow = sourceY / 8
             let tileMapAddress = windowTileMapBase lcdc + tileRow * 32 + tileColumn
             let tileIndex = Bus.rawVramBankByte 0 tileMapAddress memory
+
             let attributes =
                 if Bus.mode memory = Hardware.Cgb then
                     Bus.rawVramBankByte 1 tileMapAddress memory
                 else
                     0uy
 
-            let row = if bitSet 6 attributes then 7 - (sourceY % 8) else sourceY % 8
-            let column = if bitSet 5 attributes then 7 - (sourceX % 8) else sourceX % 8
+            let row =
+                if bitSet 6 attributes then
+                    7 - (sourceY % 8)
+                else
+                    sourceY % 8
+
+            let column =
+                if bitSet 5 attributes then
+                    7 - (sourceX % 8)
+                else
+                    sourceX % 8
+
             let address = tileAddress lcdc tileIndex row
 
             { ColorNumber = tilePixel memory (int ((attributes >>> 3) &&& 0x01uy)) address column
@@ -214,6 +232,7 @@ module Video =
 
             for spriteSlot in 0 .. count - 1 do
                 let sprite = sprites[spriteSlot]
+
                 let tileIndex =
                     if spriteHeight = 16 then
                         sprite.TileIndex &&& 0xFEuy
@@ -221,7 +240,13 @@ module Video =
                         sprite.TileIndex
 
                 let attributes = sprite.Attributes
-                let palette = if bitSet 4 attributes then io 0x49 memory else io 0x48 memory
+
+                let palette =
+                    if bitSet 4 attributes then
+                        io 0x49 memory
+                    else
+                        io 0x48 memory
+
                 let cgbPalette = int (attributes &&& 0x07uy)
                 let cgbTileBank = int ((attributes >>> 3) &&& 0x01uy)
                 let xFlip = bitSet 5 attributes
@@ -231,17 +256,13 @@ module Video =
                 let yInSprite = y - sprite.Y
 
                 if yInSprite >= 0 && yInSprite < spriteHeight then
-                    let sourceY =
-                        if yFlip then
-                            spriteHeight - 1 - yInSprite
-                        else
-                            yInSprite
+                    let sourceY = if yFlip then spriteHeight - 1 - yInSprite else yInSprite
 
                     let tileOffset = if spriteHeight = 16 && sourceY >= 8 then 1 else 0
                     let row = sourceY % 8
                     let address = unsignedTileAddress (tileIndex + byte tileOffset) row
 
-                    for xInSprite in 0 .. 7 do
+                    for xInSprite in 0..7 do
                         let x = sprite.X + xInSprite
 
                         if x >= 0 && x < Hardware.ScreenWidth then
@@ -275,6 +296,7 @@ module Video =
                     let pixelIndex = lineStart + x
                     scratch.BackgroundShades[x] <- byte backgroundPixel.ColorNumber
                     scratch.BackgroundPriority[x] <- backgroundPixel.Priority
+
                     framebuffer[pixelIndex] <-
                         if Bus.mode memory = Hardware.Cgb then
                             cgbColor Bus.rawBgPaletteByte backgroundPixel.Palette backgroundPixel.ColorNumber memory

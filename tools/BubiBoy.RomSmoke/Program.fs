@@ -55,28 +55,33 @@ Examples:
                     | None -> Error $"Invalid --steps value: {args[index + 1]}"
                 | "--max" when index + 1 < args.Length ->
                     match tryParseInt args[index + 1] with
-                    | Some maxFiles -> loop (index + 2) { options with MaxFiles = Some maxFiles }
+                    | Some maxFiles ->
+                        loop
+                            (index + 2)
+                            { options with
+                                MaxFiles = Some maxFiles }
                     | None -> Error $"Invalid --max value: {args[index + 1]}"
                 | "--trace-tail" when index + 1 < args.Length ->
                     match tryParseInt args[index + 1] with
-                    | Some traceTail -> loop (index + 2) { options with TraceTail = Some traceTail }
+                    | Some traceTail ->
+                        loop
+                            (index + 2)
+                            { options with
+                                TraceTail = Some traceTail }
                     | None -> Error $"Invalid --trace-tail value: {args[index + 1]}"
                 | "--name" when index + 1 < args.Length ->
-                    loop (index + 2) { options with NameContains = Some args[index + 1] }
-                | "--stop-on-bad-sp" ->
-                    loop (index + 1) { options with StopOnBadSp = true }
-                | "--stop-on-bad-pc" ->
-                    loop (index + 1) { options with StopOnBadPc = true }
-                | "--include-bios" ->
-                    loop (index + 1) { options with IncludeBios = true }
-                | "--fail-on-load-error" ->
-                    loop (index + 1) { options with FailOnLoadError = true }
-                | flag when flag.StartsWith("--", StringComparison.Ordinal) ->
-                    Error $"Unknown option: {flag}"
+                    loop
+                        (index + 2)
+                        { options with
+                            NameContains = Some args[index + 1] }
+                | "--stop-on-bad-sp" -> loop (index + 1) { options with StopOnBadSp = true }
+                | "--stop-on-bad-pc" -> loop (index + 1) { options with StopOnBadPc = true }
+                | "--include-bios" -> loop (index + 1) { options with IncludeBios = true }
+                | "--fail-on-load-error" -> loop (index + 1) { options with FailOnLoadError = true }
+                | flag when flag.StartsWith("--", StringComparison.Ordinal) -> Error $"Unknown option: {flag}"
                 | path when String.IsNullOrWhiteSpace options.RomRoot ->
                     loop (index + 1) { options with RomRoot = path }
-                | extra ->
-                    Error $"Unexpected argument: {extra}"
+                | extra -> Error $"Unexpected argument: {extra}"
 
         loop
             0
@@ -90,8 +95,7 @@ Examples:
               IncludeBios = false
               FailOnLoadError = false }
 
-    let private isRomPath (path: string) =
-        RomFile.isCandidatePath path
+    let private isRomPath (path: string) = RomFile.isCandidatePath path
 
     let private isBiosPath (path: string) =
         Path.GetFileName(path).Contains("[BIOS]", StringComparison.OrdinalIgnoreCase)
@@ -122,8 +126,7 @@ Examples:
         match CartridgeMemory.bankDebug cartridge with
         | CartridgeMemory.Mbc1Debug(romBankLow5, bankHigh2, bankingMode, rom0Bank, romXBank) ->
             $"\tmbc1Low=%d{romBankLow5}\tmbc1High=%d{bankHigh2}\tmbc1Mode=%A{bankingMode}\trom0Bank=%d{rom0Bank}\tromXBank=%d{romXBank}"
-        | CartridgeMemory.Mbc2Debug(romBank, ramEnabled) ->
-            $"\tmbc2RomBank=%d{romBank}\tramEnabled=%b{ramEnabled}"
+        | CartridgeMemory.Mbc2Debug(romBank, ramEnabled) -> $"\tmbc2RomBank=%d{romBank}\tramEnabled=%b{ramEnabled}"
         | CartridgeMemory.Mbc3Debug(romBank, ramOrRtcSelect, ramEnabled) ->
             $"\tmbc3RomBank=%d{romBank}\tramOrRtc=%d{ramOrRtcSelect}\tramEnabled=%b{ramEnabled}"
         | CartridgeMemory.Mbc5Debug(romBank, ramBank, ramEnabled) ->
@@ -142,7 +145,13 @@ Examples:
         || (pc >= 0xFE00us && pc <= 0xFEFFus)
         || pc = 0xFFFFus
 
-    let private runWithTrace (traceTail: int) (stopOnBadSp: bool) (stopOnBadPc: bool) (maxSteps: int) (session: Emulator.Session) : TraceRun * string list =
+    let private runWithTrace
+        (traceTail: int)
+        (stopOnBadSp: bool)
+        (stopOnBadPc: bool)
+        (maxSteps: int)
+        (session: Emulator.Session)
+        : TraceRun * string list =
         let trace = Queue<Emulator.Session>()
         let mutable remaining = maxSteps
         let mutable current = session
@@ -168,8 +177,7 @@ Examples:
 
                     if stopOnBadPc && isSuspiciousProgramCounter current.Cpu.Registers.PC then
                         badProgramCounter <- Some current
-                with
-                | Cpu.UnsupportedOpcode(opcode, pc) ->
+                with Cpu.UnsupportedOpcode(opcode, pc) ->
                     stopReason <- Some(Emulator.UnsupportedOpcode(opcode, pc))
 
         let traceLines =
@@ -207,21 +215,21 @@ Examples:
         let relativePath = Path.GetRelativePath(root, path)
 
         match status with
-        | LoadError message ->
-            printfn $"LOAD_ERROR\t{relativePath}\t{message}"
+        | LoadError message -> printfn $"LOAD_ERROR\t{relativePath}\t{message}"
         | Ran(result, trace) ->
             let registers = result.Session.Cpu.Registers
             let cartridgeBank = describeCartridgeBank (Bus.cartridge result.Session.Bus)
+
             printfn
                 $"%s{describeStopReason result.StopReason}\t%s{relativePath}\tsteps=%d{result.Session.Steps}\tcycles=%d{result.Session.TotalCycles}\tpc=0x%04X{registers.PC}\tsp=0x%04X{registers.SP}\ta=0x%02X{registers.A}\tf=0x%02X{registers.F}%s{cartridgeBank}"
 
             match result.StopReason, trace with
-            | Emulator.UnsupportedOpcode _, _ :: _ ->
-                trace |> List.iter (printfn "%s")
+            | Emulator.UnsupportedOpcode _, _ :: _ -> trace |> List.iter (printfn "%s")
             | _ -> ()
         | BadStackPointer(session, trace) ->
             let registers = session.Cpu.Registers
             let cartridgeBank = describeCartridgeBank (Bus.cartridge session.Bus)
+
             printfn
                 $"BAD_STACK_POINTER\t%s{relativePath}\tsteps=%d{session.Steps}\tcycles=%d{session.TotalCycles}\tpc=0x%04X{registers.PC}\tsp=0x%04X{registers.SP}\ta=0x%02X{registers.A}\tf=0x%02X{registers.F}%s{cartridgeBank}"
 
@@ -229,6 +237,7 @@ Examples:
         | BadProgramCounter(session, trace) ->
             let registers = session.Cpu.Registers
             let cartridgeBank = describeCartridgeBank (Bus.cartridge session.Bus)
+
             printfn
                 $"BAD_PROGRAM_COUNTER\t%s{relativePath}\tsteps=%d{session.Steps}\tcycles=%d{session.TotalCycles}\tpc=0x%04X{registers.PC}\tsp=0x%04X{registers.SP}\ta=0x%02X{registers.A}\tf=0x%02X{registers.F}%s{cartridgeBank}"
 
@@ -254,7 +263,9 @@ Examples:
             let results =
                 roms
                 |> Array.map (fun path ->
-                    let status = runRom options.Steps options.TraceTail options.StopOnBadSp options.StopOnBadPc path
+                    let status =
+                        runRom options.Steps options.TraceTail options.StopOnBadSp options.StopOnBadPc path
+
                     printResult options.RomRoot path status
                     status)
 
@@ -290,6 +301,7 @@ Examples:
                     | BadProgramCounter _ -> 1
                     | _ -> 0)
 
-            printfn $"SUMMARY\tfiles={roms.Length}\tloadErrors={loadErrors}\tunsupported={unsupported}\tstepLimit={stepLimit}\tbadStack={badStack}\tbadPc={badProgramCounter}"
+            printfn
+                $"SUMMARY\tfiles={roms.Length}\tloadErrors={loadErrors}\tunsupported={unsupported}\tstepLimit={stepLimit}\tbadStack={badStack}\tbadPc={badProgramCounter}"
 
             if options.FailOnLoadError && loadErrors > 0 then 1 else 0

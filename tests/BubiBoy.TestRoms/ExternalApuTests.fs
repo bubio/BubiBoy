@@ -82,13 +82,15 @@ let private runApuRom maxSteps path =
                 result <- Some(Failed(text, session.Steps))
             elif text.Contains("Passed", StringComparison.OrdinalIgnoreCase) || isBinaryPass text then
                 result <- Some(Passed(text, session.Steps))
-            elif text.Contains("Failed", StringComparison.OrdinalIgnoreCase) || isBinaryFailure text then
+            elif
+                text.Contains("Failed", StringComparison.OrdinalIgnoreCase)
+                || isBinaryFailure text
+            then
                 result <- Some(Failed(text, session.Steps))
             else
                 try
                     session <- Emulator.step session
-                with
-                | Cpu.UnsupportedOpcode(opcode, pc) ->
+                with Cpu.UnsupportedOpcode(opcode, pc) ->
                     result <- Some(UnsupportedOpcode(text, opcode, pc, session.Steps))
 
         let finalOutput = output.ToString()
@@ -107,7 +109,9 @@ let ``external APU test ROMs report pass over serial when configured`` () =
         | Failed(output, steps) ->
             Assert.Fail($"{Path.GetFileName path} reported failure after {steps} steps: {output}")
         | StepLimitReached(output, steps) ->
-            Assert.Fail($"{Path.GetFileName path} did not report pass/fail within {steps} steps. Serial output: {output}")
+            Assert.Fail(
+                $"{Path.GetFileName path} did not report pass/fail within {steps} steps. Serial output: {output}"
+            )
         | UnsupportedOpcode(output, opcode, pc, steps) ->
             Assert.Fail(
                 $"{Path.GetFileName path} hit unsupported opcode 0x{opcode:X2} at PC 0x{pc:X4} after {steps} steps. Serial output: {output}"

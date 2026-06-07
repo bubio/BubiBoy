@@ -59,8 +59,7 @@ let private runSmoke maxSteps path =
 
                 if isSuspiciousProgramCounter session.Cpu.Registers.PC then
                     result <- Some(SuspiciousProgramCounter(session.Cpu.Registers.PC, session.Steps))
-            with
-            | Cpu.UnsupportedOpcode(opcode, pc) ->
+            with Cpu.UnsupportedOpcode(opcode, pc) ->
                 result <- Some(UnsupportedOpcode(opcode, pc, session.Steps))
 
         defaultArg result (Completed session)
@@ -78,11 +77,12 @@ let ``external CGB smoke ROMs run without early execution failures when configur
         | Completed session ->
             Assert.Equal(steps, session.Steps)
             Assert.Equal(Hardware.Cgb, Bus.mode session.Bus)
-        | LoadError message ->
-            Assert.Fail($"{Path.GetFileName path} failed to load: {message}")
+        | LoadError message -> Assert.Fail($"{Path.GetFileName path} failed to load: {message}")
         | DmgOnly title ->
             Assert.Fail($"{Path.GetFileName path} is not a CGB ROM according to its header. Title: {title}")
         | UnsupportedOpcode(opcode, pc, steps) ->
-            Assert.Fail($"{Path.GetFileName path} hit unsupported opcode 0x{opcode:X2} at PC 0x{pc:X4} after {steps} steps.")
+            Assert.Fail(
+                $"{Path.GetFileName path} hit unsupported opcode 0x{opcode:X2} at PC 0x{pc:X4} after {steps} steps."
+            )
         | SuspiciousProgramCounter(pc, steps) ->
             Assert.Fail($"{Path.GetFileName path} reached suspicious PC 0x{pc:X4} after {steps} steps.")

@@ -9,4 +9,5 @@ module RomSession =
         |> Result.bind (fun session ->
             SaveRam.loadForRom rom.Path (Bus.cartridge session.Bus)
             |> Result.map (fun cartridge ->
-                { session with Bus = Bus.withCartridge cartridge session.Bus }))
+                { session with
+                    Bus = Bus.withCartridge cartridge session.Bus }))

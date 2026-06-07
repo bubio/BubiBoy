@@ -116,10 +116,7 @@ type WindowsXInputGamepadHost private (libraryHandle: IntPtr, getState: XInput.X
     [<Literal>]
     static let maxUserCount = 4u
 
-    static let libraryNames =
-        [| "xinput1_4.dll"
-           "xinput9_1_0.dll"
-           "xinput1_3.dll" |]
+    static let libraryNames = [| "xinput1_4.dll"; "xinput9_1_0.dll"; "xinput1_3.dll" |]
 
     let mutable disposed = false
 

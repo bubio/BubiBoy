@@ -23,9 +23,7 @@ module AppDialogs =
                     FileTypeFilter = [| romFileType; FilePickerFileTypes.All |]
                 )
 
-            let! files =
-                owner.StorageProvider.OpenFilePickerAsync(options)
-                |> Async.AwaitTask
+            let! files = owner.StorageProvider.OpenFilePickerAsync(options) |> Async.AwaitTask
 
             if files.Count > 0 then
                 return files[0].TryGetLocalPath() |> Option.ofObj

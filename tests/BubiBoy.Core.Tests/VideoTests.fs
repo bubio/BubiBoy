@@ -23,27 +23,21 @@ let private makeCgbBus () =
     | Ok cartridge -> Bus.create cartridge
     | Error message -> failwith message
 
-let private withIo index value (bus: Bus.Memory) =
-    Bus.withIoByte index value bus
+let private withIo index value (bus: Bus.Memory) = Bus.withIoByte index value bus
 
-let private withVram address value (bus: Bus.Memory) =
-    Bus.withVramByte address value bus
+let private withVram address value (bus: Bus.Memory) = Bus.withVramByte address value bus
 
 let private withVramBank bank address value (bus: Bus.Memory) =
     Bus.withVramBankByte bank address value bus
 
-let private withOam index value (bus: Bus.Memory) =
-    Bus.withOamByte index value bus
+let private withOam index value (bus: Bus.Memory) = Bus.withOamByte index value bus
 
 let private pixel x y (framebuffer: uint32[]) =
     framebuffer[y * Hardware.ScreenWidth + x]
 
 [<Fact>]
 let ``disabled LCD renders blank DMG shade zero`` () =
-    let framebuffer =
-        makeBus ()
-        |> withIo 0x40 0x00uy
-        |> Video.renderFrame
+    let framebuffer = makeBus () |> withIo 0x40 0x00uy |> Video.renderFrame
 
     Assert.All(framebuffer, fun color -> Assert.Equal(Video.DmgColors[0], color))
 
@@ -304,7 +298,7 @@ let ``only first ten OAM sprites on a scanline are rendered`` () =
         |> withVram 0x8011 0x00uy
 
     let busWithFirstTenSprites =
-        [ 0 .. 9 ]
+        [ 0..9 ]
         |> List.fold
             (fun current spriteIndex ->
                 let baseIndex = spriteIndex * 4

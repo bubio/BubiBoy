@@ -32,12 +32,7 @@ module AppChrome =
             )
 
         let host =
-            Border(
-                Width = 28.0,
-                Height = 28.0,
-                Child = indicator,
-                VerticalAlignment = VerticalAlignment.Center
-            )
+            Border(Width = 28.0, Height = 28.0, Child = indicator, VerticalAlignment = VerticalAlignment.Center)
 
         let setRunning running =
             indicator.Fill <-
@@ -50,8 +45,7 @@ module AppChrome =
 
         setRunning false
 
-        { Host = host
-          SetRunning = setRunning }
+        { Host = host; SetRunning = setRunning }
 
     let createStatusBar isFloating runIndicatorHost volumeHost =
         let statusBar =
@@ -62,6 +56,7 @@ module AppChrome =
                 Padding = Thickness(6.0, 0.0, 16.0, 0.0),
                 IsVisible = not isFloating
             )
+
         AppTheme.bindBrush statusBar Border.BackgroundProperty AppTheme.StatusBackground
         AppTheme.bindBrush statusBar Border.BorderBrushProperty AppTheme.StatusBorder
 
@@ -83,12 +78,7 @@ module AppChrome =
 
     let createToast () =
         let toastText =
-            TextBlock(
-                FontSize = 13.0,
-                Foreground = Brushes.White,
-                TextWrapping = TextWrapping.Wrap,
-                MaxWidth = 320.0
-            )
+            TextBlock(FontSize = 13.0, Foreground = Brushes.White, TextWrapping = TextWrapping.Wrap, MaxWidth = 320.0)
 
         let toast =
             Border(

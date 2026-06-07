@@ -14,15 +14,11 @@ module Apu =
 
     /// Contains one normalized stereo audio sample.
     [<Struct>]
-    type Sample =
-        { Left: single
-          Right: single }
+    type Sample = { Left: single; Right: single }
 
     /// Owns the buffered samples that have not yet been drained.
     type PendingSamples =
-        private
-            { Buffer: Sample[]
-              Count: int }
+        private { Buffer: Sample[]; Count: int }
 
     /// Identifies whether an envelope raises or lowers channel volume.
     type EnvelopeDirection =
@@ -97,8 +93,7 @@ module Apu =
           PendingSamples: PendingSamples }
 
     /// Contains the serializable pending audio samples.
-    type PendingSamplesSnapshot =
-        { Samples: Sample[] }
+    type PendingSamplesSnapshot = { Samples: Sample[] }
 
     /// Contains complete serializable APU state.
     type StateSnapshot =
@@ -121,7 +116,12 @@ module Apu =
           Count = 0 }
 
     let private pendingSamplesFromSnapshot snapshot =
-        let samples = if isNull snapshot.Samples then Array.empty else snapshot.Samples
+        let samples =
+            if isNull snapshot.Samples then
+                Array.empty
+            else
+                snapshot.Samples
+
         let capacity = max 2048 samples.Length
         let buffer = Array.zeroCreate<Sample> capacity
         System.Array.Copy(samples, buffer, samples.Length)
@@ -223,8 +223,7 @@ module Apu =
           Noise = snapshot.SnapshotNoise
           PendingSamples = pendingSamplesFromSnapshot snapshot.SnapshotPendingSamples }
 
-    let private bitSet bit value =
-        value &&& (1uy <<< bit) <> 0uy
+    let private bitSet bit value = value &&& (1uy <<< bit) <> 0uy
 
     let private envelopeFromNrx2 value =
         let initialVolume = int (value >>> 4)
@@ -235,14 +234,11 @@ module Apu =
           Timer = int (value &&& 0x07uy)
           Volume = initialVolume }
 
-    let private pulseTimer frequency =
-        (2048 - frequency) * 4
+    let private pulseTimer frequency = (2048 - frequency) * 4
 
-    let private waveTimer frequency =
-        (2048 - frequency) * 2
+    let private waveTimer frequency = (2048 - frequency) * 2
 
-    let private noiseDivisors =
-        [| 8; 16; 32; 48; 64; 80; 96; 112 |]
+    let private noiseDivisors = [| 8; 16; 32; 48; 64; 80; 96; 112 |]
 
     let private noiseTimer nr43 =
         let divisor = noiseDivisors[int (nr43 &&& 0x07uy)]
@@ -260,9 +256,19 @@ module Apu =
           ShadowFrequency = frequency
           Enabled = period <> 0 || shift <> 0 }
 
-    let private updatePulseFromRegisters hasSweep trigger nr10 nr11 nr12 nr13 nr14 (pulse: PulseChannel) : PulseChannel =
+    let private updatePulseFromRegisters
+        hasSweep
+        trigger
+        nr10
+        nr11
+        nr12
+        nr13
+        nr14
+        (pulse: PulseChannel)
+        : PulseChannel =
         let frequency = int nr13 ||| ((int nr14 &&& 0x07) <<< 8)
         let dacEnabled = nr12 &&& 0xF8uy <> 0uy
+
         let lengthCounter =
             if trigger && pulse.LengthCounter = 0 then
                 64
@@ -298,6 +304,7 @@ module Apu =
     let private updateWaveFromRegisters trigger nr30 _nr31 nr32 nr33 nr34 (wave: WaveChannel) : WaveChannel =
         let frequency = int nr33 ||| ((int nr34 &&& 0x07) <<< 8)
         let dacEnabled = bitSet 7 nr30
+
         let lengthCounter =
             if trigger && wave.LengthCounter = 0 then
                 256
@@ -324,6 +331,7 @@ module Apu =
 
     let private updateNoiseFromRegisters trigger _nr41 nr42 nr43 nr44 (noise: NoiseChannel) : NoiseChannel =
         let dacEnabled = nr42 &&& 0xF8uy <> 0uy
+
         let lengthCounter =
             if trigger && noise.LengthCounter = 0 then
                 64
@@ -376,8 +384,7 @@ module Apu =
         nextIo[0x26] <- 0uy
         nextIo
 
-    let private audioRegister index =
-        index >= 0x10 && index <= 0x25
+    let private audioRegister index = index >= 0x10 && index <= 0x25
 
     let private writeRegisterCore index value (io: byte[]) (state: State) : byte[] * State =
         if index = 0x26 && value &&& 0x80uy = 0uy then
@@ -391,45 +398,86 @@ module Apu =
             let nextState =
                 match index with
                 | 0x11 ->
-                    applyRegisters nextIo
+                    applyRegisters
+                        nextIo
                         { state with
                             Pulse1 =
                                 { state.Pulse1 with
                                     LengthCounter = 64 - int (value &&& 0x3Fuy) } }
                 | 0x16 ->
-                    applyRegisters nextIo
+                    applyRegisters
+                        nextIo
                         { state with
                             Pulse2 =
                                 { state.Pulse2 with
                                     LengthCounter = 64 - int (value &&& 0x3Fuy) } }
                 | 0x1B ->
-                    applyRegisters nextIo
+                    applyRegisters
+                        nextIo
                         { state with
                             Wave =
                                 { state.Wave with
                                     LengthCounter = 256 - int value } }
                 | 0x20 ->
-                    applyRegisters nextIo
+                    applyRegisters
+                        nextIo
                         { state with
                             Noise =
                                 { state.Noise with
                                     LengthCounter = 64 - int (value &&& 0x3Fuy) } }
                 | 0x14 ->
-                    applyRegisters nextIo
+                    applyRegisters
+                        nextIo
                         { state with
-                            Pulse1 = updatePulseFromRegisters true (bitSet 7 value) nextIo[0x10] nextIo[0x11] nextIo[0x12] nextIo[0x13] value state.Pulse1 }
+                            Pulse1 =
+                                updatePulseFromRegisters
+                                    true
+                                    (bitSet 7 value)
+                                    nextIo[0x10]
+                                    nextIo[0x11]
+                                    nextIo[0x12]
+                                    nextIo[0x13]
+                                    value
+                                    state.Pulse1 }
                 | 0x19 ->
-                    applyRegisters nextIo
+                    applyRegisters
+                        nextIo
                         { state with
-                            Pulse2 = updatePulseFromRegisters false (bitSet 7 value) 0uy nextIo[0x16] nextIo[0x17] nextIo[0x18] value state.Pulse2 }
+                            Pulse2 =
+                                updatePulseFromRegisters
+                                    false
+                                    (bitSet 7 value)
+                                    0uy
+                                    nextIo[0x16]
+                                    nextIo[0x17]
+                                    nextIo[0x18]
+                                    value
+                                    state.Pulse2 }
                 | 0x1E ->
-                    applyRegisters nextIo
+                    applyRegisters
+                        nextIo
                         { state with
-                            Wave = updateWaveFromRegisters (bitSet 7 value) nextIo[0x1A] nextIo[0x1B] nextIo[0x1C] nextIo[0x1D] value state.Wave }
+                            Wave =
+                                updateWaveFromRegisters
+                                    (bitSet 7 value)
+                                    nextIo[0x1A]
+                                    nextIo[0x1B]
+                                    nextIo[0x1C]
+                                    nextIo[0x1D]
+                                    value
+                                    state.Wave }
                 | 0x23 ->
-                    applyRegisters nextIo
+                    applyRegisters
+                        nextIo
                         { state with
-                            Noise = updateNoiseFromRegisters (bitSet 7 value) nextIo[0x20] nextIo[0x21] nextIo[0x22] value state.Noise }
+                            Noise =
+                                updateNoiseFromRegisters
+                                    (bitSet 7 value)
+                                    nextIo[0x20]
+                                    nextIo[0x21]
+                                    nextIo[0x22]
+                                    value
+                                    state.Noise }
                 | _ -> applyRegisters nextIo state
 
             nextIo[0x26] <-
@@ -466,13 +514,12 @@ module Apu =
 
     let internal clearPendingSamples (state: State) =
         { state with
-            PendingSamples =
-                { state.PendingSamples with
-                    Count = 0 } }
+            PendingSamples = { state.PendingSamples with Count = 0 } }
 
     let private clockLengthPulse (channel: PulseChannel) : PulseChannel =
         if channel.Enabled && channel.LengthEnabled && channel.LengthCounter > 0 then
             let lengthCounter = channel.LengthCounter - 1
+
             { channel with
                 LengthCounter = lengthCounter
                 Enabled = lengthCounter <> 0 }
@@ -482,6 +529,7 @@ module Apu =
     let private clockLengthWave (channel: WaveChannel) : WaveChannel =
         if channel.Enabled && channel.LengthEnabled && channel.LengthCounter > 0 then
             let lengthCounter = channel.LengthCounter - 1
+
             { channel with
                 LengthCounter = lengthCounter
                 Enabled = lengthCounter <> 0 }
@@ -491,6 +539,7 @@ module Apu =
     let private clockLengthNoise (channel: NoiseChannel) : NoiseChannel =
         if channel.Enabled && channel.LengthEnabled && channel.LengthCounter > 0 then
             let lengthCounter = channel.LengthCounter - 1
+
             { channel with
                 LengthCounter = lengthCounter
                 Enabled = lengthCounter <> 0 }
@@ -512,6 +561,7 @@ module Apu =
                     | Decrease -> -1
 
                 let nextVolume = envelope.Volume + volumeDelta
+
                 let volume =
                     if nextVolume < 0 || nextVolume > MaxVolume then
                         envelope.Volume
@@ -529,7 +579,8 @@ module Apu =
             let timer = sweep.Timer - 1
 
             if timer > 0 then
-                { channel with Sweep = Some { sweep with Timer = timer } }
+                { channel with
+                    Sweep = Some { sweep with Timer = timer } }
             else
                 let calculate frequency =
                     let delta = frequency >>> sweep.Shift
@@ -540,31 +591,43 @@ module Apu =
                         frequency + delta
 
                 let nextFrequency = calculate sweep.ShadowFrequency
+
                 let reloadedSweep =
                     { sweep with
                         Timer = if sweep.Period = 0 then 8 else sweep.Period }
 
                 if nextFrequency < 0 || nextFrequency > 2047 then
-                    { channel with Enabled = false; Sweep = Some reloadedSweep }
+                    { channel with
+                        Enabled = false
+                        Sweep = Some reloadedSweep }
                 elif sweep.Shift <> 0 then
                     let nextSweep =
                         { reloadedSweep with
                             ShadowFrequency = nextFrequency }
 
                     if calculate nextFrequency > 2047 then
-                        { channel with Enabled = false; Sweep = Some nextSweep }
+                        { channel with
+                            Enabled = false
+                            Sweep = Some nextSweep }
                     else
                         { channel with
                             Frequency = nextFrequency
                             Timer = pulseTimer nextFrequency
                             Sweep = Some nextSweep }
                 else
-                    { channel with Sweep = Some reloadedSweep }
+                    { channel with
+                        Sweep = Some reloadedSweep }
         | _ -> channel
 
     let private clockFrameSequencer (state: State) : State =
         let nextStep = (state.FrameSequencerStep + 1) &&& 0x07
-        let shouldClockLength = state.FrameSequencerStep = 0 || state.FrameSequencerStep = 2 || state.FrameSequencerStep = 4 || state.FrameSequencerStep = 6
+
+        let shouldClockLength =
+            state.FrameSequencerStep = 0
+            || state.FrameSequencerStep = 2
+            || state.FrameSequencerStep = 4
+            || state.FrameSequencerStep = 6
+
         let shouldClockSweep = state.FrameSequencerStep = 2 || state.FrameSequencerStep = 6
         let shouldClockEnvelope = state.FrameSequencerStep = 7
 
@@ -573,31 +636,53 @@ module Apu =
             |> (if shouldClockLength then clockLengthPulse else id)
             |> (if shouldClockSweep then clockSweep else id)
 
-        let pulse2 =
-            state.Pulse2
-            |> (if shouldClockLength then clockLengthPulse else id)
+        let pulse2 = state.Pulse2 |> (if shouldClockLength then clockLengthPulse else id)
 
         { state with
             FrameSequencerStep = nextStep
             Pulse1 =
                 { pulse1 with
-                    Envelope = if shouldClockEnvelope then clockEnvelope pulse1.Envelope else pulse1.Envelope }
+                    Envelope =
+                        if shouldClockEnvelope then
+                            clockEnvelope pulse1.Envelope
+                        else
+                            pulse1.Envelope }
             Pulse2 =
                 { pulse2 with
-                    Envelope = if shouldClockEnvelope then clockEnvelope pulse2.Envelope else pulse2.Envelope }
-            Wave = if shouldClockLength then clockLengthWave state.Wave else state.Wave
+                    Envelope =
+                        if shouldClockEnvelope then
+                            clockEnvelope pulse2.Envelope
+                        else
+                            pulse2.Envelope }
+            Wave =
+                if shouldClockLength then
+                    clockLengthWave state.Wave
+                else
+                    state.Wave
             Noise =
-                let noise = if shouldClockLength then clockLengthNoise state.Noise else state.Noise
-                { noise with Envelope = if shouldClockEnvelope then clockEnvelope noise.Envelope else noise.Envelope } }
+                let noise =
+                    if shouldClockLength then
+                        clockLengthNoise state.Noise
+                    else
+                        state.Noise
+
+                { noise with
+                    Envelope =
+                        if shouldClockEnvelope then
+                            clockEnvelope noise.Envelope
+                        else
+                            noise.Envelope } }
 
     let private clockDivApuEvent (state: State) =
         if state.SkipNextFrameSequencerClock then
-            { state with SkipNextFrameSequencerClock = false }
+            { state with
+                SkipNextFrameSequencerClock = false }
         else
             clockFrameSequencer state
 
     let private skipNextFrameSequencerClockCore (state: State) =
-        { state with SkipNextFrameSequencerClock = true }
+        { state with
+            SkipNextFrameSequencerClock = true }
 
     let private resetDivCore divider (io: byte[]) (state: State) =
         if io[0x26] &&& 0x80uy = 0uy then
@@ -609,7 +694,8 @@ module Apu =
                 else
                     state
 
-            { clocked with FrameSequencerCycles = 0 }
+            { clocked with
+                FrameSequencerCycles = 0 }
 
     let private dutyPatterns =
         [| [| 0; 0; 0; 0; 0; 0; 0; 1 |]
@@ -628,13 +714,16 @@ module Apu =
                 timer <- timer + pulseTimer channel.Frequency
                 dutyStep <- (dutyStep + 1) &&& 0x07
 
-            { channel with Timer = timer; DutyStep = dutyStep }
+            { channel with
+                Timer = timer
+                DutyStep = dutyStep }
 
     let private waveOutputUnits (io: byte[]) (channel: WaveChannel) =
         if not channel.Enabled || not channel.DacEnabled || channel.OutputLevel = 0 then
             0
         else
             let sampleByte = io[0x30 + (channel.Position / 2)]
+
             let sample =
                 if channel.Position &&& 1 = 0 then
                     int (sampleByte >>> 4)
@@ -660,7 +749,12 @@ module Apu =
 
             while remaining > 0 do
                 let span = min remaining timer
-                let current = { channel with Timer = timer; Position = position }
+
+                let current =
+                    { channel with
+                        Timer = timer
+                        Position = position }
+
                 area <- area + int64 (waveOutputUnits io current) * int64 span
                 timer <- timer - span
                 remaining <- remaining - span
@@ -669,7 +763,10 @@ module Apu =
                     timer <- waveTimer channel.Frequency
                     position <- (position + 1) &&& 0x1F
 
-            { channel with Timer = timer; Position = position }, area
+            { channel with
+                Timer = timer
+                Position = position },
+            area
 
     let private tickNoise cycles nr43 (channel: NoiseChannel) : NoiseChannel * int64 =
         if not channel.Enabled then
@@ -684,6 +781,7 @@ module Apu =
 
             while remaining > 0 do
                 let span = min remaining timer
+
                 let amplitude =
                     if lfsr &&& 0x0001us = 0us then
                         channel.Envelope.Volume
@@ -702,14 +800,21 @@ module Apu =
                     if widthMode then
                         lfsr <- (lfsr &&& ~~~0x0040us) ||| (feedback <<< 6)
 
-            { channel with Timer = timer; Lfsr = lfsr }, area
+            { channel with
+                Timer = timer
+                Lfsr = lfsr },
+            area
 
     let private pulseOutput (channel: PulseChannel) =
         if not channel.Enabled || not channel.DacEnabled then
             0.0f
         else
             let bit = dutyPatterns[channel.Duty][channel.DutyStep]
-            if bit = 0 then -single channel.Envelope.Volume / single MaxVolume else single channel.Envelope.Volume / single MaxVolume
+
+            if bit = 0 then
+                -single channel.Envelope.Volume / single MaxVolume
+            else
+                single channel.Envelope.Volume / single MaxVolume
 
     let private waveOutput (io: byte[]) (channel: WaveChannel) =
         single (waveOutputUnits io channel) / 15.0f
@@ -741,8 +846,13 @@ module Apu =
         let rightVolume = single ((int nr50 &&& 0x07) + 1) / 8.0f
         let channel1 = pulseOutput state.Pulse1
         let channel2 = pulseOutput state.Pulse2
-        let channel3 = waveOverride |> Option.defaultWith (fun () -> waveOutput io state.Wave)
-        let channel4 = noiseOverride |> Option.defaultWith (fun () -> noiseOutput state.Noise)
+
+        let channel3 =
+            waveOverride |> Option.defaultWith (fun () -> waveOutput io state.Wave)
+
+        let channel4 =
+            noiseOverride |> Option.defaultWith (fun () -> noiseOutput state.Noise)
+
         let left =
             ((if nr51 &&& 0x10uy <> 0uy then channel1 else 0.0f)
              + (if nr51 &&& 0x20uy <> 0uy then channel2 else 0.0f)
@@ -750,6 +860,7 @@ module Apu =
              + (if nr51 &&& 0x80uy <> 0uy then channel4 else 0.0f))
             * 0.25f
             * leftVolume
+
         let right =
             ((if nr51 &&& 0x01uy <> 0uy then channel1 else 0.0f)
              + (if nr51 &&& 0x02uy <> 0uy then channel2 else 0.0f)
@@ -776,17 +887,15 @@ module Apu =
                 frameCycles <- frameCycles - FrameSequencerPeriodCycles
                 current <- clockDivApuEvent current
 
-            { current with FrameSequencerCycles = frameCycles }
+            { current with
+                FrameSequencerCycles = frameCycles }
 
     /// Applies one write to an audio register and returns updated register and APU state.
-    let writeRegister index value io state =
-        RegisterIo.write index value io state
+    let writeRegister index value io state = RegisterIo.write index value io state
 
-    let internal statusRegister io state =
-        RegisterIo.status io state
+    let internal statusRegister io state = RegisterIo.status io state
 
-    let internal skipNextFrameSequencerClock state =
-        FrameSequencer.skipNextClock state
+    let internal skipNextFrameSequencerClock state = FrameSequencer.skipNextClock state
 
     let internal resetDiv divider io state =
         FrameSequencer.resetDivider divider io state
@@ -801,6 +910,7 @@ module Apu =
 
             while remaining > 0 do
                 let sampleUnitsRemaining = int64 Hardware.DmgClockHz - current.SampleCycles
+
                 let cyclesUntilSample =
                     int ((sampleUnitsRemaining + int64 SampleRate - 1L) / int64 SampleRate)
 
@@ -851,8 +961,6 @@ module Apu =
                             NoiseSampleArea = 0L
                             NoiseSampleCycles = 0
                             PendingSamples =
-                                appendSample
-                                    (mixSample averagedWave averagedNoise io current)
-                                    current.PendingSamples }
+                                appendSample (mixSample averagedWave averagedNoise io current) current.PendingSamples }
 
             current

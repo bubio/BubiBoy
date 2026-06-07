@@ -15,9 +15,7 @@ module CartridgeMemory =
           BankingMode: BankingMode }
 
     /// Holds mutable MBC2 banking register state.
-    type Mbc2State =
-        { RamEnabled: bool
-          RomBank: int }
+    type Mbc2State = { RamEnabled: bool; RomBank: int }
 
     /// Holds mutable MBC3 banking and real-time clock state.
     type Mbc3State =
@@ -138,9 +136,7 @@ module CartridgeMemory =
           BankHigh2 = 0
           BankingMode = RomBanking }
 
-    let private defaultMbc2 =
-        { RamEnabled = false
-          RomBank = 1 }
+    let private defaultMbc2 = { RamEnabled = false; RomBank = 1 }
 
     let private defaultMbc3 hasRtc =
         { RamEnabled = false
@@ -158,8 +154,10 @@ module CartridgeMemory =
           RamBank = 0 }
 
     let private mbcState kind =
-        if supportsMbc1 kind then Mbc1 defaultMbc1
-        elif supportsMbc2 kind then Mbc2 defaultMbc2
+        if supportsMbc1 kind then
+            Mbc1 defaultMbc1
+        elif supportsMbc2 kind then
+            Mbc2 defaultMbc2
         elif supportsMbc3 kind then
             let hasRtc =
                 match kind with
@@ -168,8 +166,10 @@ module CartridgeMemory =
                 | _ -> false
 
             Mbc3(defaultMbc3 hasRtc)
-        elif supportsMbc5 kind then Mbc5 defaultMbc5
-        else NoMbc
+        elif supportsMbc5 kind then
+            Mbc5 defaultMbc5
+        else
+            NoMbc
 
     /// Creates a cartridge image from ROM bytes after validating its header and declared size.
     let create (rom: byte[]) =
@@ -181,7 +181,8 @@ module CartridgeMemory =
             | _, Error message -> Error message
             | Ok romSize, Ok ramSize ->
                 if rom.Length < romSize.Bytes then
-                    Error $"ROM data is smaller than the size declared in the header: expected {romSize.Bytes} bytes, got {rom.Length} bytes."
+                    Error
+                        $"ROM data is smaller than the size declared in the header: expected {romSize.Bytes} bytes, got {rom.Length} bytes."
                 else
                     let ramBytes =
                         if supportsMbc2 header.CartridgeKind then
@@ -200,10 +201,7 @@ module CartridgeMemory =
                           Mbc = mbcState header.CartridgeKind }
 
     let private normalizeRomBank bankCount bank =
-        if bankCount <= 0 then
-            0
-        else
-            bank % bankCount
+        if bankCount <= 0 then 0 else bank % bankCount
 
     let private normalizeBankForDebug bankCount bank =
         if bankCount <= 0 then 0 else bank % bankCount
@@ -243,11 +241,9 @@ module CartridgeMemory =
     let private rtcDay (registers: byte[]) =
         int registers[3] ||| ((int registers[4] &&& 0x01) <<< 8)
 
-    let private rtcHalted (registers: byte[]) =
-        registers[4] &&& 0x40uy <> 0uy
+    let private rtcHalted (registers: byte[]) = registers[4] &&& 0x40uy <> 0uy
 
-    let private rtcCarry (registers: byte[]) =
-        registers[4] &&& 0x80uy <> 0uy
+    let private rtcCarry (registers: byte[]) = registers[4] &&& 0x80uy <> 0uy
 
     let private normalizeRtcRegister index value =
         match index with
@@ -269,6 +265,7 @@ module CartridgeMemory =
         let remainderAfterHours = remainderAfterDays % secondsPerHour
         let minute = remainderAfterHours / secondsPerMinute
         let second = remainderAfterHours % secondsPerMinute
+
         let high =
             (if day &&& 0x100 <> 0 then 0x01uy else 0uy)
             ||| (if halted then 0x40uy else 0uy)
@@ -350,15 +347,31 @@ module CartridgeMemory =
 
             match address with
             | addr when addr >= 0x0000 && addr <= 0x1FFF ->
-                { image with Mbc = Mbc1 { state with RamEnabled = numericValue &&& 0x0F = 0x0A } }
+                { image with
+                    Mbc =
+                        Mbc1
+                            { state with
+                                RamEnabled = numericValue &&& 0x0F = 0x0A } }
             | addr when addr >= 0x2000 && addr <= 0x3FFF ->
                 let low5 = numericValue &&& 0x1F
-                { image with Mbc = Mbc1 { state with RomBankLow5 = if low5 = 0 then 1 else low5 } }
+
+                { image with
+                    Mbc =
+                        Mbc1
+                            { state with
+                                RomBankLow5 = if low5 = 0 then 1 else low5 } }
             | addr when addr >= 0x4000 && addr <= 0x5FFF ->
-                { image with Mbc = Mbc1 { state with BankHigh2 = numericValue &&& 0x03 } }
+                { image with
+                    Mbc =
+                        Mbc1
+                            { state with
+                                BankHigh2 = numericValue &&& 0x03 } }
             | addr when addr >= 0x6000 && addr <= 0x7FFF ->
                 { image with
-                    Mbc = Mbc1 { state with BankingMode = if numericValue &&& 0x01 = 0 then RomBanking else RamBanking } }
+                    Mbc =
+                        Mbc1
+                            { state with
+                                BankingMode = if numericValue &&& 0x01 = 0 then RomBanking else RamBanking } }
             | addr when addr >= 0xA000 && addr <= 0xBFFF && state.RamEnabled ->
                 writeRamBank image (ramBank state) (addr - 0xA000) value
             | _ -> image
@@ -370,10 +383,19 @@ module CartridgeMemory =
             match address with
             | addr when addr >= 0x0000 && addr <= 0x3FFF ->
                 if addr &&& 0x0100 = 0 then
-                    { image with Mbc = Mbc2 { state with RamEnabled = numericValue &&& 0x0F = 0x0A } }
+                    { image with
+                        Mbc =
+                            Mbc2
+                                { state with
+                                    RamEnabled = numericValue &&& 0x0F = 0x0A } }
                 else
                     let bank = numericValue &&& 0x0F
-                    { image with Mbc = Mbc2 { state with RomBank = if bank = 0 then 1 else bank } }
+
+                    { image with
+                        Mbc =
+                            Mbc2
+                                { state with
+                                    RomBank = if bank = 0 then 1 else bank } }
             | addr when addr >= 0xA000 && addr <= 0xBFFF && state.RamEnabled ->
                 let nextRam = Array.copy image.Ram
                 nextRam[(addr - 0xA000) &&& 0x01FF] <- value &&& 0x0Fuy
@@ -393,18 +415,33 @@ module CartridgeMemory =
 
             match address with
             | addr when addr >= 0x0000 && addr <= 0x1FFF ->
-                { image with Mbc = Mbc3 { state with RamEnabled = numericValue &&& 0x0F = 0x0A } }
+                { image with
+                    Mbc =
+                        Mbc3
+                            { state with
+                                RamEnabled = numericValue &&& 0x0F = 0x0A } }
             | addr when addr >= 0x2000 && addr <= 0x3FFF ->
                 let bank = numericValue &&& 0x7F
-                { image with Mbc = Mbc3 { state with RomBank = if bank = 0 then 1 else bank } }
+
+                { image with
+                    Mbc =
+                        Mbc3
+                            { state with
+                                RomBank = if bank = 0 then 1 else bank } }
             | addr when addr >= 0x4000 && addr <= 0x5FFF ->
-                { image with Mbc = Mbc3 { state with RamOrRtcSelect = numericValue } }
+                { image with
+                    Mbc =
+                        Mbc3
+                            { state with
+                                RamOrRtcSelect = numericValue } }
             | addr when addr >= 0x6000 && addr <= 0x7FFF ->
-                { image with Mbc = Mbc3(latchMbc3Rtc (numericValue &&& 0x01) state) }
+                { image with
+                    Mbc = Mbc3(latchMbc3Rtc (numericValue &&& 0x01) state) }
             | addr when addr >= 0xA000 && addr <= 0xBFFF && state.RamEnabled ->
                 match mbc3RtcRegisterIndex state.RamOrRtcSelect with
                 | Some rtcIndex ->
-                    { image with Mbc = Mbc3(writeMbc3Rtc state rtcIndex value) }
+                    { image with
+                        Mbc = Mbc3(writeMbc3Rtc state rtcIndex value) }
                 | None when state.RamOrRtcSelect >= 0 && state.RamOrRtcSelect <= 3 ->
                     writeRamBank image state.RamOrRtcSelect (addr - 0xA000) value
                 | _ -> image
@@ -419,13 +456,29 @@ module CartridgeMemory =
 
             match address with
             | addr when addr >= 0x0000 && addr <= 0x1FFF ->
-                { image with Mbc = Mbc5 { state with RamEnabled = numericValue &&& 0x0F = 0x0A } }
+                { image with
+                    Mbc =
+                        Mbc5
+                            { state with
+                                RamEnabled = numericValue &&& 0x0F = 0x0A } }
             | addr when addr >= 0x2000 && addr <= 0x2FFF ->
-                { image with Mbc = Mbc5 { state with RomBankLow8 = numericValue &&& 0xFF } }
+                { image with
+                    Mbc =
+                        Mbc5
+                            { state with
+                                RomBankLow8 = numericValue &&& 0xFF } }
             | addr when addr >= 0x3000 && addr <= 0x3FFF ->
-                { image with Mbc = Mbc5 { state with RomBankHigh1 = numericValue &&& 0x01 } }
+                { image with
+                    Mbc =
+                        Mbc5
+                            { state with
+                                RomBankHigh1 = numericValue &&& 0x01 } }
             | addr when addr >= 0x4000 && addr <= 0x5FFF ->
-                { image with Mbc = Mbc5 { state with RamBank = numericValue &&& 0x0F } }
+                { image with
+                    Mbc =
+                        Mbc5
+                            { state with
+                                RamBank = numericValue &&& 0x0F } }
             | addr when addr >= 0xA000 && addr <= 0xBFFF && state.RamEnabled ->
                 writeRamBank image state.RamBank (addr - 0xA000) value
             | _ -> image
@@ -435,11 +488,9 @@ module CartridgeMemory =
         hasBattery image.Header.CartridgeKind && image.Ram.Length > 0
 
     /// Returns the parsed header for a loaded cartridge.
-    let header image =
-        image.Header
+    let header image = image.Header
 
-    let internal romLength image =
-        image.Rom.Length
+    let internal romLength image = image.Rom.Length
 
     let internal snapshot (image: CartridgeImage) : Snapshot =
         { HeaderSnapshot = image.Header
@@ -452,16 +503,19 @@ module CartridgeMemory =
     let internal restoreSnapshot (snapshot: Snapshot) (image: CartridgeImage) =
         if snapshot.RomLengthSnapshot <> image.Rom.Length then
             Error $"ROM size mismatch: expected {snapshot.RomLengthSnapshot} bytes, got {image.Rom.Length} bytes."
-        elif snapshot.HeaderSnapshot.CartridgeTypeCode <> image.Header.CartridgeTypeCode
-             || snapshot.HeaderSnapshot.RomSizeCode <> image.Header.RomSizeCode
-             || snapshot.HeaderSnapshot.RamSizeCode <> image.Header.RamSizeCode
-             || snapshot.HeaderSnapshot.HeaderChecksum <> image.Header.HeaderChecksum
-             || snapshot.HeaderSnapshot.Title <> image.Header.Title then
+        elif
+            snapshot.HeaderSnapshot.CartridgeTypeCode <> image.Header.CartridgeTypeCode
+            || snapshot.HeaderSnapshot.RomSizeCode <> image.Header.RomSizeCode
+            || snapshot.HeaderSnapshot.RamSizeCode <> image.Header.RamSizeCode
+            || snapshot.HeaderSnapshot.HeaderChecksum <> image.Header.HeaderChecksum
+            || snapshot.HeaderSnapshot.Title <> image.Header.Title
+        then
             Error "Save state ROM identity does not match the loaded cartridge."
         elif isNull snapshot.RamSnapshot then
             Error "Save state cartridge RAM is null."
         elif snapshot.RamSnapshot.Length <> image.Ram.Length then
-            Error $"Save state RAM size mismatch: expected {image.Ram.Length} bytes, got {snapshot.RamSnapshot.Length} bytes."
+            Error
+                $"Save state RAM size mismatch: expected {image.Ram.Length} bytes, got {snapshot.RamSnapshot.Length} bytes."
         else
             Ok
                 { image with
@@ -483,9 +537,14 @@ module CartridgeMemory =
                 normalizeBankForDebug image.RomBanks (Mbc1Controller.upperRomBank state)
             )
         | Mbc2 state -> Mbc2Debug(normalizeBankForDebug image.RomBanks state.RomBank, state.RamEnabled)
-        | Mbc3 state -> Mbc3Debug(normalizeBankForDebug image.RomBanks state.RomBank, state.RamOrRtcSelect, state.RamEnabled)
+        | Mbc3 state ->
+            Mbc3Debug(normalizeBankForDebug image.RomBanks state.RomBank, state.RamOrRtcSelect, state.RamEnabled)
         | Mbc5 state ->
-            Mbc5Debug(normalizeBankForDebug image.RomBanks (Mbc5Controller.romBank state), state.RamBank, state.RamEnabled)
+            Mbc5Debug(
+                normalizeBankForDebug image.RomBanks (Mbc5Controller.romBank state),
+                state.RamBank,
+                state.RamEnabled
+            )
 
     /// Exports a defensive copy of battery-backed RAM when present.
     let exportSaveRam image =
@@ -548,7 +607,11 @@ module CartridgeMemory =
     let advanceRtcSeconds seconds image =
         match image.Mbc with
         | Mbc3 state when state.HasRtc ->
-            { image with Mbc = Mbc3 { state with RtcRegisters = advanceRtcRegisters seconds state.RtcRegisters } }
+            { image with
+                Mbc =
+                    Mbc3
+                        { state with
+                            RtcRegisters = advanceRtcRegisters seconds state.RtcRegisters } }
         | _ -> image
 
     /// Reads one byte from cartridge ROM, external RAM, or a selected RTC register.
@@ -577,10 +640,8 @@ module CartridgeMemory =
                 readRamBank image (Mbc1Controller.ramBank state) offset
             | Mbc2 state when state.RamEnabled && image.Ram.Length > 0 ->
                 0xF0uy ||| (image.Ram[offset &&& 0x01FF] &&& 0x0Fuy)
-            | Mbc3 state when state.RamEnabled ->
-                Mbc3Controller.readRamOrRtc offset image state
-            | Mbc5 state when state.RamEnabled && image.Ram.Length > 0 ->
-                readRamBank image state.RamBank offset
+            | Mbc3 state when state.RamEnabled -> Mbc3Controller.readRamOrRtc offset image state
+            | Mbc5 state when state.RamEnabled && image.Ram.Length > 0 -> readRamBank image state.RamBank offset
             | _ -> 0xFFuy
         | _ -> 0xFFuy
 

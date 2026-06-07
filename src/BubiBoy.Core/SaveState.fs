@@ -31,7 +31,8 @@ module SaveState =
         if isNull snapshot.Framebuffer then
             Error "Save state framebuffer is null."
         elif snapshot.Framebuffer.Length <> Video.FramebufferPixels then
-            Error $"Save state framebuffer size mismatch: expected {Video.FramebufferPixels} pixels, got {snapshot.Framebuffer.Length} pixels."
+            Error
+                $"Save state framebuffer size mismatch: expected {Video.FramebufferPixels} pixels, got {snapshot.Framebuffer.Length} pixels."
         else
             Bus.restoreSnapshot snapshot.Bus session.Bus
             |> Result.map (fun bus ->
@@ -109,7 +110,8 @@ module SaveState =
                 Array.init length (fun _ -> this.ReadUInt32())
 
     module private VersionHeader =
-        let private magic = [| 0x42uy; 0x55uy; 0x42uy; 0x49uy; 0x53uy; 0x54uy; 0x41uy; 0x54uy; 0x45uy |]
+        let private magic =
+            [| 0x42uy; 0x55uy; 0x42uy; 0x49uy; 0x53uy; 0x54uy; 0x41uy; 0x54uy; 0x45uy |]
 
         let write (writer: PrimitiveWriter) =
             writer.WriteRawBytes magic
@@ -191,11 +193,13 @@ module SaveState =
                 writeInt state.RamOrRtcSelect
                 writeBool state.HasRtc
                 writeBytes state.RtcRegisters
+
                 match state.LatchedRtcRegisters with
                 | Some latched ->
                     writeBool true
                     writeBytes latched
                 | None -> writeBool false
+
                 writeBool state.RtcLatchPrepared
             | CartridgeMemory.Mbc5 state ->
                 writeByte 5uy
@@ -276,6 +280,7 @@ module SaveState =
             writeInt value.Frequency
             writeInt value.Timer
             writeEnvelope value.Envelope
+
             match value.Sweep with
             | Some sweep ->
                 writeBool true
@@ -382,290 +387,283 @@ module SaveState =
         let readUInt32Array () = primitives.ReadUInt32Array()
 
         member _.Read() =
-                let readGameBoyMode () =
-                    match readByte () with
-                    | 0uy -> Hardware.Dmg
-                    | 1uy -> Hardware.Cgb
-                    | value -> failwith $"Unsupported Game Boy mode in save state: {value}"
+            let readGameBoyMode () =
+                match readByte () with
+                | 0uy -> Hardware.Dmg
+                | 1uy -> Hardware.Cgb
+                | value -> failwith $"Unsupported Game Boy mode in save state: {value}"
 
-                let readCgbSupport () =
-                    match readByte () with
-                    | 0uy -> Cartridge.DmgOnly
-                    | 1uy -> Cartridge.CgbEnhanced
-                    | 2uy -> Cartridge.CgbOnly
-                    | value -> failwith $"Unsupported CGB support value in save state: {value}"
+            let readCgbSupport () =
+                match readByte () with
+                | 0uy -> Cartridge.DmgOnly
+                | 1uy -> Cartridge.CgbEnhanced
+                | 2uy -> Cartridge.CgbOnly
+                | value -> failwith $"Unsupported CGB support value in save state: {value}"
 
-                let readSgbSupport () =
-                    match readByte () with
-                    | 0uy -> Cartridge.NoSgb
-                    | 1uy -> Cartridge.SgbEnhanced
-                    | value -> failwith $"Unsupported SGB support value in save state: {value}"
+            let readSgbSupport () =
+                match readByte () with
+                | 0uy -> Cartridge.NoSgb
+                | 1uy -> Cartridge.SgbEnhanced
+                | value -> failwith $"Unsupported SGB support value in save state: {value}"
 
-                let cartridgeKindFromCode code =
-                    match code with
-                    | 0x00uy -> Cartridge.RomOnly
-                    | 0x01uy -> Cartridge.Mbc1
-                    | 0x02uy -> Cartridge.Mbc1Ram
-                    | 0x03uy -> Cartridge.Mbc1RamBattery
-                    | 0x05uy -> Cartridge.Mbc2
-                    | 0x06uy -> Cartridge.Mbc2Battery
-                    | 0x0Fuy -> Cartridge.Mbc3TimerBattery
-                    | 0x10uy -> Cartridge.Mbc3TimerRamBattery
-                    | 0x11uy -> Cartridge.Mbc3
-                    | 0x12uy -> Cartridge.Mbc3Ram
-                    | 0x13uy -> Cartridge.Mbc3RamBattery
-                    | 0x19uy -> Cartridge.Mbc5
-                    | 0x1Auy -> Cartridge.Mbc5Ram
-                    | 0x1Buy -> Cartridge.Mbc5RamBattery
-                    | other -> Cartridge.Unknown other
+            let cartridgeKindFromCode code =
+                match code with
+                | 0x00uy -> Cartridge.RomOnly
+                | 0x01uy -> Cartridge.Mbc1
+                | 0x02uy -> Cartridge.Mbc1Ram
+                | 0x03uy -> Cartridge.Mbc1RamBattery
+                | 0x05uy -> Cartridge.Mbc2
+                | 0x06uy -> Cartridge.Mbc2Battery
+                | 0x0Fuy -> Cartridge.Mbc3TimerBattery
+                | 0x10uy -> Cartridge.Mbc3TimerRamBattery
+                | 0x11uy -> Cartridge.Mbc3
+                | 0x12uy -> Cartridge.Mbc3Ram
+                | 0x13uy -> Cartridge.Mbc3RamBattery
+                | 0x19uy -> Cartridge.Mbc5
+                | 0x1Auy -> Cartridge.Mbc5Ram
+                | 0x1Buy -> Cartridge.Mbc5RamBattery
+                | other -> Cartridge.Unknown other
 
-                let readHeader () : Cartridge.CartridgeHeader =
-                    let title = readString ()
-                    let cgbSupport = readCgbSupport ()
-                    let sgbSupport = readSgbSupport ()
-                    let cartridgeTypeCode = readByte ()
+            let readHeader () : Cartridge.CartridgeHeader =
+                let title = readString ()
+                let cgbSupport = readCgbSupport ()
+                let sgbSupport = readSgbSupport ()
+                let cartridgeTypeCode = readByte ()
 
-                    { Title = title
-                      CgbSupport = cgbSupport
-                      SgbSupport = sgbSupport
-                      CartridgeTypeCode = cartridgeTypeCode
-                      CartridgeKind = cartridgeKindFromCode cartridgeTypeCode
-                      RomSizeCode = readByte ()
-                      RamSizeCode = readByte ()
-                      DestinationCode = readByte ()
-                      HeaderChecksum = readByte () }
+                { Title = title
+                  CgbSupport = cgbSupport
+                  SgbSupport = sgbSupport
+                  CartridgeTypeCode = cartridgeTypeCode
+                  CartridgeKind = cartridgeKindFromCode cartridgeTypeCode
+                  RomSizeCode = readByte ()
+                  RamSizeCode = readByte ()
+                  DestinationCode = readByte ()
+                  HeaderChecksum = readByte () }
 
-                let readBankingMode () =
-                    match readByte () with
-                    | 0uy -> CartridgeMemory.RomBanking
-                    | 1uy -> CartridgeMemory.RamBanking
-                    | value -> failwith $"Unsupported MBC1 banking mode in save state: {value}"
+            let readBankingMode () =
+                match readByte () with
+                | 0uy -> CartridgeMemory.RomBanking
+                | 1uy -> CartridgeMemory.RamBanking
+                | value -> failwith $"Unsupported MBC1 banking mode in save state: {value}"
 
-                let readMbcState () =
-                    match readByte () with
-                    | 0uy -> CartridgeMemory.NoMbc
-                    | 1uy ->
-                        CartridgeMemory.Mbc1
-                            { RamEnabled = readBool ()
-                              RomBankLow5 = readInt ()
-                              BankHigh2 = readInt ()
-                              BankingMode = readBankingMode () }
-                    | 2uy ->
-                        CartridgeMemory.Mbc2
-                            { RamEnabled = readBool ()
-                              RomBank = readInt () }
-                    | 3uy ->
-                        let ramEnabled = readBool ()
-                        let romBank = readInt ()
-                        let ramOrRtcSelect = readInt ()
-                        let hasRtc = readBool ()
-                        let rtcRegisters = readBytes ()
-                        let latched =
-                            if readBool () then
-                                Some(readBytes ())
-                            else
-                                None
+            let readMbcState () =
+                match readByte () with
+                | 0uy -> CartridgeMemory.NoMbc
+                | 1uy ->
+                    CartridgeMemory.Mbc1
+                        { RamEnabled = readBool ()
+                          RomBankLow5 = readInt ()
+                          BankHigh2 = readInt ()
+                          BankingMode = readBankingMode () }
+                | 2uy ->
+                    CartridgeMemory.Mbc2
+                        { RamEnabled = readBool ()
+                          RomBank = readInt () }
+                | 3uy ->
+                    let ramEnabled = readBool ()
+                    let romBank = readInt ()
+                    let ramOrRtcSelect = readInt ()
+                    let hasRtc = readBool ()
+                    let rtcRegisters = readBytes ()
+                    let latched = if readBool () then Some(readBytes ()) else None
 
-                        CartridgeMemory.Mbc3
-                            { RamEnabled = ramEnabled
-                              RomBank = romBank
-                              RamOrRtcSelect = ramOrRtcSelect
-                              HasRtc = hasRtc
-                              RtcRegisters = rtcRegisters
-                              LatchedRtcRegisters = latched
-                              RtcLatchPrepared = readBool () }
-                    | 5uy ->
-                        CartridgeMemory.Mbc5
-                            { RamEnabled = readBool ()
-                              RomBankLow8 = readInt ()
-                              RomBankHigh1 = readInt ()
-                              RamBank = readInt () }
-                    | value -> failwith $"Unsupported MBC state tag in save state: {value}"
+                    CartridgeMemory.Mbc3
+                        { RamEnabled = ramEnabled
+                          RomBank = romBank
+                          RamOrRtcSelect = ramOrRtcSelect
+                          HasRtc = hasRtc
+                          RtcRegisters = rtcRegisters
+                          LatchedRtcRegisters = latched
+                          RtcLatchPrepared = readBool () }
+                | 5uy ->
+                    CartridgeMemory.Mbc5
+                        { RamEnabled = readBool ()
+                          RomBankLow8 = readInt ()
+                          RomBankHigh1 = readInt ()
+                          RamBank = readInt () }
+                | value -> failwith $"Unsupported MBC state tag in save state: {value}"
 
-                let readCartridgeSnapshot () : CartridgeMemory.Snapshot =
-                    { HeaderSnapshot = readHeader ()
-                      RomLengthSnapshot = readInt ()
-                      RomBanksSnapshot = readInt ()
-                      RamSnapshot = readBytes ()
-                      RamBanksSnapshot = readInt ()
-                      MbcSnapshot = readMbcState () }
+            let readCartridgeSnapshot () : CartridgeMemory.Snapshot =
+                { HeaderSnapshot = readHeader ()
+                  RomLengthSnapshot = readInt ()
+                  RomBanksSnapshot = readInt ()
+                  RamSnapshot = readBytes ()
+                  RamBanksSnapshot = readInt ()
+                  MbcSnapshot = readMbcState () }
 
-                let readTimerState () : Timer.State =
-                    { Divider = readUInt16 ()
-                      TimaCounter = readInt () }
+            let readTimerState () : Timer.State =
+                { Divider = readUInt16 ()
+                  TimaCounter = readInt () }
 
-                let readLcdMode () =
-                    match readByte () with
-                    | 0uy -> Lcd.HBlank
-                    | 1uy -> Lcd.VBlank
-                    | 2uy -> Lcd.OamSearch
-                    | 3uy -> Lcd.Transfer
-                    | value -> failwith $"Unsupported LCD mode in save state: {value}"
+            let readLcdMode () =
+                match readByte () with
+                | 0uy -> Lcd.HBlank
+                | 1uy -> Lcd.VBlank
+                | 2uy -> Lcd.OamSearch
+                | 3uy -> Lcd.Transfer
+                | value -> failwith $"Unsupported LCD mode in save state: {value}"
 
-                let readLcdState () : Lcd.State =
-                    { Line = readByte ()
-                      DotCounter = readInt ()
-                      Mode = readLcdMode ()
-                      StatSignal = readBool () }
+            let readLcdState () : Lcd.State =
+                { Line = readByte ()
+                  DotCounter = readInt ()
+                  Mode = readLcdMode ()
+                  StatSignal = readBool () }
 
-                let readButton () =
-                    match readByte () with
-                    | 0uy -> Joypad.Right
-                    | 1uy -> Joypad.Left
-                    | 2uy -> Joypad.Up
-                    | 3uy -> Joypad.Down
-                    | 4uy -> Joypad.A
-                    | 5uy -> Joypad.B
-                    | 6uy -> Joypad.Select
-                    | 7uy -> Joypad.Start
-                    | value -> failwith $"Unsupported joypad button in save state: {value}"
+            let readButton () =
+                match readByte () with
+                | 0uy -> Joypad.Right
+                | 1uy -> Joypad.Left
+                | 2uy -> Joypad.Up
+                | 3uy -> Joypad.Down
+                | 4uy -> Joypad.A
+                | 5uy -> Joypad.B
+                | 6uy -> Joypad.Select
+                | 7uy -> Joypad.Start
+                | value -> failwith $"Unsupported joypad button in save state: {value}"
 
-                let readJoypadState () : Joypad.State =
-                    let selectAction = readBool ()
-                    let selectDirection = readBool ()
-                    let pressedCount = readInt ()
-                    let pressed =
-                        [ for _ in 1 .. pressedCount -> readButton () ]
-                        |> Set.ofList
+            let readJoypadState () : Joypad.State =
+                let selectAction = readBool ()
+                let selectDirection = readBool ()
+                let pressedCount = readInt ()
+                let pressed = [ for _ in 1..pressedCount -> readButton () ] |> Set.ofList
 
-                    { SelectAction = selectAction
-                      SelectDirection = selectDirection
-                      Pressed = pressed }
+                { SelectAction = selectAction
+                  SelectDirection = selectDirection
+                  Pressed = pressed }
 
-                let readEnvelopeDirection () =
-                    match readByte () with
-                    | 0uy -> Apu.Decrease
-                    | 1uy -> Apu.Increase
-                    | value -> failwith $"Unsupported APU envelope direction in save state: {value}"
+            let readEnvelopeDirection () =
+                match readByte () with
+                | 0uy -> Apu.Decrease
+                | 1uy -> Apu.Increase
+                | value -> failwith $"Unsupported APU envelope direction in save state: {value}"
 
-                let readEnvelope () : Apu.Envelope =
-                    { InitialVolume = readInt ()
-                      Direction = readEnvelopeDirection ()
-                      Period = readInt ()
-                      Timer = readInt ()
-                      Volume = readInt () }
+            let readEnvelope () : Apu.Envelope =
+                { InitialVolume = readInt ()
+                  Direction = readEnvelopeDirection ()
+                  Period = readInt ()
+                  Timer = readInt ()
+                  Volume = readInt () }
 
-                let readSweep () : Apu.Sweep =
-                    { Period = readInt ()
-                      Negate = readBool ()
-                      Shift = readInt ()
-                      Timer = readInt ()
-                      ShadowFrequency = readInt ()
-                      Enabled = readBool () }
+            let readSweep () : Apu.Sweep =
+                { Period = readInt ()
+                  Negate = readBool ()
+                  Shift = readInt ()
+                  Timer = readInt ()
+                  ShadowFrequency = readInt ()
+                  Enabled = readBool () }
 
-                let readPulseChannel () : Apu.PulseChannel =
-                    { Enabled = readBool ()
-                      DacEnabled = readBool ()
-                      Duty = readInt ()
-                      DutyStep = readInt ()
-                      LengthCounter = readInt ()
-                      LengthEnabled = readBool ()
-                      Frequency = readInt ()
-                      Timer = readInt ()
-                      Envelope = readEnvelope ()
-                      Sweep = if readBool () then Some(readSweep ()) else None }
+            let readPulseChannel () : Apu.PulseChannel =
+                { Enabled = readBool ()
+                  DacEnabled = readBool ()
+                  Duty = readInt ()
+                  DutyStep = readInt ()
+                  LengthCounter = readInt ()
+                  LengthEnabled = readBool ()
+                  Frequency = readInt ()
+                  Timer = readInt ()
+                  Envelope = readEnvelope ()
+                  Sweep = if readBool () then Some(readSweep ()) else None }
 
-                let readWaveChannel () : Apu.WaveChannel =
-                    { Enabled = readBool ()
-                      DacEnabled = readBool ()
-                      LengthCounter = readInt ()
-                      LengthEnabled = readBool ()
-                      Frequency = readInt ()
-                      Timer = readInt ()
-                      Position = readInt ()
-                      OutputLevel = readInt () }
+            let readWaveChannel () : Apu.WaveChannel =
+                { Enabled = readBool ()
+                  DacEnabled = readBool ()
+                  LengthCounter = readInt ()
+                  LengthEnabled = readBool ()
+                  Frequency = readInt ()
+                  Timer = readInt ()
+                  Position = readInt ()
+                  OutputLevel = readInt () }
 
-                let readNoiseChannel () : Apu.NoiseChannel =
-                    { Enabled = readBool ()
-                      DacEnabled = readBool ()
-                      LengthCounter = readInt ()
-                      LengthEnabled = readBool ()
-                      Timer = readInt ()
-                      Lfsr = readUInt16 ()
-                      Envelope = readEnvelope () }
+            let readNoiseChannel () : Apu.NoiseChannel =
+                { Enabled = readBool ()
+                  DacEnabled = readBool ()
+                  LengthCounter = readInt ()
+                  LengthEnabled = readBool ()
+                  Timer = readInt ()
+                  Lfsr = readUInt16 ()
+                  Envelope = readEnvelope () }
 
-                let readSample () : Apu.Sample =
-                    { Left = readSingle ()
-                      Right = readSingle () }
+            let readSample () : Apu.Sample =
+                { Left = readSingle ()
+                  Right = readSingle () }
 
-                let readApuSnapshot () : Apu.StateSnapshot =
-                    let frameSequencerStep = readInt ()
-                    let frameSequencerCycles = readInt ()
-                    let skipNextFrameSequencerClock = readBool ()
-                    let sampleCycles = readInt64 ()
-                    let waveSampleArea, waveSampleCycles =
-                        if version >= 3 then
-                            readInt64 (), readInt ()
-                        else
-                            0L, 0
-                    let noiseSampleArea = readInt64 ()
-                    let noiseSampleCycles = readInt ()
-                    let pulse1 = readPulseChannel ()
-                    let pulse2 = readPulseChannel ()
-                    let wave = readWaveChannel ()
-                    let noise = readNoiseChannel ()
-                    let samples = Array.init (readInt ()) (fun _ -> readSample ())
+            let readApuSnapshot () : Apu.StateSnapshot =
+                let frameSequencerStep = readInt ()
+                let frameSequencerCycles = readInt ()
+                let skipNextFrameSequencerClock = readBool ()
+                let sampleCycles = readInt64 ()
 
-                    { SnapshotFrameSequencerStep = frameSequencerStep
-                      SnapshotFrameSequencerCycles = frameSequencerCycles
-                      SnapshotSkipNextFrameSequencerClock = skipNextFrameSequencerClock
-                      SnapshotSampleCycles = sampleCycles
-                      SnapshotWaveSampleArea = waveSampleArea
-                      SnapshotWaveSampleCycles = waveSampleCycles
-                      SnapshotNoiseSampleArea = noiseSampleArea
-                      SnapshotNoiseSampleCycles = noiseSampleCycles
-                      SnapshotPulse1 = pulse1
-                      SnapshotPulse2 = pulse2
-                      SnapshotWave = wave
-                      SnapshotNoise = noise
-                      SnapshotPendingSamples = { Samples = samples } }
+                let waveSampleArea, waveSampleCycles =
+                    if version >= 3 then readInt64 (), readInt () else 0L, 0
 
-                let readBusSnapshot () : Bus.Snapshot =
-                    { CartridgeSnapshot = readCartridgeSnapshot ()
-                      ModeSnapshot = readGameBoyMode ()
-                      VramSnapshot = readBytes ()
-                      WramSnapshot = readBytes ()
-                      OamSnapshot = readBytes ()
-                      IoSnapshot = readBytes ()
-                      HramSnapshot = readBytes ()
-                      VramBankSnapshot = readInt ()
-                      WramBankSnapshot = readInt ()
-                      BgPaletteRamSnapshot = readBytes ()
-                      ObjPaletteRamSnapshot = readBytes ()
-                      DoubleSpeedSnapshot = readBool ()
-                      SpeedSwitchPreparedSnapshot = readBool ()
-                      HdmaSourceSnapshot = readUInt16 ()
-                      HdmaDestinationSnapshot = readUInt16 ()
-                      HdmaRemainingSnapshot = readInt ()
-                      HdmaActiveSnapshot = readBool ()
-                      TimerSnapshot = readTimerState ()
-                      LcdSnapshot = readLcdState ()
-                      JoypadSnapshot = readJoypadState ()
-                      ApuSnapshot = readApuSnapshot ()
-                      InterruptEnableSnapshot = readByte () }
+                let noiseSampleArea = readInt64 ()
+                let noiseSampleCycles = readInt ()
+                let pulse1 = readPulseChannel ()
+                let pulse2 = readPulseChannel ()
+                let wave = readWaveChannel ()
+                let noise = readNoiseChannel ()
+                let samples = Array.init (readInt ()) (fun _ -> readSample ())
 
-                let readCpuRegisters () : Cpu.Registers =
-                    { A = readByte ()
-                      F = readByte ()
-                      B = readByte ()
-                      C = readByte ()
-                      D = readByte ()
-                      E = readByte ()
-                      H = readByte ()
-                      L = readByte ()
-                      SP = readUInt16 ()
-                      PC = readUInt16 () }
+                { SnapshotFrameSequencerStep = frameSequencerStep
+                  SnapshotFrameSequencerCycles = frameSequencerCycles
+                  SnapshotSkipNextFrameSequencerClock = skipNextFrameSequencerClock
+                  SnapshotSampleCycles = sampleCycles
+                  SnapshotWaveSampleArea = waveSampleArea
+                  SnapshotWaveSampleCycles = waveSampleCycles
+                  SnapshotNoiseSampleArea = noiseSampleArea
+                  SnapshotNoiseSampleCycles = noiseSampleCycles
+                  SnapshotPulse1 = pulse1
+                  SnapshotPulse2 = pulse2
+                  SnapshotWave = wave
+                  SnapshotNoise = noise
+                  SnapshotPendingSamples = { Samples = samples } }
 
-                let readCpuState () : Cpu.State =
-                    { Registers = readCpuRegisters ()
-                      Halted = readBool ()
-                      InterruptsEnabled = readBool () }
+            let readBusSnapshot () : Bus.Snapshot =
+                { CartridgeSnapshot = readCartridgeSnapshot ()
+                  ModeSnapshot = readGameBoyMode ()
+                  VramSnapshot = readBytes ()
+                  WramSnapshot = readBytes ()
+                  OamSnapshot = readBytes ()
+                  IoSnapshot = readBytes ()
+                  HramSnapshot = readBytes ()
+                  VramBankSnapshot = readInt ()
+                  WramBankSnapshot = readInt ()
+                  BgPaletteRamSnapshot = readBytes ()
+                  ObjPaletteRamSnapshot = readBytes ()
+                  DoubleSpeedSnapshot = readBool ()
+                  SpeedSwitchPreparedSnapshot = readBool ()
+                  HdmaSourceSnapshot = readUInt16 ()
+                  HdmaDestinationSnapshot = readUInt16 ()
+                  HdmaRemainingSnapshot = readInt ()
+                  HdmaActiveSnapshot = readBool ()
+                  TimerSnapshot = readTimerState ()
+                  LcdSnapshot = readLcdState ()
+                  JoypadSnapshot = readJoypadState ()
+                  ApuSnapshot = readApuSnapshot ()
+                  InterruptEnableSnapshot = readByte () }
 
-                { Cpu = readCpuState ()
-                  Bus = readBusSnapshot ()
-                  Framebuffer = readUInt32Array ()
-                  TotalCycles = readInt64 ()
-                  Steps = readInt () }
+            let readCpuRegisters () : Cpu.Registers =
+                { A = readByte ()
+                  F = readByte ()
+                  B = readByte ()
+                  C = readByte ()
+                  D = readByte ()
+                  E = readByte ()
+                  H = readByte ()
+                  L = readByte ()
+                  SP = readUInt16 ()
+                  PC = readUInt16 () }
+
+            let readCpuState () : Cpu.State =
+                { Registers = readCpuRegisters ()
+                  Halted = readBool ()
+                  InterruptsEnabled = readBool () }
+
+            { Cpu = readCpuState ()
+              Bus = readBusSnapshot ()
+              Framebuffer = readUInt32Array ()
+              TotalCycles = readInt64 ()
+              Steps = readInt () }
 
     /// Encodes a snapshot using the current binary save-state format.
     let encode (snapshot: Snapshot) =
@@ -698,5 +696,4 @@ module SaveState =
 
     /// Decodes and restores a binary save-state payload into a session.
     let restoreBytes bytes session =
-        decode bytes
-        |> Result.bind (fun snapshot -> restore snapshot session)
+        decode bytes |> Result.bind (fun snapshot -> restore snapshot session)

@@ -3,8 +3,7 @@ module BubiBoy.Core.Tests.CartridgeHeaderTests
 open BubiBoy.Core
 open Xunit
 
-let private blankRom () =
-    Array.zeroCreate<byte> 0x0150
+let private blankRom () = Array.zeroCreate<byte> 0x0150
 
 let private writeAscii offset (text: string) (rom: byte[]) =
     text.ToCharArray()

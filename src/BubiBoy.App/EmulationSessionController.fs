@@ -68,18 +68,14 @@ type EmulationSessionController(dependencies: EmulationSessionDependencies) =
     member _.IsRunning = isRunning
 
     /// Stops the active emulation loop and audio output.
-    member _.StopRunning() =
-        stopRunning ()
+    member _.StopRunning() = stopRunning ()
 
     /// Saves cartridge RAM for the current session when supported.
-    member _.SaveCurrentRam() =
-        saveCurrentRam ()
+    member _.SaveCurrentRam() = saveCurrentRam ()
 
     /// Formats current display and audio performance diagnostics.
     member _.FormatRuntimeDiagnostics() =
-        dependencies.PerformanceCounters.FormatDiagnostics(
-            dependencies.AudioOutput.Diagnostics()
-        )
+        dependencies.PerformanceCounters.FormatDiagnostics(dependencies.AudioOutput.Diagnostics())
 
     /// Presents an emulated frame and handles non-frame-complete stop reasons.
     member this.UpdateFrame(result: Emulator.FrameResult) =
@@ -104,8 +100,7 @@ type EmulationSessionController(dependencies: EmulationSessionDependencies) =
             stopRunning ()
 
             match RomWorkflow.load path dependencies.Notifications.LastStatus with
-            | RomWorkflow.EmptyPath ->
-                dependencies.Notifications.Show "Could not open the selected ROM path."
+            | RomWorkflow.EmptyPath -> dependencies.Notifications.Show "Could not open the selected ROM path."
             | RomWorkflow.Loaded outcome ->
                 loadedRom <- Some outcome.Rom
                 setCurrentSession outcome.Session
@@ -139,8 +134,7 @@ type EmulationSessionController(dependencies: EmulationSessionDependencies) =
     /// Resets the currently loaded ROM.
     member _.ResetCurrentRom() =
         match loadedRom with
-        | None ->
-            dependencies.Notifications.Show "Load a ROM before resetting."
+        | None -> dependencies.Notifications.Show "Load a ROM before resetting."
         | Some rom ->
             let wasRunning = isRunning
             saveCurrentRam ()
@@ -203,8 +197,7 @@ type EmulationSessionController(dependencies: EmulationSessionDependencies) =
     /// Toggles emulation between running and paused.
     member _.ToggleRunPause() =
         match getCurrentSession () with
-        | None ->
-            dependencies.Notifications.Show "Load a ROM before running."
+        | None -> dependencies.Notifications.Show "Load a ROM before running."
         | Some _ ->
             if isRunning then
                 saveCurrentRam ()

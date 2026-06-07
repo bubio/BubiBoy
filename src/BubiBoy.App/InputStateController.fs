@@ -9,8 +9,7 @@ type InputStateController() =
     let mutable desiredControllerButtons: Set<Joypad.Button> = Set.empty
     let mutable activeControllerId: ControllerInput.GamepadId option = None
 
-    let hasPressedInput (controller: ControllerInput.GamepadSnapshot) =
-        controller.Pressed.Count > 0
+    let hasPressedInput (controller: ControllerInput.GamepadSnapshot) = controller.Pressed.Count > 0
 
     let chooseController (controllers: ControllerInput.GamepadSnapshot list) activeId =
         let current =
@@ -54,7 +53,9 @@ type InputStateController() =
 
     member _.PollController(host: ControllerInput.GamepadHost, mapping) =
         let controllers = host.Poll() |> Seq.toList
-        let activeController = lock gate (fun () -> chooseController controllers activeControllerId)
+
+        let activeController =
+            lock gate (fun () -> chooseController controllers activeControllerId)
 
         let controllerButtons =
             activeController

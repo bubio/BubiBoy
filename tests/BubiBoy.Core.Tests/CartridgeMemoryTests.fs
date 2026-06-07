@@ -207,13 +207,22 @@ let ``MBC3 RTC can be exported and imported defensively`` () =
         | Some rtc ->
             let registers = Array.copy rtc.Registers
             registers[0] <- 0x01uy
-            let editedRtc = { rtc with Registers = registers; LatchedRegisters = None }
+
+            let editedRtc =
+                { rtc with
+                    Registers = registers
+                    LatchedRegisters = None }
 
             match CartridgeMemory.importRtc editedRtc image with
             | Error message -> Assert.Fail message
             | Ok imported ->
                 registers[0] <- 0x7Fuy
-                let readable = imported |> CartridgeMemory.writeByte 0x0000us 0x0Auy |> CartridgeMemory.writeByte 0x4000us 0x08uy
+
+                let readable =
+                    imported
+                    |> CartridgeMemory.writeByte 0x0000us 0x0Auy
+                    |> CartridgeMemory.writeByte 0x4000us 0x08uy
+
                 Assert.Equal(0x01uy, CartridgeMemory.readByte 0xA000us readable)
 
 [<Fact>]
@@ -302,10 +311,17 @@ let ``battery-backed RAM can be exported and imported defensively`` () =
             match CartridgeMemory.importSaveRam saveRam image with
             | Error message -> Assert.Fail message
             | Ok imported ->
-                Assert.Equal(0x00uy, CartridgeMemory.readByte 0xA000us (imported |> CartridgeMemory.writeByte 0x0000us 0x0Auy))
+                Assert.Equal(
+                    0x00uy,
+                    CartridgeMemory.readByte 0xA000us (imported |> CartridgeMemory.writeByte 0x0000us 0x0Auy)
+                )
 
                 saveRam[0] <- 0x7Fuy
-                Assert.Equal(0x00uy, CartridgeMemory.readByte 0xA000us (imported |> CartridgeMemory.writeByte 0x0000us 0x0Auy))
+
+                Assert.Equal(
+                    0x00uy,
+                    CartridgeMemory.readByte 0xA000us (imported |> CartridgeMemory.writeByte 0x0000us 0x0Auy)
+                )
 
 [<Fact>]
 let ``non battery cartridges do not export save RAM`` () =

@@ -73,16 +73,16 @@ type MacOSGamepadHost private (frameworkHandle: IntPtr, controllerClass: IntPtr)
     let sendObject receiver selector =
         if receiver = IntPtr.Zero then
             IntPtr.Zero
-        elif ObjC.sendBoolWithIntPtr(receiver, respondsToSelectorSel, selector) = 0uy then
+        elif ObjC.sendBoolWithIntPtr (receiver, respondsToSelectorSel, selector) = 0uy then
             IntPtr.Zero
         else
-            ObjC.sendIntPtr(receiver, selector)
+            ObjC.sendIntPtr (receiver, selector)
 
     let readString nsString =
         if nsString = IntPtr.Zero then
             None
         else
-            let utf8 = ObjC.sendIntPtr(nsString, utf8StringSel)
+            let utf8 = ObjC.sendIntPtr (nsString, utf8StringSel)
 
             if utf8 = IntPtr.Zero then
                 None
@@ -97,7 +97,7 @@ type MacOSGamepadHost private (frameworkHandle: IntPtr, controllerClass: IntPtr)
         |> Option.defaultValue $"Controller {index + 1}"
 
     let isPressed button =
-        button <> IntPtr.Zero && ObjC.sendBool(button, isPressedSel) <> 0uy
+        button <> IntPtr.Zero && ObjC.sendBool (button, isPressedSel) <> 0uy
 
     let addButton (pressed: HashSet<GamepadControl>) control button =
         if isPressed button then
@@ -159,10 +159,10 @@ type MacOSGamepadHost private (frameworkHandle: IntPtr, controllerClass: IntPtr)
         if disposed then
             Array.Empty<GamepadSnapshot>() :> IReadOnlyList<GamepadSnapshot>
         else
-            let pool = ObjC.autoreleasePoolPush()
+            let pool = ObjC.autoreleasePoolPush ()
 
             try
-                let controllers = ObjC.sendIntPtr(controllerClass, controllersSel)
+                let controllers = ObjC.sendIntPtr (controllerClass, controllersSel)
 
                 if controllers = IntPtr.Zero then
                     Array.Empty<GamepadSnapshot>() :> IReadOnlyList<GamepadSnapshot>
@@ -172,7 +172,7 @@ type MacOSGamepadHost private (frameworkHandle: IntPtr, controllerClass: IntPtr)
 
                     for index in 0 .. count - 1 do
                         let controller =
-                            ObjC.sendIntPtrWithUIntPtr(controllers, objectAtIndexSel, UIntPtr(uint64 index))
+                            ObjC.sendIntPtrWithUIntPtr (controllers, objectAtIndexSel, UIntPtr(uint64 index))
 
                         match readController index controller with
                         | Some snapshot -> snapshots.Add snapshot

@@ -33,6 +33,7 @@ module Program =
         |> Result.bind (fun rom -> Emulator.createSession rom.Bytes)
         |> Result.bind (fun initialSession ->
             let statePath = Environment.GetEnvironmentVariable("BUBIBOY_STATE_PATH")
+
             let initialSessionResult =
                 if String.IsNullOrWhiteSpace statePath then
                     Ok initialSession
@@ -43,18 +44,23 @@ module Program =
             let rightDurationResult = parseOptionalEnvironmentDuration "BUBIBOY_RIGHT_DURATION"
 
             match initialSessionResult, rightAtResult, rightDurationResult with
-            | Ok session, Ok rightAt, Ok rightDuration ->
-                Ok(session, rightAt, rightDuration)
+            | Ok session, Ok rightAt, Ok rightDuration -> Ok(session, rightAt, rightDuration)
             | Error message, _, _
             | _, Error message, _
-            | _, _, Error message ->
-                Error message)
+            | _, _, Error message -> Error message)
         |> Result.bind (fun (initialSession, rightAt, rightDuration) ->
             let traceApu = Environment.GetEnvironmentVariable("BUBIBOY_APU_LOG") = "1"
             let targetSamples = int (Math.Ceiling(seconds * float Apu.SampleRate))
-            let pressStartSample = pressAAt |> Option.map (fun time -> int (time * float Apu.SampleRate))
-            let pressEndSample = pressStartSample |> Option.map (fun start -> start + Apu.SampleRate / 10)
-            let rightStartSample = rightAt |> Option.map (fun time -> int (time * float Apu.SampleRate))
+
+            let pressStartSample =
+                pressAAt |> Option.map (fun time -> int (time * float Apu.SampleRate))
+
+            let pressEndSample =
+                pressStartSample |> Option.map (fun start -> start + Apu.SampleRate / 10)
+
+            let rightStartSample =
+                rightAt |> Option.map (fun time -> int (time * float Apu.SampleRate))
+
             let rightEndSample =
                 match rightStartSample, rightDuration with
                 | Some start, Some duration -> Some(start + int (duration * float Apu.SampleRate))
@@ -70,14 +76,12 @@ module Program =
             while samples.Count < targetSamples && stopReason = Emulator.FrameCompleted do
                 let shouldPressA =
                     match pressStartSample, pressEndSample with
-                    | Some startSample, Some endSample ->
-                        samples.Count >= startSample && samples.Count < endSample
+                    | Some startSample, Some endSample -> samples.Count >= startSample && samples.Count < endSample
                     | _ -> false
 
                 let shouldPressRight =
                     match rightStartSample, rightEndSample with
-                    | Some startSample, Some endSample ->
-                        samples.Count >= startSample && samples.Count < endSample
+                    | Some startSample, Some endSample -> samples.Count >= startSample && samples.Count < endSample
                     | _ -> false
 
                 let bus =
@@ -93,6 +97,7 @@ module Program =
 
                 if traceApu then
                     let apu = (SaveState.capture session).Bus.ApuSnapshot
+
                     let registers =
                         Bus.readByte 0xFF20us session.Bus,
                         Bus.readByte 0xFF21us session.Bus,
@@ -112,6 +117,7 @@ module Program =
                     if Some noiseState <> lastNoiseState then
                         let nr41, nr42, nr43, nr44, nr51, nr52 = registers
                         let time = float samples.Count / float Apu.SampleRate
+
                         eprintfn
                             $"apu t={time:F6} NR41={nr41:X2} NR42={nr42:X2} NR43={nr43:X2} NR44={nr44:X2} NR51={nr51:X2} NR52={nr52:X2} enabled={apu.SnapshotNoise.Enabled} length={apu.SnapshotNoise.LengthCounter} lengthEnabled={apu.SnapshotNoise.LengthEnabled} volume={apu.SnapshotNoise.Envelope.Volume} envelopeTimer={apu.SnapshotNoise.Envelope.Timer}"
 
@@ -157,10 +163,12 @@ module Program =
                         let nr32 = Bus.readByte 0xFF1Cus session.Bus
                         let nr33 = Bus.readByte 0xFF1Dus session.Bus
                         let nr34 = Bus.readByte 0xFF1Eus session.Bus
+
                         let waveRam =
-                            [| for address in 0xFF30us..0xFF3Fus -> Bus.readByte address session.Bus |]
+                            [| for address in 0xFF30us .. 0xFF3Fus -> Bus.readByte address session.Bus |]
                             |> Array.map (fun value -> value.ToString("X2"))
                             |> String.concat ""
+
                         eprintfn
                             $"channels t={time:F6} NR10={nr10:X2} NR11={nr11:X2} NR12={nr12:X2} NR13={nr13:X2} NR14={nr14:X2} NR30={nr30:X2} NR31={nr31:X2} NR32={nr32:X2} NR33={nr33:X2} NR34={nr34:X2} wave={waveRam} ch1={apu.SnapshotPulse1.Enabled}/{apu.SnapshotPulse1.Envelope.Volume}/f{apu.SnapshotPulse1.Frequency}/l{apu.SnapshotPulse1.LengthCounter}/{apu.SnapshotPulse1.LengthEnabled}/s{apu.SnapshotPulse1.Sweep} ch2={apu.SnapshotPulse2.Enabled}/{apu.SnapshotPulse2.Envelope.Volume}/f{apu.SnapshotPulse2.Frequency}/l{apu.SnapshotPulse2.LengthCounter}/{apu.SnapshotPulse2.LengthEnabled} ch3={apu.SnapshotWave.Enabled}/f{apu.SnapshotWave.Frequency}/p{apu.SnapshotWave.Position}/l{apu.SnapshotWave.LengthCounter}/{apu.SnapshotWave.LengthEnabled}/v{apu.SnapshotWave.OutputLevel}"
 
@@ -183,11 +191,13 @@ module Program =
         if args.Length < 2 || args.Length > 4 then
             usage ()
         else
-            let durationResult =
-                if args.Length >= 3 then parseDuration args[2] else Ok 10.0
+            let durationResult = if args.Length >= 3 then parseDuration args[2] else Ok 10.0
 
             let pressAAtResult =
-                if args.Length = 4 then parseDuration args[3] |> Result.map Some else Ok None
+                if args.Length = 4 then
+                    parseDuration args[3] |> Result.map Some
+                else
+                    Ok None
 
             match durationResult, pressAAtResult with
             | Error message, _

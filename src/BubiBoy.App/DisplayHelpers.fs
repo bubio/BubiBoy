@@ -94,11 +94,17 @@ module UserMessage =
 
     let formatRomStartError message =
         if contains "Save RAM size mismatch" message then
-            withDetails message "The existing .sav file does not match this ROM. Move or rename the .sav file next to the ROM, then try again."
+            withDetails
+                message
+                "The existing .sav file does not match this ROM. Move or rename the .sav file next to the ROM, then try again."
         elif contains "RTC data has an unsupported" message then
-            withDetails message "The existing .rtc file could not be used. Move or rename the .rtc file next to the ROM, then try again."
+            withDetails
+                message
+                "The existing .rtc file could not be used. Move or rename the .rtc file next to the ROM, then try again."
         elif contains "Cartridge does not have an MBC3 RTC" message then
-            withDetails message "The existing .rtc file is for a cartridge with a real-time clock, but this ROM does not use one."
+            withDetails
+                message
+                "The existing .rtc file is for a cartridge with a real-time clock, but this ROM does not use one."
         else
             formatRomLoadError message
 

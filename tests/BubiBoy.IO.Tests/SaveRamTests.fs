@@ -123,9 +123,7 @@ let ``loadFromPath leaves cartridge unchanged when save file is missing`` () =
 let ``saveForRom writes RTC data next to save RAM`` () =
     let romPath = tempPath "game.gb"
 
-    let cartridge =
-        makeRtcCartridge ()
-        |> CartridgeMemory.advanceRtcSeconds 42
+    let cartridge = makeRtcCartridge () |> CartridgeMemory.advanceRtcSeconds 42
 
     match SaveRam.saveForRom romPath cartridge with
     | Error message -> Assert.Fail message
@@ -137,9 +135,7 @@ let ``saveForRom writes RTC data next to save RAM`` () =
 let ``loadForRom imports RTC data`` () =
     let romPath = tempPath "game.gb"
 
-    let cartridge =
-        makeRtcCartridge ()
-        |> CartridgeMemory.advanceRtcSeconds 42
+    let cartridge = makeRtcCartridge () |> CartridgeMemory.advanceRtcSeconds 42
 
     match SaveRam.saveForRom romPath cartridge with
     | Error message -> Assert.Fail message

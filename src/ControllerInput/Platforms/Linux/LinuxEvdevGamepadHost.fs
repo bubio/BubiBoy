@@ -232,11 +232,9 @@ module private LinuxNative =
     let eviocgBit eventType length =
         ioctlRequest iocRead (0x20 + int eventType) length
 
-    let eviocgKey length =
-        ioctlRequest iocRead 0x18 length
+    let eviocgKey length = ioctlRequest iocRead 0x18 length
 
-    let eviocgName length =
-        ioctlRequest iocRead 0x06 length
+    let eviocgName length = ioctlRequest iocRead 0x06 length
 
     let eviocgAbs absCode =
         ioctlRequest iocRead (0x40 + int absCode) (Marshal.SizeOf<InputAbsInfo>())
@@ -255,7 +253,8 @@ module private LinuxBitSet =
         if index < data.Length then
             data[index] <- data[index] ||| bitMask bit
 
-type private LinuxEvdevDevice(fd: int, path: string, idPath: string, name: string, supportedKeys: byte[], supportedAbs: byte[]) =
+type private LinuxEvdevDevice
+    (fd: int, path: string, idPath: string, name: string, supportedKeys: byte[], supportedAbs: byte[]) =
     let keyState = Array.zeroCreate<byte> supportedKeys.Length
     let absState = Dictionary<uint16, LinuxEvdev.AbsInfo>()
     let eventSize = (IntPtr.Size * 2) + 8
@@ -266,13 +265,14 @@ type private LinuxEvdevDevice(fd: int, path: string, idPath: string, name: strin
     let readAbsInfo code =
         let mutable info = Unchecked.defaultof<LinuxNative.InputAbsInfo>
 
-        if LinuxNative.ioctlAbsInfo(fd, LinuxNative.eviocgAbs code, &info) = 0 then
+        if LinuxNative.ioctlAbsInfo (fd, LinuxNative.eviocgAbs code, &info) = 0 then
             Some(LinuxEvdev.AbsInfo(info.value, info.minimum, info.maximum, info.fuzz, info.flat, info.resolution))
         else
             None
 
     let readInitialState () =
-        LinuxNative.ioctlBytes(fd, LinuxNative.eviocgKey keyState.Length, keyState) |> ignore
+        LinuxNative.ioctlBytes (fd, LinuxNative.eviocgKey keyState.Length, keyState)
+        |> ignore
 
         for code in 0us .. uint16 LinuxNative.absCodeMax do
             if LinuxBitSet.contains code supportedAbs then
@@ -298,7 +298,15 @@ type private LinuxEvdevDevice(fd: int, path: string, idPath: string, name: strin
                     | true, info -> info
                     | false, _ -> LinuxEvdev.AbsInfo(value, -32768, 32767, 0, 0, 0)
 
-                absState[code] <- LinuxEvdev.AbsInfo(value, current.Minimum, current.Maximum, current.Fuzz, current.Flat, current.Resolution)
+                absState[code] <-
+                    LinuxEvdev.AbsInfo(
+                        value,
+                        current.Minimum,
+                        current.Maximum,
+                        current.Fuzz,
+                        current.Flat,
+                        current.Resolution
+                    )
 
     do readInitialState ()
 
@@ -312,7 +320,7 @@ type private LinuxEvdevDevice(fd: int, path: string, idPath: string, name: strin
             let mutable keepReading = true
 
             while keepReading do
-                let count = LinuxNative.read(fd, eventBuffer, unativeint eventBuffer.Length)
+                let count = LinuxNative.read (fd, eventBuffer, unativeint eventBuffer.Length)
 
                 if count = nativeint eventBuffer.Length then
                     let eventType = BitConverter.ToUInt16(eventBuffer, IntPtr.Size * 2)
@@ -366,17 +374,18 @@ type private LinuxEvdevDevice(fd: int, path: string, idPath: string, name: strin
 type LinuxEvdevGamepadHost private (initialDevices: LinuxEvdevDevice list) =
     let mutable disposed = false
     let devices = ResizeArray<LinuxEvdevDevice>(initialDevices)
-    let knownDeviceIds = HashSet<string>(initialDevices |> Seq.map (fun device -> device.IdPath))
+
+    let knownDeviceIds =
+        HashSet<string>(initialDevices |> Seq.map (fun device -> device.IdPath))
+
     let mutable pollsSinceScan = 0
 
     static let readName fd (fallbackName: string) =
         let buffer = Array.zeroCreate<byte> 256
 
-        if LinuxNative.ioctlBytes(fd, LinuxNative.eviocgName buffer.Length, buffer) >= 0 then
+        if LinuxNative.ioctlBytes (fd, LinuxNative.eviocgName buffer.Length, buffer) >= 0 then
             let length =
-                buffer
-                |> Array.tryFindIndex ((=) 0uy)
-                |> Option.defaultValue buffer.Length
+                buffer |> Array.tryFindIndex ((=) 0uy) |> Option.defaultValue buffer.Length
 
             let name = Text.Encoding.UTF8.GetString(buffer, 0, length)
 
@@ -391,7 +400,10 @@ type LinuxEvdevGamepadHost private (initialDevices: LinuxEvdevDevice list) =
         let length = (maxCode + 8) / 8
         let data = Array.zeroCreate<byte> length
 
-        if LinuxNative.ioctlBytes(fd, LinuxNative.eviocgBit eventType data.Length, data) >= 0 then
+        if
+            LinuxNative.ioctlBytes (fd, LinuxNative.eviocgBit eventType data.Length, data)
+            >= 0
+        then
             Some data
         else
             None
@@ -412,14 +424,20 @@ type LinuxEvdevGamepadHost private (initialDevices: LinuxEvdevDevice list) =
         || LinuxBitSet.contains LinuxEvdev.ABS_HAT0Y abs
 
     static let tryOpenDevice (path: string) (idPath: string) =
-        let fd = LinuxNative.openPath(path, LinuxNative.O_RDONLY ||| LinuxNative.O_NONBLOCK ||| LinuxNative.O_CLOEXEC)
+        let fd =
+            LinuxNative.openPath (path, LinuxNative.O_RDONLY ||| LinuxNative.O_NONBLOCK ||| LinuxNative.O_CLOEXEC)
 
         if fd < 0 then
             None
         else
-            match readCapabilities fd LinuxEvdev.EV_KEY LinuxNative.inputEventCodeMax,
-                  readCapabilities fd LinuxEvdev.EV_ABS LinuxNative.absCodeMax with
-            | Some keys, Some abs when LinuxBitSet.contains LinuxEvdev.BTN_GAMEPAD keys || hasAnyRelevantControl keys abs ->
+            match
+                readCapabilities fd LinuxEvdev.EV_KEY LinuxNative.inputEventCodeMax,
+                readCapabilities fd LinuxEvdev.EV_ABS LinuxNative.absCodeMax
+            with
+            | Some keys, Some abs when
+                LinuxBitSet.contains LinuxEvdev.BTN_GAMEPAD keys
+                || hasAnyRelevantControl keys abs
+                ->
                 let fallbackName = Path.GetFileName path
                 let name = readName fd fallbackName
                 Some(new LinuxEvdevDevice(fd, path, idPath, name, keys, abs))

@@ -42,8 +42,7 @@ module SaveRam =
                 File.Copy(path, $"{path}.bak", true)
 
             File.Move(tempPath, path, true)
-        with
-        | ex ->
+        with ex ->
             if File.Exists tempPath then
                 File.Delete tempPath
 
@@ -104,9 +103,7 @@ module SaveRam =
         else
             match protect (fun () -> File.ReadAllBytes rtcPath) with
             | Error message -> Error message
-            | Ok bytes ->
-                decodeRtc bytes
-                |> Result.bind (fun rtc -> CartridgeMemory.importRtc rtc image)
+            | Ok bytes -> decodeRtc bytes |> Result.bind (fun rtc -> CartridgeMemory.importRtc rtc image)
 
     let loadForRom romPath image =
         match defaultSavePath romPath with

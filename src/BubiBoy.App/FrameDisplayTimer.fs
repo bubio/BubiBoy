@@ -24,10 +24,7 @@ type FrameDisplayTimer
     ) =
     let timer =
         DispatcherTimer(
-            Interval =
-                TimeSpan.FromMilliseconds(
-                    1000.0 * float Hardware.CyclesPerFrame / float Hardware.DmgClockHz
-                )
+            Interval = TimeSpan.FromMilliseconds(1000.0 * float Hardware.CyclesPerFrame / float Hardware.DmgClockHz)
         )
 
     do
@@ -42,8 +39,7 @@ type FrameDisplayTimer
                     traceCounters.RecordDisplayedFrame() |> ignore
                     performanceCounters.RecordDisplayedFrame()
                     dependencies.UpdateFrame result
-                | None ->
-                    dependencies.UpdateDiagnostics()
+                | None -> dependencies.UpdateDiagnostics()
 
                 stopwatch.Stop()
                 let diagnostics = dependencies.AudioDiagnostics()
@@ -61,9 +57,7 @@ type FrameDisplayTimer
                     diagnostics.DroppedFrames)
 
     /// Starts display timer ticks.
-    member _.Start() =
-        timer.Start()
+    member _.Start() = timer.Start()
 
     /// Stops display timer ticks.
-    member _.Stop() =
-        timer.Stop()
+    member _.Stop() = timer.Stop()

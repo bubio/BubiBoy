@@ -61,11 +61,9 @@ type WindowLayoutController
         viewport.ApplyScale selectedScale owner.WindowState
 
         if resizeWindow && not isFullScreen then
-            let menuHeight =
-                if isMacOS || isFloating then 0.0 else 28.0
+            let menuHeight = if isMacOS || isFloating then 0.0 else 28.0
 
-            let statusHeight =
-                if isFloating then 0.0 else AppChrome.StatusBarHeight
+            let statusHeight = if isFloating then 0.0 else AppChrome.StatusBarHeight
 
             owner.Width <- videoWidth
             owner.Height <- videoHeight + menuHeight + statusHeight
@@ -98,8 +96,7 @@ type WindowLayoutController
         applyScale true
 
     /// Refreshes viewport sizing after an external window-state change.
-    member _.HandleWindowStateChanged() =
-        applyScale false
+    member _.HandleWindowStateChanged() = applyScale false
 
     /// Toggles native fullscreen state.
     member _.ToggleFullScreen() =

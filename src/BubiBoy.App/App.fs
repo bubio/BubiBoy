@@ -26,6 +26,7 @@ type App() =
 
         let appMenu = NativeMenu()
         let aboutItem = NativeMenuItem("About BubiBoy...")
+
         aboutItem.Click.Add(fun _ ->
             match this.ApplicationLifetime with
             | :? IClassicDesktopStyleApplicationLifetime as desktop ->
@@ -33,6 +34,7 @@ type App() =
                 | :? MainWindow as mainWindow -> mainWindow.ShowAbout()
                 | _ -> ()
             | _ -> ())
+
         appMenu.Items.Add aboutItem |> ignore
         NativeMenu.SetMenu(this, appMenu)
 

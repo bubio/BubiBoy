@@ -7,8 +7,4 @@ module Program =
     [<EntryPoint>]
     [<STAThread>]
     let main argv =
-        AppBuilder
-            .Configure<App>()
-            .UsePlatformDetect()
-            .LogToTrace()
-            .StartWithClassicDesktopLifetime(argv)
+        AppBuilder.Configure<App>().UsePlatformDetect().LogToTrace().StartWithClassicDesktopLifetime(argv)

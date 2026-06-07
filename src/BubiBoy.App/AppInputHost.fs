@@ -7,13 +7,7 @@ open Avalonia.Threading
 open BubiBoy.Core
 
 /// Owns keyboard/controller input state and input-mapping UI.
-type AppInputHost
-    (
-        owner: Window,
-        settingsStore: AppSettingsStore,
-        saveSettings: unit -> unit,
-        notify: string -> unit
-    ) =
+type AppInputHost(owner: Window, settingsStore: AppSettingsStore, saveSettings: unit -> unit, notify: string -> unit) =
     let inputState = InputStateController()
     let controllerHost = ControllerInput.GamepadHosts.createDefault ()
     let pollTimer = DispatcherTimer(Interval = TimeSpan.FromMilliseconds(16.0))
@@ -32,8 +26,7 @@ type AppInputHost
                 notify $"Controller input disabled: {ex.Message}")
 
     /// Applies the latest host input state at an emulation frame boundary.
-    member _.ApplyInput(session: Emulator.Session) =
-        inputState.ApplyInput session
+    member _.ApplyInput(session: Emulator.Session) = inputState.ApplyInput session
 
     /// Updates keyboard state and returns whether the key was mapped.
     member _.UpdateKeyboardKey(key: Key, pressed: bool) =
@@ -51,10 +44,7 @@ type AppInputHost
 
             match result with
             | Some inputMapping ->
-                settingsStore.SetInputMappings(
-                    inputMapping.KeyboardMapping,
-                    inputMapping.ControllerMapping
-                )
+                settingsStore.SetInputMappings(inputMapping.KeyboardMapping, inputMapping.ControllerMapping)
                 |> ignore
 
                 inputState.ResetKeyboard()
@@ -65,8 +55,7 @@ type AppInputHost
         |> ignore
 
     /// Starts polling connected controllers.
-    member _.Start() =
-        pollTimer.Start()
+    member _.Start() = pollTimer.Start()
 
     /// Releases controller polling and native host resources.
     member _.Dispose() =

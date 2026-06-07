@@ -23,5 +23,4 @@ module Interrupt =
     let JoypadBit = 0x10uy
 
     /// Sets an interrupt flag in the IF register value.
-    let request (flag: byte) (interruptFlags: byte) =
-        interruptFlags ||| flag
+    let request (flag: byte) (interruptFlags: byte) = interruptFlags ||| flag

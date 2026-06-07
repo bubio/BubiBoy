@@ -19,8 +19,7 @@ module SaveStateFile =
                 File.Copy(path, $"{path}.bak", true)
 
             File.Move(tempPath, path, true)
-        with
-        | ex ->
+        with ex ->
             if File.Exists tempPath then
                 File.Delete tempPath
 
@@ -43,10 +42,7 @@ module SaveStateFile =
             Error "Save state path is empty."
         else
             try
-                session
-                |> SaveState.capture
-                |> SaveState.encode
-                |> writeBytesWithBackup path
+                session |> SaveState.capture |> SaveState.encode |> writeBytesWithBackup path
 
                 Ok()
             with
@@ -60,17 +56,13 @@ module SaveStateFile =
             Error $"Save state file does not exist: {path}"
         else
             try
-                File.ReadAllBytes path
-                |> SaveState.restoreBytes
-                <| session
+                File.ReadAllBytes path |> SaveState.restoreBytes <| session
             with
             | :? IOException as ex -> Error $"Could not read save state: {ex.Message}"
             | :? UnauthorizedAccessException as ex -> Error $"Could not read save state: {ex.Message}"
 
     let saveForRom romPath session =
-        defaultStatePath romPath
-        |> Result.bind (fun path -> saveToPath path session)
+        defaultStatePath romPath |> Result.bind (fun path -> saveToPath path session)
 
     let loadForRom romPath session =
-        defaultStatePath romPath
-        |> Result.bind (fun path -> loadFromPath path session)
+        defaultStatePath romPath |> Result.bind (fun path -> loadFromPath path session)

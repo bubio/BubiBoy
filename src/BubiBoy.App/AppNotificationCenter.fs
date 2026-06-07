@@ -13,12 +13,11 @@ type AppNotificationCenter(toast: AppChrome.Toast, isFloating: unit -> bool) =
     member _.LastStatus = lastStatus
 
     /// Replaces the retained status without presenting a toast.
-    member _.SetLastStatus(status: string option) =
-        lastStatus <- status
+    member _.SetLastStatus(status: string option) = lastStatus <- status
 
     /// Presents a transient message when window chrome is visible.
     member _.Show(message: string) =
-        if isFloating() then
+        if isFloating () then
             lastStatus <- Some message
         else
             toast.Text.Text <- message

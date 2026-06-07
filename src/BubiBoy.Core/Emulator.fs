@@ -36,6 +36,7 @@ module Emulator =
         |> CartridgeMemory.create
         |> Result.map (fun cartridge ->
             let bus = Bus.create cartridge
+
             let cpu =
                 match Bus.mode bus with
                 | Hardware.Cgb ->
@@ -70,6 +71,7 @@ module Emulator =
         let beforeBus = session.Bus
         let result = Cpu.step session.Cpu session.Bus
         let bus = Bus.tick result.Cycles result.Bus
+
         let framebuffer =
             if shouldRenderScanline beforeBus bus then
                 Video.renderScanlineReusable (int (Bus.lcdState beforeBus).Line) bus session.Framebuffer
@@ -80,7 +82,9 @@ module Emulator =
         { Cpu = result.Cpu
           Bus = bus
           Framebuffer = framebuffer
-          TotalCycles = session.TotalCycles + int64 (Bus.hardwareCyclesForCpuCycles result.Cycles beforeBus)
+          TotalCycles =
+            session.TotalCycles
+            + int64 (Bus.hardwareCyclesForCpuCycles result.Cycles beforeBus)
           Steps = session.Steps + 1 }
 
     /// Executes at most the specified number of CPU instructions.
@@ -96,8 +100,7 @@ module Emulator =
                 try
                     current <- step current
                     remaining <- remaining - 1
-                with
-                | Cpu.UnsupportedOpcode(opcode, pc) ->
+                with Cpu.UnsupportedOpcode(opcode, pc) ->
                     stopReason <- Some(UnsupportedOpcode(opcode, pc))
 
         { Session = current
@@ -119,8 +122,7 @@ module Emulator =
                 try
                     current <- step current
                     remaining <- remaining - 1
-                with
-                | Cpu.UnsupportedOpcode(opcode, pc) ->
+                with Cpu.UnsupportedOpcode(opcode, pc) ->
                     stopReason <- Some(UnsupportedOpcode(opcode, pc))
 
         let audioSamples, bus = Bus.drainAudioSamples current.Bus

@@ -20,17 +20,21 @@ type RelayCommand(execute: unit -> unit, canExecute: unit -> bool) =
         [<CLIEvent>]
         member _.CanExecuteChanged = canExecuteChanged.Publish
 
-type MainWindowViewModel(
-    initialScale: int,
-    initialFloating: bool,
-    initialVolumePercent: int,
-    openRom: unit -> unit,
-    toggleRunPause: unit -> unit,
-    reset: unit -> unit,
-    clearRecent: unit -> unit
-) =
+type MainWindowViewModel
+    (
+        initialScale: int,
+        initialFloating: bool,
+        initialVolumePercent: int,
+        openRom: unit -> unit,
+        toggleRunPause: unit -> unit,
+        reset: unit -> unit,
+        clearRecent: unit -> unit
+    ) =
     let propertyChanged = Event<PropertyChangedEventHandler, PropertyChangedEventArgs>()
-    let mutable romDetails = "Choose a .gb or .gbc file to inspect its cartridge header."
+
+    let mutable romDetails =
+        "Choose a .gb or .gbc file to inspect its cartridge header."
+
     let mutable debugDetails = "CPU debug run is available after loading a ROM."
     let mutable isRunning = false
     let mutable hasSession = false
@@ -92,8 +96,7 @@ type MainWindowViewModel(
         with get () = volumePercent
         and set value = setValue &volumePercent value "VolumePercent" |> ignore
 
-    member this.RunPauseHeader =
-        if this.IsRunning then "Pause" else "Run"
+    member this.RunPauseHeader = if this.IsRunning then "Pause" else "Run"
 
     member _.OpenRomCommand = openRomCommand :> ICommand
 

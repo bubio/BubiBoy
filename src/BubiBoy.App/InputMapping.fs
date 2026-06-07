@@ -8,8 +8,14 @@ open ControllerInput
 
 module InputMapping =
     let allJoypadButtons =
-        [ Joypad.Right; Joypad.Left; Joypad.Up; Joypad.Down
-          Joypad.A; Joypad.B; Joypad.Select; Joypad.Start ]
+        [ Joypad.Right
+          Joypad.Left
+          Joypad.Up
+          Joypad.Down
+          Joypad.A
+          Joypad.B
+          Joypad.Select
+          Joypad.Start ]
 
     let buttonName button =
         match button with
@@ -62,12 +68,10 @@ module InputMapping =
         allJoypadButtons
         |> List.map (fun button ->
             let name = buttonName button
-            let configuredKey =
-                mapping
-                |> Map.tryFind name
-                |> Option.bind tryParseKey
+            let configuredKey = mapping |> Map.tryFind name |> Option.bind tryParseKey
 
             let defaultKey = defaultKeyFor button
+
             let key =
                 match configuredKey with
                 | Some key when key <> Key.None && usedKeys.Add key -> key
@@ -101,14 +105,11 @@ module InputMapping =
         allJoypadButtons
         |> List.tryFind (fun button -> keyForButton normalized button = key)
 
-    let private tryParseControl controlName =
-        GamepadControl.tryParse controlName
+    let private tryParseControl controlName = GamepadControl.tryParse controlName
 
-    let controllerControlDisplayName control =
-        GamepadControl.displayName control
+    let controllerControlDisplayName control = GamepadControl.displayName control
 
-    let controllerControlStorageName control =
-        GamepadControl.storageName control
+    let controllerControlStorageName control = GamepadControl.storageName control
 
     let private defaultControllerControlFor button =
         AppSettings.defaultControllerMapping[buttonName button]
@@ -121,12 +122,10 @@ module InputMapping =
         allJoypadButtons
         |> List.map (fun button ->
             let name = buttonName button
-            let configuredControl =
-                mapping
-                |> Map.tryFind name
-                |> Option.bind tryParseControl
+            let configuredControl = mapping |> Map.tryFind name |> Option.bind tryParseControl
 
             let defaultControl = defaultControllerControlFor button
+
             let control =
                 match configuredControl with
                 | Some control when usedControls.Add control -> control

@@ -5,9 +5,7 @@ open System.IO
 open BubiBoy.Core
 
 module AudioHost =
-    type AudioFormat =
-        { SampleRate: int
-          Channels: int }
+    type AudioFormat = { SampleRate: int; Channels: int }
 
     type BufferWriteResult =
         { AcceptedFrames: int
@@ -30,8 +28,7 @@ module AudioHost =
         abstract Enqueue: Apu.Sample[] -> BufferWriteResult
         abstract Diagnostics: unit -> AudioDiagnostics
 
-    let private clampSample value =
-        Math.Clamp(value, -1.0f, 1.0f)
+    let private clampSample value = Math.Clamp(value, -1.0f, 1.0f)
 
     let private toPcm16 value =
         let clamped = clampSample value
@@ -93,19 +90,16 @@ module AudioHost =
 
         member _.CapacityFrames = capacityFrames
 
-        member _.Count =
-            lock gate (fun () -> count)
+        member _.Count = lock gate (fun () -> count)
 
         member _.Clear() =
             lock gate (fun () ->
                 readIndex <- 0
                 count <- 0)
 
-        member _.DroppedFrames =
-            lock gate (fun () -> droppedFrames)
+        member _.DroppedFrames = lock gate (fun () -> droppedFrames)
 
-        member _.UnderrunFrames =
-            lock gate (fun () -> underrunFrames)
+        member _.UnderrunFrames = lock gate (fun () -> underrunFrames)
 
         member _.Enqueue(samples: Apu.Sample[]) =
             lock gate (fun () ->
@@ -155,6 +149,7 @@ module AudioHost =
 
         interface AudioDevice with
             member _.Start() = running <- true
+
             member _.Stop() =
                 running <- false
                 buffer.Clear()
@@ -172,9 +167,7 @@ module AudioHost =
                   DroppedFrames = buffer.DroppedFrames
                   IsRunning = running }
 
-    let defaultFormat =
-        { SampleRate = 48_000
-          Channels = 2 }
+    let defaultFormat = { SampleRate = 48_000; Channels = 2 }
 
     let createBufferedDevice capacityFrames =
         BufferedAudioDevice(defaultFormat, capacityFrames)

@@ -26,8 +26,7 @@ module MainWindowMenus =
         { MenuBar: Menu
           Refresh: State -> unit }
 
-    let private gesture key modifiers =
-        KeyGesture(key, modifiers)
+    let private gesture key modifiers = KeyGesture(key, modifiers)
 
     let private nativeItem header key modifiers action =
         let item = NativeMenuItem(header)
@@ -78,14 +77,30 @@ module MainWindowMenus =
         let nativeOpenRecentMenu = NativeMenu()
         let nativeOpenRecentItem = NativeMenuItem("Open Recent")
         nativeOpenRecentItem.Menu <- nativeOpenRecentMenu
-        let nativeClearRecentItem = nativePlainCommandItem "Clear Recent" viewModel.ClearRecentCommand
-        let nativeRunPauseItem = nativeCommandItem "Run" Key.P platformModifier viewModel.RunPauseCommand
-        let nativeResetItem = nativeCommandItem "Reset" Key.R platformModifier viewModel.ResetCommand
-        let nativeSaveStateItem = nativeItem "Save State" Key.S platformModifier actions.SaveState
-        let nativeLoadStateItem = nativeItem "Load State" Key.L platformModifier actions.LoadState
+
+        let nativeClearRecentItem =
+            nativePlainCommandItem "Clear Recent" viewModel.ClearRecentCommand
+
+        let nativeRunPauseItem =
+            nativeCommandItem "Run" Key.P platformModifier viewModel.RunPauseCommand
+
+        let nativeResetItem =
+            nativeCommandItem "Reset" Key.R platformModifier viewModel.ResetCommand
+
+        let nativeSaveStateItem =
+            nativeItem "Save State" Key.S platformModifier actions.SaveState
+
+        let nativeLoadStateItem =
+            nativeItem "Load State" Key.L platformModifier actions.LoadState
+
         let nativeInputMappingItem = nativePlain "Input Mapping..." actions.OpenInputMapping
-        let nativeFullscreenItem = nativeItem "Full Screen" Key.F platformModifier actions.ToggleFullScreen
-        let nativeFloatingItem = nativeItem "Floating Mode" Key.F (platformModifier ||| KeyModifiers.Shift) actions.ToggleFloating
+
+        let nativeFullscreenItem =
+            nativeItem "Full Screen" Key.F platformModifier actions.ToggleFullScreen
+
+        let nativeFloatingItem =
+            nativeItem "Floating Mode" Key.F (platformModifier ||| KeyModifiers.Shift) actions.ToggleFloating
+
         let nativeScaleItems =
             [ 1, nativeItem "Scale x1" Key.D1 platformModifier (fun () -> actions.SetScale 1)
               2, nativeItem "Scale x2" Key.D2 platformModifier (fun () -> actions.SetScale 2)
@@ -93,14 +108,26 @@ module MainWindowMenus =
               8, nativeItem "Scale x8" Key.D8 platformModifier (fun () -> actions.SetScale 8) ]
 
         let openRecentMenu = MenuItem(Header = "Open Recent")
-        let clearRecentItem = plainCommandMenuItem "Clear Recent" viewModel.ClearRecentCommand
-        let runPauseItem = commandMenuItem "Run" Key.P platformModifier viewModel.RunPauseCommand
-        let resetMenuItem = commandMenuItem "Reset" Key.R platformModifier viewModel.ResetCommand
+
+        let clearRecentItem =
+            plainCommandMenuItem "Clear Recent" viewModel.ClearRecentCommand
+
+        let runPauseItem =
+            commandMenuItem "Run" Key.P platformModifier viewModel.RunPauseCommand
+
+        let resetMenuItem =
+            commandMenuItem "Reset" Key.R platformModifier viewModel.ResetCommand
+
         let saveStateItem = menuItem "Save State" Key.S platformModifier actions.SaveState
         let loadStateItem = menuItem "Load State" Key.L platformModifier actions.LoadState
         let inputMappingItem = plainMenuItem "Input Mapping..." actions.OpenInputMapping
-        let fullscreenItem = menuItem "Full Screen" Key.F platformModifier actions.ToggleFullScreen
-        let floatingItem = menuItem "Floating Mode" Key.F (platformModifier ||| KeyModifiers.Shift) actions.ToggleFloating
+
+        let fullscreenItem =
+            menuItem "Full Screen" Key.F platformModifier actions.ToggleFullScreen
+
+        let floatingItem =
+            menuItem "Floating Mode" Key.F (platformModifier ||| KeyModifiers.Shift) actions.ToggleFloating
+
         let scaleItems =
             [ 1, menuItem "Scale x1" Key.D1 platformModifier (fun () -> actions.SetScale 1)
               2, menuItem "Scale x2" Key.D2 platformModifier (fun () -> actions.SetScale 2)
@@ -154,7 +181,10 @@ module MainWindowMenus =
         let nativeMenu = NativeMenu()
         let nativeFileMenu = NativeMenuItem("File")
         let nativeFileSubmenu = NativeMenu()
-        nativeFileSubmenu.Items.Add(nativeCommandItem "Open ROM..." Key.O platformModifier viewModel.OpenRomCommand) |> ignore
+
+        nativeFileSubmenu.Items.Add(nativeCommandItem "Open ROM..." Key.O platformModifier viewModel.OpenRomCommand)
+        |> ignore
+
         nativeFileSubmenu.Items.Add nativeOpenRecentItem |> ignore
         nativeFileSubmenu.Items.Add nativeClearRecentItem |> ignore
         nativeFileMenu.Menu <- nativeFileSubmenu
@@ -186,7 +216,10 @@ module MainWindowMenus =
         NativeMenu.SetMenu(owner, nativeMenu)
 
         let fileMenu = MenuItem(Header = "File")
-        fileMenu.Items.Add(commandMenuItem "Open ROM..." Key.O platformModifier viewModel.OpenRomCommand) |> ignore
+
+        fileMenu.Items.Add(commandMenuItem "Open ROM..." Key.O platformModifier viewModel.OpenRomCommand)
+        |> ignore
+
         fileMenu.Items.Add openRecentMenu |> ignore
         fileMenu.Items.Add clearRecentItem |> ignore
         fileMenu.Items.Add(Separator()) |> ignore

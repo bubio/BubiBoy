@@ -54,40 +54,31 @@ type MainWindow() as this =
         let isMacOS = RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
 
         let layoutController =
-            WindowLayoutController(
-                this,
-                isMacOS,
-                settingsStore.Current.Scale,
-                viewport,
-                statusBar,
-                toast
-            )
+            WindowLayoutController(this, isMacOS, settingsStore.Current.Scale, viewport, statusBar, toast)
 
         let notifications =
             AppNotificationCenter(toast, fun () -> layoutController.IsFloating)
 
         let saveSettings () =
             match settingsStore.Save() with
-            | Ok () -> ()
+            | Ok() -> ()
             | Error message -> notifications.Show $"Settings error: {message}"
 
         loadedSettings.LoadError
         |> Option.iter (fun message -> notifications.Show $"Settings error: {message}")
 
-        let inputHost =
-            AppInputHost(this, settingsStore, saveSettings, notifications.Show)
+        let inputHost = AppInputHost(this, settingsStore, saveSettings, notifications.Show)
 
-        let outputVolume =
-            OutputVolumeController(settingsStore.Current.VolumePercent)
+        let outputVolume = OutputVolumeController(settingsStore.Current.VolumePercent)
 
         let performanceCounters = RuntimePerformanceCounters()
         let traceCounters = RuntimeTraceCounters()
         let perfTrace = PerfTrace.createFromEnvironment ()
+
         let audioFramesPerVideoFrame =
             int (
                 Math.Round(
-                    float AudioHost.defaultFormat.SampleRate
-                    * float Hardware.CyclesPerFrame
+                    float AudioHost.defaultFormat.SampleRate * float Hardware.CyclesPerFrame
                     / float Hardware.DmgClockHz
                 )
             )
@@ -95,15 +86,9 @@ type MainWindow() as this =
         let audioBufferTargetFrames = audioFramesPerVideoFrame * 16
 
         let audioOutput =
-            match
-                Miniaudio.tryCreateDevice
-                    AudioHost.defaultFormat
-                    AudioHost.defaultFormat.SampleRate
-            with
+            match Miniaudio.tryCreateDevice AudioHost.defaultFormat AudioHost.defaultFormat.SampleRate with
             | Ok device -> device :> AudioHost.AudioDevice
-            | Error _ ->
-                AudioHost.createBufferedDevice AudioHost.defaultFormat.SampleRate
-                :> AudioHost.AudioDevice
+            | Error _ -> AudioHost.createBufferedDevice AudioHost.defaultFormat.SampleRate :> AudioHost.AudioDevice
 
         let emulationRunner =
             EmulationRunner(
@@ -179,8 +164,7 @@ type MainWindow() as this =
             layoutController.ToggleFullScreen()
             refreshMenus ()
 
-        let platformModifier =
-            if isMacOS then KeyModifiers.Meta else KeyModifiers.Control
+        let platformModifier = if isMacOS then KeyModifiers.Meta else KeyModifiers.Control
 
         let menuElements =
             MainWindowMenus.create
@@ -193,10 +177,8 @@ type MainWindow() as this =
                   LoadState = sessionController.LoadState
                   SetScale = setScale
                   ToggleFullScreen = toggleFullScreen
-                  ToggleFloating =
-                    fun () -> setFloating (not layoutController.IsFloating)
-                  LoadRecent =
-                    fun path -> sessionController.LoadRomPath(path, true)
+                  ToggleFloating = fun () -> setFloating (not layoutController.IsFloating)
+                  LoadRecent = fun path -> sessionController.LoadRomPath(path, true)
                   Close = fun () -> this.Close()
                   ShowAbout = this.ShowAbout }
 
@@ -214,10 +196,7 @@ type MainWindow() as this =
                 { IsRunning = fun () -> sessionController.IsRunning
                   DequeueFrame = emulationRunner.DequeueFrame
                   UpdateFrame = sessionController.UpdateFrame
-                  UpdateDiagnostics =
-                    fun () ->
-                        viewModel.DebugDetails <-
-                            sessionController.FormatRuntimeDiagnostics()
+                  UpdateDiagnostics = fun () -> viewModel.DebugDetails <- sessionController.FormatRuntimeDiagnostics()
                   AudioDiagnostics = audioOutput.Diagnostics },
                 performanceCounters,
                 traceCounters,
@@ -246,10 +225,7 @@ type MainWindow() as this =
             volumeControl.SetVisual clamped
             saveSettings ()
 
-        VolumeControl.bind
-            volumeControl
-            (fun () -> viewModel.VolumePercent)
-            setVolumePercent
+        VolumeControl.bind volumeControl (fun () -> viewModel.VolumePercent) setVolumePercent
 
         this.Closing.Add(fun _ ->
             sessionController.SaveCurrentRam()
@@ -261,8 +237,7 @@ type MainWindow() as this =
             inputHost.Dispose()
             PerfTrace.close perfTrace)
 
-        let contentGrid =
-            Grid(RowDefinitions = RowDefinitions("Auto,*,Auto"))
+        let contentGrid = Grid(RowDefinitions = RowDefinitions("Auto,*,Auto"))
 
         Grid.SetRow(menuBar, 0)
         Grid.SetRow(viewport.Host, 1)
@@ -278,9 +253,11 @@ type MainWindow() as this =
         this.Content <- overlay
         layoutController.Attach(menuBar, contentGrid)
 
-        this.GetObservable(Window.WindowStateProperty).Subscribe(fun _ ->
-            layoutController.HandleWindowStateChanged()
-            refreshMenus ())
+        this
+            .GetObservable(Window.WindowStateProperty)
+            .Subscribe(fun _ ->
+                layoutController.HandleWindowStateChanged()
+                refreshMenus ())
         |> ignore
 
         refreshMenus ()

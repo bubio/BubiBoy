@@ -80,8 +80,7 @@ module AppSettings =
           KeyboardMapping = defaultKeyboardMapping
           ControllerMapping = defaultControllerMapping }
 
-    let private jsonOptions =
-        JsonSerializerOptions(WriteIndented = true)
+    let private jsonOptions = JsonSerializerOptions(WriteIndented = true)
 
     let private protect action =
         try
@@ -110,7 +109,11 @@ module AppSettings =
                     Some(button.Trim(), key.Trim()))
             |> Seq.fold
                 (fun (known: Map<string, string>) (button, key) ->
-                    match KeyboardButtonOrder |> List.tryFind (fun knownButton -> String.Equals(knownButton, button, StringComparison.OrdinalIgnoreCase)) with
+                    match
+                        KeyboardButtonOrder
+                        |> List.tryFind (fun knownButton ->
+                            String.Equals(knownButton, button, StringComparison.OrdinalIgnoreCase))
+                    with
                     | Some knownButton -> known.Add(knownButton, key)
                     | None -> known)
                 Map.empty
@@ -120,6 +123,7 @@ module AppSettings =
             (fun normalized button ->
                 let defaultKey = defaultKeyboardMapping[button]
                 let candidate = input |> Map.tryFind button |> Option.defaultValue defaultKey
+
                 let keysAssignedToOtherButtons =
                     normalized
                     |> Map.toSeq
@@ -134,7 +138,8 @@ module AppSettings =
             defaultKeyboardMapping
 
     let private normalizeControllerMapping (mapping: Map<string, string>) =
-        let validControls = HashSet<string>(ControllerControlNames, StringComparer.OrdinalIgnoreCase)
+        let validControls =
+            HashSet<string>(ControllerControlNames, StringComparer.OrdinalIgnoreCase)
 
         let input =
             mapping
@@ -146,7 +151,11 @@ module AppSettings =
                     Some(button.Trim(), control.Trim()))
             |> Seq.fold
                 (fun (known: Map<string, string>) (button, control) ->
-                    match KeyboardButtonOrder |> List.tryFind (fun knownButton -> String.Equals(knownButton, button, StringComparison.OrdinalIgnoreCase)) with
+                    match
+                        KeyboardButtonOrder
+                        |> List.tryFind (fun knownButton ->
+                            String.Equals(knownButton, button, StringComparison.OrdinalIgnoreCase))
+                    with
                     | Some knownButton -> known.Add(knownButton, control)
                     | None -> known)
                 Map.empty
@@ -156,6 +165,7 @@ module AppSettings =
             (fun normalized button ->
                 let defaultControl = defaultControllerMapping[button]
                 let candidate = input |> Map.tryFind button |> Option.defaultValue defaultControl
+
                 let controlsAssignedToOtherButtons =
                     normalized
                     |> Map.toSeq
@@ -163,7 +173,10 @@ module AppSettings =
                     |> Seq.map snd
                     |> fun controls -> HashSet<string>(controls, StringComparer.OrdinalIgnoreCase)
 
-                if validControls.Contains candidate && not (controlsAssignedToOtherButtons.Contains candidate) then
+                if
+                    validControls.Contains candidate
+                    && not (controlsAssignedToOtherButtons.Contains candidate)
+                then
                     normalized.Add(button, candidate)
                 else
                     normalized.Add(button, defaultControl))
@@ -214,20 +227,24 @@ module AppSettings =
             Ok defaults
         else
             protect (fun () ->
-                let file = JsonSerializer.Deserialize<SettingsFile>(File.ReadAllText path, jsonOptions)
+                let file =
+                    JsonSerializer.Deserialize<SettingsFile>(File.ReadAllText path, jsonOptions)
 
                 if isNull (box file) then
                     raise (InvalidDataException "Settings file is empty.")
-                elif file.Version <> CurrentVersion && file.Version <> 3 && file.Version <> 2 && file.Version <> 1 then
+                elif
+                    file.Version <> CurrentVersion
+                    && file.Version <> 3
+                    && file.Version <> 2
+                    && file.Version <> 1
+                then
                     raise (InvalidDataException $"Unsupported settings version {file.Version}.")
                 else
                     let keyboardMapping =
                         if file.Version < 3 || isNull file.KeyboardMapping then
                             defaultKeyboardMapping
                         else
-                            file.KeyboardMapping
-                            |> Seq.map (fun pair -> pair.Key, pair.Value)
-                            |> Map.ofSeq
+                            file.KeyboardMapping |> Seq.map (fun pair -> pair.Key, pair.Value) |> Map.ofSeq
 
                     let controllerMapping =
                         if file.Version < 4 || isNull file.ControllerMapping then
@@ -244,11 +261,7 @@ module AppSettings =
                                 []
                             else
                                 Array.toList file.RecentRoms
-                          Scale =
-                            if file.Version = 1 then
-                                defaults.Scale
-                            else
-                                file.Scale
+                          Scale = if file.Version = 1 then defaults.Scale else file.Scale
                           KeyboardMapping = keyboardMapping
                           ControllerMapping = controllerMapping })
 
@@ -257,6 +270,7 @@ module AppSettings =
             Error "Settings path is empty."
         else
             let normalized = normalize settings
+
             let file =
                 { Version = CurrentVersion
                   VolumePercent = normalized.VolumePercent
@@ -282,16 +296,24 @@ module AppSettings =
                 |> List.choose normalizePath
                 |> List.filter (fun path -> not (String.Equals(path, fullPath, StringComparison.OrdinalIgnoreCase)))
 
-            normalize { settings with RecentRoms = fullPath :: existing }
+            normalize
+                { settings with
+                    RecentRoms = fullPath :: existing }
 
     let withVolumePercent percent settings =
-        normalize { settings with VolumePercent = percent }
+        normalize
+            { settings with
+                VolumePercent = percent }
 
     let withScale scale settings =
         normalize { settings with Scale = scale }
 
     let withKeyboardMapping mapping settings =
-        normalize { settings with KeyboardMapping = mapping }
+        normalize
+            { settings with
+                KeyboardMapping = mapping }
 
     let withControllerMapping mapping settings =
-        normalize { settings with ControllerMapping = mapping }
+        normalize
+            { settings with
+                ControllerMapping = mapping }

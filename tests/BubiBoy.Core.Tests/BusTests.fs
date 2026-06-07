@@ -59,10 +59,7 @@ let ``writeByte stores WRAM and echo RAM consistently`` () =
 let ``writeByte stores HRAM and interrupt enable`` () =
     let bus = makeBus ()
 
-    let updated =
-        bus
-        |> Bus.writeByte 0xFF80us 0x12uy
-        |> Bus.writeByte 0xFFFFus 0x1Fuy
+    let updated = bus |> Bus.writeByte 0xFF80us 0x12uy |> Bus.writeByte 0xFFFFus 0x1Fuy
 
     Assert.Equal(0x12uy, Bus.readByte 0xFF80us updated)
     Assert.Equal(0x1Fuy, Bus.readByte 0xFFFFus updated)
@@ -106,9 +103,7 @@ let ``joypad state is mapped through P1 and requests interrupt on press`` () =
 [<Fact>]
 let ``serial registers are retained as IO stubs`` () =
     let bus =
-        makeBus ()
-        |> Bus.writeByte 0xFF01us 0x42uy
-        |> Bus.writeByte 0xFF02us 0x81uy
+        makeBus () |> Bus.writeByte 0xFF01us 0x42uy |> Bus.writeByte 0xFF02us 0x81uy
 
     Assert.Equal(0x42uy, Bus.readByte 0xFF01us bus)
     Assert.Equal(0x81uy, Bus.readByte 0xFF02us bus)
@@ -161,9 +156,7 @@ let ``LCD STAT selected mode requests LCD interrupt`` () =
 [<Fact>]
 let ``LCD STAT interrupt is requested only on signal rising edge`` () =
     let bus =
-        makeBus ()
-        |> Bus.writeByte 0xFF0Fus 0x00uy
-        |> Bus.writeByte 0xFF41us 0x08uy
+        makeBus () |> Bus.writeByte 0xFF0Fus 0x00uy |> Bus.writeByte 0xFF41us 0x08uy
 
     let hblank = Bus.tick 252 bus
     let requested = Bus.readByte 0xFF0Fus hblank &&& Interrupt.LcdStatBit
@@ -199,10 +192,7 @@ let ``VRAM is inaccessible during LCD transfer mode`` () =
 
 [<Fact>]
 let ``VRAM is accessible during transfer mode when LCD is disabled`` () =
-    let disabledTransfer =
-        makeBus ()
-        |> Bus.tick 80
-        |> Bus.writeByte 0xFF40us 0x00uy
+    let disabledTransfer = makeBus () |> Bus.tick 80 |> Bus.writeByte 0xFF40us 0x00uy
 
     let written = Bus.writeByte 0x8000us 0x42uy disabledTransfer
 
@@ -322,9 +312,7 @@ let ``OAM is accessible only during HBlank and VBlank`` () =
 
 [<Fact>]
 let ``OAM is accessible during OAM search when LCD is disabled`` () =
-    let disabledOamSearch =
-        makeBus ()
-        |> Bus.writeByte 0xFF40us 0x00uy
+    let disabledOamSearch = makeBus () |> Bus.writeByte 0xFF40us 0x00uy
 
     let written = Bus.writeByte 0xFE00us 0x42uy disabledOamSearch
 
@@ -333,9 +321,7 @@ let ``OAM is accessible during OAM search when LCD is disabled`` () =
 [<Fact>]
 let ``disabled LCD holds LY at zero and reports HBlank mode`` () =
     let disabled =
-        makeBus ()
-        |> Bus.writeByte 0xFF40us 0x00uy
-        |> Bus.tick (Lcd.CyclesPerLine * 20)
+        makeBus () |> Bus.writeByte 0xFF40us 0x00uy |> Bus.tick (Lcd.CyclesPerLine * 20)
 
     Assert.Equal(0uy, Bus.readByte 0xFF44us disabled)
     Assert.Equal(0x04uy, Bus.readByte 0xFF41us disabled &&& 0x07uy)

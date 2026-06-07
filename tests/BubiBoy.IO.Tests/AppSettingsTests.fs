@@ -19,10 +19,7 @@ let ``saveToPath writes versioned settings and creates directories`` () =
         { VolumePercent = 75
           RecentRoms = recentRoms
           Scale = 4
-          KeyboardMapping =
-            AppSettings.defaultKeyboardMapping
-            |> Map.add "A" "C"
-            |> Map.add "B" "V"
+          KeyboardMapping = AppSettings.defaultKeyboardMapping |> Map.add "A" "C" |> Map.add "B" "V"
           ControllerMapping =
             AppSettings.defaultControllerMapping
             |> Map.add "A" "West"
@@ -30,7 +27,7 @@ let ``saveToPath writes versioned settings and creates directories`` () =
 
     match AppSettings.saveToPath path settings with
     | Error message -> Assert.Fail message
-    | Ok () ->
+    | Ok() ->
         Assert.True(File.Exists path)
         Assert.DoesNotContain("IsFloating", File.ReadAllText path)
 
@@ -53,7 +50,7 @@ let ``loadFromPath returns defaults when settings file is missing`` () =
 
 [<Fact>]
 let ``normalize clamps volume and limits deduplicated recent ROMs`` () =
-    let paths = [ for index in 0 .. 12 -> tempPath $"game{index}.gb" ]
+    let paths = [ for index in 0..12 -> tempPath $"game{index}.gb" ]
 
     let raw: AppSettings.Settings =
         { VolumePercent = 125
@@ -146,7 +143,11 @@ let ``loadFromPath migrates version 2 settings and ignores floating mode`` () =
     let path = tempPath "settings.json"
     let oldRom = tempPath "old.gb"
     Directory.CreateDirectory(Path.GetDirectoryName path) |> ignore
-    File.WriteAllText(path, $"""{{"Version":2,"VolumePercent":25,"RecentRoms":["{oldRom.Replace("\\", "\\\\")}"],"Scale":4,"IsFloating":true}}""")
+
+    File.WriteAllText(
+        path,
+        $"""{{"Version":2,"VolumePercent":25,"RecentRoms":["{oldRom.Replace("\\", "\\\\")}"],"Scale":4,"IsFloating":true}}"""
+    )
 
     match AppSettings.loadFromPath path with
     | Error message -> Assert.Fail message
@@ -162,7 +163,11 @@ let ``loadFromPath migrates version 3 settings and ignores floating mode`` () =
     let path = tempPath "settings.json"
     let oldRom = tempPath "old.gb"
     Directory.CreateDirectory(Path.GetDirectoryName path) |> ignore
-    File.WriteAllText(path, $"""{{"Version":3,"VolumePercent":25,"RecentRoms":["{oldRom.Replace("\\", "\\\\")}"],"Scale":4,"IsFloating":true,"KeyboardMapping":{{"A":"C"}}}}""")
+
+    File.WriteAllText(
+        path,
+        $"""{{"Version":3,"VolumePercent":25,"RecentRoms":["{oldRom.Replace("\\", "\\\\")}"],"Scale":4,"IsFloating":true,"KeyboardMapping":{{"A":"C"}}}}"""
+    )
 
     match AppSettings.loadFromPath path with
     | Error message -> Assert.Fail message

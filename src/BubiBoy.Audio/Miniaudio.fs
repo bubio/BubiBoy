@@ -39,6 +39,7 @@ module Miniaudio =
         let baseDirectory = AppContext.BaseDirectory
         let currentDirectory = Environment.CurrentDirectory
         let currentRid = RuntimeInformation.RuntimeIdentifier
+
         let platformRid =
             let architecture =
                 match RuntimeInformation.OSArchitecture with
@@ -72,6 +73,7 @@ module Miniaudio =
                for runtimeId in runtimeIds do
                    yield Path.Combine(baseDirectory, "runtimes", runtimeId, "native", name)
                    yield Path.Combine(currentDirectory, "runtimes", runtimeId, "native", name)
+
                yield Path.Combine(baseDirectory, name)
                yield Path.Combine(currentDirectory, name)
                yield name |]
@@ -140,7 +142,7 @@ module Miniaudio =
                 this.EnsureNotDisposed()
 
                 let pcm = AudioHost.toPcm16StereoBytes samples
-                let accepted = Native.enqueuePcm16(handle, pcm, samples.Length)
+                let accepted = Native.enqueuePcm16 (handle, pcm, samples.Length)
                 let accepted = max 0 (min samples.Length accepted)
 
                 { AcceptedFrames = accepted
@@ -181,5 +183,4 @@ module Miniaudio =
                 | :? DllNotFoundException as ex -> Error ex.Message
                 | :? EntryPointNotFoundException as ex -> Error ex.Message
 
-    let tryCreateDevice format bufferFrames =
-        Device.TryCreate(format, bufferFrames)
+    let tryCreateDevice format bufferFrames = Device.TryCreate(format, bufferFrames)

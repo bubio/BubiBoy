@@ -34,9 +34,11 @@ module Joypad =
     /// Updates the pressed state of one button.
     let setButton button pressed state =
         if pressed then
-            { state with Pressed = state.Pressed.Add button }
+            { state with
+                Pressed = state.Pressed.Add button }
         else
-            { state with Pressed = state.Pressed.Remove button }
+            { state with
+                Pressed = state.Pressed.Remove button }
 
     let private maskFor selected pressed button pressedMask =
         if selected && Set.contains button pressed then

@@ -9,8 +9,7 @@ let private makeRomWithProgram (program: byte[]) =
     rom[0x0148] <- 0x00uy
     rom[0x0149] <- 0x00uy
 
-    program
-    |> Array.iteri (fun index value -> rom[0x0100 + index] <- value)
+    program |> Array.iteri (fun index value -> rom[0x0100 + index] <- value)
 
     rom
 
@@ -27,11 +26,9 @@ let private createCgbSession program =
     | Ok session -> session
     | Error message -> failwith message
 
-let private withIo index value (bus: Bus.Memory) =
-    Bus.withIoByte index value bus
+let private withIo index value (bus: Bus.Memory) = Bus.withIoByte index value bus
 
-let private withVram address value (bus: Bus.Memory) =
-    Bus.withVramByte address value bus
+let private withVram address value (bus: Bus.Memory) = Bus.withVramByte address value bus
 
 [<Fact>]
 let ``runFrame advances until one hardware frame elapses`` () =
@@ -53,6 +50,7 @@ let ``createSession starts CGB cartridges in CGB post boot state`` () =
 [<Fact>]
 let ``runFrame returns scanline framebuffer captured during the frame`` () =
     let session = createSession [| 0x00uy |]
+
     let bus =
         session.Bus
         |> withIo 0x40 0x91uy

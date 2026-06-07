@@ -32,7 +32,10 @@ module GameViewport =
         // writeInto blits the emulator framebuffer into them in place (no per-frame
         // WriteableBitmap or 100 KiB byte[] allocation).
         let displayBitmap = FramebufferBitmap.createBitmap ()
-        let displayBytes = Array.zeroCreate<byte> (Hardware.ScreenWidth * Hardware.ScreenHeight * 4)
+
+        let displayBytes =
+            Array.zeroCreate<byte> (Hardware.ScreenWidth * Hardware.ScreenHeight * 4)
+
         FramebufferBitmap.writeInto (Video.blankFrame ()) displayBitmap displayBytes
 
         let framebufferImage =

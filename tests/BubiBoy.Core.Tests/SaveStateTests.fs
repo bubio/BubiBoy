@@ -8,6 +8,7 @@ open Xunit
 let private makeRom (title: string) program =
     let rom = Array.zeroCreate<byte> (2 * 16 * 1024)
     let titleBytes = System.Text.Encoding.ASCII.GetBytes title
+
     titleBytes
     |> Array.truncate 16
     |> Array.iteri (fun index value -> rom[0x0134 + index] <- value)
@@ -17,8 +18,7 @@ let private makeRom (title: string) program =
     rom[0x0149] <- 0x00uy
     rom[0x014D] <- 0x42uy
 
-    program
-    |> Array.iteri (fun index value -> rom[0x0100 + index] <- value)
+    program |> Array.iteri (fun index value -> rom[0x0100 + index] <- value)
 
     rom
 
@@ -41,12 +41,10 @@ let ``version 3 wire format remains stable`` () =
 [<Fact>]
 let ``save state round trips session and can continue deterministically`` () =
     let rom = makeRom "STATE" [| 0x3Cuy; 0xEAuy; 0x00uy; 0xC0uy; 0x00uy |]
-    let session = createSession rom |> Emulator.run 3 |> fun result -> result.Session
+    let session = createSession rom |> Emulator.run 3 |> (fun result -> result.Session)
     let encoded = encodeSession session
 
-    let restored =
-        createSession rom
-        |> SaveState.restoreBytes encoded
+    let restored = createSession rom |> SaveState.restoreBytes encoded
 
     match restored with
     | Error message -> failwith message
@@ -94,7 +92,10 @@ let ``save state rejects version mismatch`` () =
 [<Fact>]
 let ``save state restore rejects framebuffer size mismatch`` () =
     let session = makeRom "FRAME" Array.empty |> createSession
-    let snapshot = { SaveState.capture session with Framebuffer = Array.empty }
+
+    let snapshot =
+        { SaveState.capture session with
+            Framebuffer = Array.empty }
 
     match SaveState.restore snapshot session with
     | Ok _ -> failwith "Expected framebuffer size mismatch."
@@ -104,7 +105,10 @@ let ``save state restore rejects framebuffer size mismatch`` () =
 let ``save state restore rejects bus array size mismatch`` () =
     let session = makeRom "VRAM" Array.empty |> createSession
     let snapshot = SaveState.capture session
-    let invalidBus = { snapshot.Bus with VramSnapshot = Array.empty }
+
+    let invalidBus =
+        { snapshot.Bus with
+            VramSnapshot = Array.empty }
 
     match SaveState.restore { snapshot with Bus = invalidBus } session with
     | Ok _ -> failwith "Expected VRAM size mismatch."

@@ -13,11 +13,7 @@ type GamepadId =
 
         { rawValue = value.Trim() }
 
-    member this.Value =
-        if isNull this.rawValue then
-            String.Empty
-        else
-            this.rawValue
+    member this.Value = if isNull this.rawValue then String.Empty else this.rawValue
 
     override this.ToString() = this.Value
 
@@ -25,8 +21,7 @@ module GamepadId =
     let tryCreate value =
         try
             Some(GamepadId(value))
-        with
-        | :? ArgumentException ->
+        with :? ArgumentException ->
             None
 
     let create value = GamepadId(value)
@@ -102,7 +97,10 @@ module GamepadControl =
     let tryParse (value: string) =
         let mutable control = Unchecked.defaultof<GamepadControl>
 
-        if Enum.TryParse<GamepadControl>(value, true, &control) && (all |> List.contains control) then
+        if
+            Enum.TryParse<GamepadControl>(value, true, &control)
+            && (all |> List.contains control)
+        then
             Some control
         else
             None

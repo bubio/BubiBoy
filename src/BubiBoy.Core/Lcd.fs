@@ -40,14 +40,10 @@ module Lcd =
         | Transfer -> 3uy
 
     let private modeFor line dotCounter =
-        if line >= 144 then
-            VBlank
-        elif dotCounter < 80 then
-            OamSearch
-        elif dotCounter < 252 then
-            Transfer
-        else
-            HBlank
+        if line >= 144 then VBlank
+        elif dotCounter < 80 then OamSearch
+        elif dotCounter < 252 then Transfer
+        else HBlank
 
     let internal resetLine state =
         { state with

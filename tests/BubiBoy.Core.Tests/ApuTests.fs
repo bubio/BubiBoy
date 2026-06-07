@@ -8,8 +8,7 @@ let private emptyIo () =
     io[0x26] <- 0x80uy
     io
 
-let private write index value (io, state) =
-    Apu.writeRegister index value io state
+let private write index value (io, state) = Apu.writeRegister index value io state
 
 let private triggerPulse1 nr10 nr11 nr12 nr13 nr14 =
     (emptyIo (), Apu.initial)
@@ -149,8 +148,22 @@ let ``triggered wave channel contributes samples`` () =
 [<Fact>]
 let ``ultrasonic wave channel uses cycle average instead of aliasing`` () =
     let waveBytes =
-        [| 0x76uy; 0x54uy; 0x32uy; 0x10uy; 0x24uy; 0x45uy; 0x56uy; 0x67uy
-           0x89uy; 0xABuy; 0xCDuy; 0xEFuy; 0xDBuy; 0xBAuy; 0xA9uy; 0x98uy |]
+        [| 0x76uy
+           0x54uy
+           0x32uy
+           0x10uy
+           0x24uy
+           0x45uy
+           0x56uy
+           0x67uy
+           0x89uy
+           0xABuy
+           0xCDuy
+           0xEFuy
+           0xDBuy
+           0xBAuy
+           0xA9uy
+           0x98uy |]
 
     let mutable io, state =
         (emptyIo (), Apu.initial)

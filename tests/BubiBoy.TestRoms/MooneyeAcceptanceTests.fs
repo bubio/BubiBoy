@@ -50,8 +50,7 @@ let private runMooneye maxSteps relativePath =
             else
                 try
                     session <- Emulator.step session
-                with
-                | Cpu.UnsupportedOpcode(opcode, pc) ->
+                with Cpu.UnsupportedOpcode(opcode, pc) ->
                     result <- Some(UnsupportedOpcode(opcode, pc, session.Steps))
 
         defaultArg result (StepLimitReached session.Steps)
