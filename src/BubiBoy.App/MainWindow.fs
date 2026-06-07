@@ -10,7 +10,7 @@ open Avalonia.Platform
 open BubiBoy.Audio
 open BubiBoy.Core
 
-type MainWindow() as this =
+type MainWindow(?startupRomPath: string) as this =
     inherit Window()
 
     do
@@ -85,10 +85,15 @@ type MainWindow() as this =
 
         let audioBufferTargetFrames = audioFramesPerVideoFrame * 16
 
-        let audioOutput =
+        let audioOutput, audioFallbackError =
             match Miniaudio.tryCreateDevice AudioHost.defaultFormat AudioHost.defaultFormat.SampleRate with
-            | Ok device -> device :> AudioHost.AudioDevice
-            | Error _ -> AudioHost.createBufferedDevice AudioHost.defaultFormat.SampleRate :> AudioHost.AudioDevice
+            | Ok device -> device :> AudioHost.AudioDevice, None
+            | Error message ->
+                AudioHost.createBufferedDevice AudioHost.defaultFormat.SampleRate :> AudioHost.AudioDevice, Some message
+
+        audioFallbackError
+        |> Option.iter (fun message ->
+            notifications.Show $"Audio device unavailable; continuing without sound. ({message})")
 
         let emulationRunner =
             EmulationRunner(
@@ -264,6 +269,10 @@ type MainWindow() as this =
         layoutController.ApplyInitialLayout()
         inputHost.Start()
         frameDisplayTimer.Start()
+
+        startupRomPath
+        |> Option.filter (String.IsNullOrWhiteSpace >> not)
+        |> Option.iter (fun path -> sessionController.LoadRomPath(path, true))
 
     member this.ShowAbout() =
         let version =

@@ -1,6 +1,7 @@
 namespace BubiBoy.Audio
 
 open System
+open System.Diagnostics
 open System.IO
 open BubiBoy.Core
 
@@ -140,7 +141,30 @@ module AudioHost =
 
     type BufferedAudioDevice(format: AudioFormat, capacityFrames: int) =
         let buffer = SampleBuffer capacityFrames
+        let clockGate = obj ()
+        let playbackClock = Stopwatch()
         let mutable running = false
+        let mutable consumedFrames = 0L
+
+        // Simulates real-time playback so the buffer drains at the sample rate even
+        // without a hardware device. The emulation runner paces itself on
+        // BufferedFrames, so a buffer that never drains would freeze the emulator.
+        let advancePlayback () =
+            lock clockGate (fun () ->
+                if running then
+                    let target = int64 (float format.SampleRate * playbackClock.Elapsed.TotalSeconds)
+
+                    let pending = target - consumedFrames
+
+                    if pending > 0L then
+                        let toConsume = int (min pending (int64 buffer.Count))
+
+                        if toConsume > 0 then
+                            buffer.Read toConsume |> ignore
+
+                    // Advance to "now" regardless of how much was buffered so an
+                    // underrun does not accumulate debt that drains a later burst.
+                    consumedFrames <- target)
 
         member _.Format = format
         member _.Buffer = buffer
@@ -148,20 +172,31 @@ module AudioHost =
         member _.Read(frames) = buffer.Read frames
 
         interface AudioDevice with
-            member _.Start() = running <- true
+            member _.Start() =
+                lock clockGate (fun () ->
+                    running <- true
+                    consumedFrames <- 0L
+                    buffer.Clear()
+                    playbackClock.Restart())
 
             member _.Stop() =
-                running <- false
-                buffer.Clear()
+                lock clockGate (fun () ->
+                    running <- false
+                    playbackClock.Reset()
+                    consumedFrames <- 0L
+                    buffer.Clear())
 
             member _.Enqueue(samples) =
                 if running then
+                    advancePlayback ()
                     buffer.Enqueue samples
                 else
                     { AcceptedFrames = 0
                       DroppedFrames = samples.Length }
 
             member _.Diagnostics() =
+                advancePlayback ()
+
                 { BufferedFrames = buffer.Count
                   UnderrunFrames = buffer.UnderrunFrames
                   DroppedFrames = buffer.DroppedFrames

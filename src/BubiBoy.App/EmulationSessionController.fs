@@ -47,7 +47,6 @@ type EmulationSessionController(dependencies: EmulationSessionDependencies) =
         dependencies.ViewModel.IsRunning <- true
         dependencies.PerformanceCounters.Reset()
         dependencies.AudioOutput.Start()
-        dependencies.Runner.PrimeAudioBuffer(getCurrentSession, Some >> setCurrentSession)
         dependencies.Runner.Start(getCurrentSession, Some >> setCurrentSession, stopRunning)
 
     let saveCurrentRam () =

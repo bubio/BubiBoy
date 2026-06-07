@@ -40,6 +40,12 @@ module Miniaudio =
         let currentDirectory = Environment.CurrentDirectory
         let currentRid = RuntimeInformation.RuntimeIdentifier
 
+        let hostNativeDirectories =
+            match AppContext.GetData("NATIVE_DLL_SEARCH_DIRECTORIES") with
+            | :? string as paths when not (String.IsNullOrWhiteSpace paths) ->
+                paths.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
+            | _ -> Array.empty
+
         let platformRid =
             let architecture =
                 match RuntimeInformation.OSArchitecture with
@@ -70,6 +76,9 @@ module Miniaudio =
                "bubi_miniaudio.dll" |]
 
         [| for name in names do
+               for directory in hostNativeDirectories do
+                   yield Path.Combine(directory, name)
+
                for runtimeId in runtimeIds do
                    yield Path.Combine(baseDirectory, "runtimes", runtimeId, "native", name)
                    yield Path.Combine(currentDirectory, "runtimes", runtimeId, "native", name)

@@ -77,42 +77,6 @@ type EmulationRunner
 
         result
 
-    member this.FillAudioLead
-        (token: CancellationToken, session: Emulator.Session, initialDiagnostics: AudioHost.AudioDiagnostics)
-        =
-        let stopwatch = Stopwatch.StartNew()
-        let mutable current = session
-        let mutable latest = None
-        let mutable diagnostics = initialDiagnostics
-        let mutable framesGenerated = 0
-        let mutable keepGoing = diagnostics.IsRunning
-
-        while keepGoing
-              && not token.IsCancellationRequested
-              && diagnostics.BufferedFrames < audioBufferTargetFrames do
-            let result = this.EnqueueFrameAudio current
-            current <- result.Session
-            latest <- Some result
-            framesGenerated <- framesGenerated + 1
-            keepGoing <- result.StopReason = Emulator.FrameCompleted
-            diagnostics <- audioOutput.Diagnostics()
-
-        stopwatch.Stop()
-
-        if framesGenerated > 0 then
-            performanceCounters.RecordFrameTime(stopwatch.Elapsed.TotalMilliseconds / float framesGenerated)
-
-        current, latest, keepGoing
-
-    member this.PrimeAudioBuffer(getSession: unit -> Emulator.Session option, setSession: Emulator.Session -> unit) =
-        match getSession () with
-        | None -> ()
-        | Some session ->
-            let current, _, _ =
-                this.FillAudioLead(CancellationToken.None, applyInput session, audioOutput.Diagnostics())
-
-            setSession current
-
     member this.Start
         (getSession: unit -> Emulator.Session option, setSession: Emulator.Session -> unit, requestStop: unit -> unit)
         =

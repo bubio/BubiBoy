@@ -1,5 +1,6 @@
 namespace BubiBoy.App
 
+open System
 open Avalonia
 open Avalonia.Controls
 open Avalonia.Controls.ApplicationLifetimes
@@ -41,7 +42,10 @@ type App() =
     override this.OnFrameworkInitializationCompleted() =
         match this.ApplicationLifetime with
         | :? IClassicDesktopStyleApplicationLifetime as desktop ->
-            let mainWindow = MainWindow()
+            let startupRomPath =
+                desktop.Args |> Array.tryFind (String.IsNullOrWhiteSpace >> not)
+
+            let mainWindow = MainWindow(?startupRomPath = startupRomPath)
             desktop.MainWindow <- mainWindow
         | _ -> ()
 
