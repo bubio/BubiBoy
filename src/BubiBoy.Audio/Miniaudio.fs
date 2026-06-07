@@ -113,12 +113,35 @@ module Miniaudio =
                     nativeint 0)
         )
 
+    // The assembly-aware overload uses the runtime's resolution for this assembly,
+    // which covers the single-file self-extraction directory. Raw-path probing and
+    // bare-name OS search (used by tryLoadNativeLibrary) do not reach it, because in a
+    // single-file app BaseDirectory is the host folder and NATIVE_DLL_SEARCH_DIRECTORIES
+    // is empty. This does not re-enter the DllImport resolver, so there is no recursion.
+    let private tryLoadViaAssembly () =
+        let mutable handle = nativeint 0
+
+        let loaded =
+            [| LibraryName
+               "libbubi_miniaudio.dylib"
+               "libbubi_miniaudio.so"
+               "bubi_miniaudio.dll" |]
+            |> Array.exists (fun name ->
+                NativeLibrary.TryLoad(name, Assembly.GetExecutingAssembly(), Nullable(), &handle))
+
+        if loaded then Some handle else None
+
     let isNativeLibraryAvailable () =
-        match tryLoadNativeLibrary () with
+        match tryLoadViaAssembly () with
         | Some handle ->
             NativeLibrary.Free handle
             true
-        | None -> false
+        | None ->
+            match tryLoadNativeLibrary () with
+            | Some handle ->
+                NativeLibrary.Free handle
+                true
+            | None -> false
 
     type Device private (handle: nativeint, format: AudioHost.AudioFormat) =
         let mutable disposed = false

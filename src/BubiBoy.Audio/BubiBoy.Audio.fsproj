@@ -27,21 +27,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="..\..\native\build\libbubi_miniaudio.dylib"
-          Link="libbubi_miniaudio.dylib"
-          CopyToOutputDirectory="PreserveNewest"
-          CopyToPublishDirectory="PreserveNewest"
-          Condition="Exists('..\..\native\build\libbubi_miniaudio.dylib') and ('$(RuntimeIdentifier)' == '' or $([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('osx-')))" />
-    <None Include="..\..\native\build\libbubi_miniaudio.so"
-          Link="libbubi_miniaudio.so"
-          CopyToOutputDirectory="PreserveNewest"
-          CopyToPublishDirectory="PreserveNewest"
-          Condition="Exists('..\..\native\build\libbubi_miniaudio.so') and ('$(RuntimeIdentifier)' == '' or $([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('linux-')))" />
-    <None Include="..\..\native\build\bubi_miniaudio.dll"
-          Link="bubi_miniaudio.dll"
-          CopyToOutputDirectory="PreserveNewest"
-          CopyToPublishDirectory="PreserveNewest"
-          Condition="Exists('..\..\native\build\bubi_miniaudio.dll') and ('$(RuntimeIdentifier)' == '' or $([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('win-')))" />
     <NativeLibrary Include="..\..\native\build\runtimes\**\*.*"
                    Link="runtimes\%(RecursiveDir)%(Filename)%(Extension)"
                    CopyToPublishDirectory="PreserveNewest"
@@ -53,8 +38,12 @@
           CopyToOutputDirectory="PreserveNewest"
           CopyToPublishDirectory="Never"
           Condition="Exists('..\..\native\build\runtimes')" />
+    <!-- Place the native library flat next to the app. Self-contained single-file
+         publish self-extracts native libraries flat at the bundle root, where .NET's
+         built-in loader probes; a runtimes/<rid>/native nesting is never found there
+         (NATIVE_DLL_SEARCH_DIRECTORIES is empty and BaseDirectory is the exe folder). -->
     <None Include="$(BubiBoyNativeRuntimeLibrary)"
-          Link="runtimes\$(BubiBoyNativeRid)\native\$(BubiBoyNativeLibraryName)"
+          Link="$(BubiBoyNativeLibraryName)"
           CopyToOutputDirectory="PreserveNewest"
           CopyToPublishDirectory="PreserveNewest"
           Condition="'$(BubiBoyBuildNativeMiniaudio)' == 'true' and '$(BubiBoyCanBuildNativeMiniaudio)' == 'true' and '$(BubiBoyNativeLibraryName)' != ''" />
