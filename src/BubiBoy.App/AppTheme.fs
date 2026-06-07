@@ -67,7 +67,7 @@ module AppTheme =
                   SecondaryText, "#425166"
                   MutedText, "#667386"
                   CellBackground, "#ECEEF2"
-                  ActiveCellBackground, "#EEF6FF"
+                  ActiveCellBackground, "#9E3364"
                   StatusBackground, "#F8F9FB"
                   StatusBorder, "#C8CED8"
                   SliderTrack, "#CBD2DC" ]
@@ -82,7 +82,7 @@ module AppTheme =
                   SecondaryText, "#C3CAD4"
                   MutedText, "#98A2B0"
                   CellBackground, "#30353E"
-                  ActiveCellBackground, "#4A2A3B"
+                  ActiveCellBackground, "#9E3364"
                   StatusBackground, "#202329"
                   StatusBorder, "#3A3F48"
                   SliderTrack, "#4B515C" ]
