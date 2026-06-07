@@ -3,6 +3,7 @@ namespace BubiBoy.App
 open Avalonia
 open Avalonia.Controls
 open Avalonia.Controls.ApplicationLifetimes
+open Avalonia.Media
 open Avalonia.Styling
 open Avalonia.Themes.Fluent
 
@@ -12,7 +13,12 @@ type App() =
     override this.Initialize() =
         this.Name <- "BubiBoy"
         this.RequestedThemeVariant <- ThemeVariant.Light
-        this.Styles.Add(FluentTheme())
+
+        let fluentTheme = FluentTheme()
+        let lightPalette = ColorPaletteResources()
+        lightPalette.Accent <- Color.Parse("#9E3364")
+        fluentTheme.Palettes.Add(ThemeVariant.Light, lightPalette)
+        this.Styles.Add(fluentTheme)
 
         let appMenu = NativeMenu()
         let aboutItem = NativeMenuItem("About BubiBoy...")

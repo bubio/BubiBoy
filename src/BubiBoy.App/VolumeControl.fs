@@ -73,7 +73,7 @@ module VolumeControl =
         let fill =
             Border(
                 Height = trackHeight,
-                Background = SolidColorBrush(Color.Parse("#178BFF")),
+                Background = SolidColorBrush(Color.Parse("#9E3364")),
                 CornerRadius = CornerRadius(trackHeight / 2.0)
             )
 
@@ -81,7 +81,7 @@ module VolumeControl =
             Ellipse(
                 Width = thumbSize,
                 Height = thumbSize,
-                Fill = SolidColorBrush(Color.Parse("#178BFF"))
+                Fill = SolidColorBrush(Color.Parse("#9E3364"))
             )
 
         let trackTop = (sliderHeight - trackHeight) / 2.0
