@@ -28,10 +28,10 @@ module VolumeControl =
                     Geometry.Parse(
                         "M2,8 L6,8 L11,3 L11,21 L6,16 L2,16 Z M14,8 C15.4,9.3 16.2,10.7 16.2,12 C16.2,13.3 15.4,14.7 14,16 L15.5,17.6 C17.4,15.8 18.5,14 18.5,12 C18.5,10 17.4,8.2 15.5,6.4 Z"
                     ),
-                Fill = SolidColorBrush(Color.Parse("#5F6B7A")),
                 Stretch = Stretch.Uniform,
                 VerticalAlignment = VerticalAlignment.Center
             )
+        AppTheme.bindBrush volumeIcon Shape.FillProperty AppTheme.SecondaryText
 
         ToolTip.SetTip(volumeIcon, "Volume")
 
@@ -66,9 +66,9 @@ module VolumeControl =
             Border(
                 Width = trackWidth,
                 Height = trackHeight,
-                Background = SolidColorBrush(Color.Parse("#CBD2DC")),
                 CornerRadius = CornerRadius(trackHeight / 2.0)
             )
+        AppTheme.bindBrush track Border.BackgroundProperty AppTheme.SliderTrack
 
         let fill =
             Border(

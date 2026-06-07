@@ -12,13 +12,17 @@ type App() =
 
     override this.Initialize() =
         this.Name <- "BubiBoy"
-        this.RequestedThemeVariant <- ThemeVariant.Light
+        this.RequestedThemeVariant <- ThemeVariant.Default
 
         let fluentTheme = FluentTheme()
         let lightPalette = ColorPaletteResources()
         lightPalette.Accent <- Color.Parse("#9E3364")
+        let darkPalette = ColorPaletteResources()
+        darkPalette.Accent <- Color.Parse("#9E3364")
         fluentTheme.Palettes.Add(ThemeVariant.Light, lightPalette)
+        fluentTheme.Palettes.Add(ThemeVariant.Dark, darkPalette)
         this.Styles.Add(fluentTheme)
+        this.Resources <- AppTheme.createResources ()
 
         let appMenu = NativeMenu()
         let aboutItem = NativeMenuItem("About BubiBoy...")

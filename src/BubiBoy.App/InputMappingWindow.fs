@@ -36,10 +36,10 @@ type InputMappingWindow(initialKeyboardMapping: Map<string, string>, initialCont
         TextBlock(
             Text = "Select a keyboard or controller cell, then press an input.",
             FontSize = 12.0,
-            Foreground = SolidColorBrush(Color.Parse("#526173")),
             TextWrapping = TextWrapping.Wrap,
             MinHeight = 20.0
         )
+    do AppTheme.bindBrush statusText TextBlock.ForegroundProperty AppTheme.SecondaryText
 
     let keyFor button =
         InputMapping.keyForButton keyboardMapping button
@@ -54,9 +54,6 @@ type InputMappingWindow(initialKeyboardMapping: Map<string, string>, initialCont
     let duplicateControlOwner control targetButton =
         InputMapping.allJoypadButtons
         |> List.tryFind (fun button -> button <> targetButton && controlFor button = control)
-
-    let activeBrush = SolidColorBrush(Color.Parse("#EEF6FF"))
-    let idleBrush = SolidColorBrush(Color.Parse("#ECEEF2"))
 
     let refreshRows () =
         for button in InputMapping.allJoypadButtons do
@@ -73,15 +70,18 @@ type InputMappingWindow(initialKeyboardMapping: Map<string, string>, initialCont
                 | Some(Controller target) when target = button -> "Press control..."
                 | _ -> controlFor button |> InputMapping.controllerControlDisplayName
 
-            keyboardCells[button].Background <-
+            let keyboardBackground =
                 match captureTarget with
-                | Some(Keyboard target) when target = button -> activeBrush
-                | _ -> idleBrush
+                | Some(Keyboard target) when target = button -> AppTheme.ActiveCellBackground
+                | _ -> AppTheme.CellBackground
 
-            controllerCells[button].Background <-
+            let controllerBackground =
                 match captureTarget with
-                | Some(Controller target) when target = button -> activeBrush
-                | _ -> idleBrush
+                | Some(Controller target) when target = button -> AppTheme.ActiveCellBackground
+                | _ -> AppTheme.CellBackground
+
+            AppTheme.bindBrush keyboardCells[button] Border.BackgroundProperty keyboardBackground
+            AppTheme.bindBrush controllerCells[button] Border.BackgroundProperty controllerBackground
 
     let stopControllerCapture () =
         controllerCaptureTimer.Stop()
@@ -131,7 +131,7 @@ type InputMappingWindow(initialKeyboardMapping: Map<string, string>, initialCont
         this.MinWidth <- 620.0
         this.MinHeight <- 500.0
         this.CanResize <- false
-        this.Background <- SolidColorBrush(Color.Parse("#F4F5F7"))
+        AppTheme.bindBrush this Window.BackgroundProperty AppTheme.WindowBackground
         this.FontFamily <- AppFonts.ui
         this.Focusable <- true
 
@@ -147,18 +147,18 @@ type InputMappingWindow(initialKeyboardMapping: Map<string, string>, initialCont
             TextBlock(
                 Text = "Input Mapping",
                 FontSize = 20.0,
-                FontWeight = FontWeight.SemiBold,
-                Foreground = SolidColorBrush(Color.Parse("#17202B"))
+                FontWeight = FontWeight.SemiBold
             )
+        AppTheme.bindBrush title TextBlock.ForegroundProperty AppTheme.PrimaryText
 
         let list =
             Border(
-                Background = SolidColorBrush(Color.Parse("#FFFFFF")),
-                BorderBrush = SolidColorBrush(Color.Parse("#D6DCE5")),
                 BorderThickness = Thickness(1.0),
                 CornerRadius = CornerRadius(8.0),
                 ClipToBounds = true
             )
+        AppTheme.bindBrush list Border.BackgroundProperty AppTheme.SurfaceBackground
+        AppTheme.bindBrush list Border.BorderBrushProperty AppTheme.SurfaceBorder
 
         let rows =
             StackPanel(Spacing = 0.0)
@@ -166,9 +166,9 @@ type InputMappingWindow(initialKeyboardMapping: Map<string, string>, initialCont
         let header =
             Grid(
                 ColumnDefinitions = ColumnDefinitions("*,122,170"),
-                Height = 32.0,
-                Background = SolidColorBrush(Color.Parse("#F7F9FC"))
+                Height = 32.0
             )
+        AppTheme.bindBrush header Panel.BackgroundProperty AppTheme.HeaderBackground
 
         let addHeader column text =
             let label =
@@ -176,10 +176,10 @@ type InputMappingWindow(initialKeyboardMapping: Map<string, string>, initialCont
                     Text = text,
                     FontSize = 12.0,
                     FontWeight = FontWeight.SemiBold,
-                    Foreground = SolidColorBrush(Color.Parse("#526173")),
                     VerticalAlignment = VerticalAlignment.Center,
                     Margin = Thickness(12.0, 0.0)
                 )
+            AppTheme.bindBrush label TextBlock.ForegroundProperty AppTheme.SecondaryText
 
             Grid.SetColumn(label, column)
             header.Children.Add label |> ignore
@@ -201,20 +201,20 @@ type InputMappingWindow(initialKeyboardMapping: Map<string, string>, initialCont
                 TextBlock(
                     Text = InputMapping.buttonDisplayName button,
                     FontSize = 13.0,
-                    Foreground = SolidColorBrush(Color.Parse("#1F2933")),
                     VerticalAlignment = VerticalAlignment.Center,
                     Margin = Thickness(12.0, 0.0)
                 )
+            AppTheme.bindBrush buttonLabel TextBlock.ForegroundProperty AppTheme.PrimaryText
 
             let createCell width =
                 let label =
                     TextBlock(
                         FontSize = 13.0,
-                        Foreground = SolidColorBrush(Color.Parse("#222222")),
                         HorizontalAlignment = HorizontalAlignment.Center,
                         VerticalAlignment = VerticalAlignment.Center,
                         TextTrimming = TextTrimming.CharacterEllipsis
                     )
+                AppTheme.bindBrush label TextBlock.ForegroundProperty AppTheme.PrimaryText
 
                 let cell =
                     Border(
@@ -222,13 +222,13 @@ type InputMappingWindow(initialKeyboardMapping: Map<string, string>, initialCont
                         Width = width,
                         Height = 26.0,
                         Padding = Thickness(10.0, 0.0),
-                        Background = idleBrush,
                         CornerRadius = CornerRadius(6.0),
                         HorizontalAlignment = HorizontalAlignment.Right,
                         VerticalAlignment = VerticalAlignment.Center,
                         Margin = Thickness(8.0, 0.0),
                         Cursor = new Cursor(StandardCursorType.Hand)
                     )
+                AppTheme.bindBrush cell Border.BackgroundProperty AppTheme.CellBackground
 
                 cell, label
 
@@ -267,14 +267,14 @@ type InputMappingWindow(initialKeyboardMapping: Map<string, string>, initialCont
             let row =
                 Border(
                     Child = rowGrid,
-                    Background = SolidColorBrush(Color.Parse("#FFFFFF")),
-                    BorderBrush = SolidColorBrush(Color.Parse("#E2E6EC")),
                     BorderThickness =
                         if index = InputMapping.allJoypadButtons.Length - 1 then
                             Thickness(0.0)
                         else
                             Thickness(0.0, 0.0, 0.0, 1.0)
                 )
+            AppTheme.bindBrush row Border.BackgroundProperty AppTheme.SurfaceBackground
+            AppTheme.bindBrush row Border.BorderBrushProperty AppTheme.SurfaceBorder
 
             keyboardCells.Add(button, keyboardCell)
             controllerCells.Add(button, controllerCell)

@@ -26,25 +26,25 @@ type AboutWindow(version: string) as this =
                 Text = "BubiBoy",
                 FontSize = 22.0,
                 FontWeight = FontWeight.SemiBold,
-                Foreground = SolidColorBrush(Color.Parse("#17202B")),
                 HorizontalAlignment = HorizontalAlignment.Center
             )
+        AppTheme.bindBrush title TextBlock.ForegroundProperty AppTheme.PrimaryText
 
         let description =
             TextBlock(
                 Text = "Game Boy / Game Boy Color emulator",
                 FontSize = 13.0,
-                Foreground = SolidColorBrush(Color.Parse("#425166")),
                 HorizontalAlignment = HorizontalAlignment.Center
             )
+        AppTheme.bindBrush description TextBlock.ForegroundProperty AppTheme.SecondaryText
 
         let versionText =
             TextBlock(
                 Text = $"Version {version}",
                 FontSize = 12.0,
-                Foreground = SolidColorBrush(Color.Parse("#667386")),
                 HorizontalAlignment = HorizontalAlignment.Center
             )
+        AppTheme.bindBrush versionText TextBlock.ForegroundProperty AppTheme.MutedText
 
         let closeButton =
             Button(

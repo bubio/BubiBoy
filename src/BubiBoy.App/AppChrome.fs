@@ -58,12 +58,12 @@ module AppChrome =
             Border(
                 Height = StatusBarHeight,
                 MinHeight = StatusBarHeight,
-                Background = SolidColorBrush(Color.Parse("#F8F9FB")),
-                BorderBrush = SolidColorBrush(Color.Parse("#C8CED8")),
                 BorderThickness = Thickness(0.0, 1.0, 0.0, 0.0),
                 Padding = Thickness(6.0, 0.0, 16.0, 0.0),
                 IsVisible = not isFloating
             )
+        AppTheme.bindBrush statusBar Border.BackgroundProperty AppTheme.StatusBackground
+        AppTheme.bindBrush statusBar Border.BorderBrushProperty AppTheme.StatusBorder
 
         let statusGrid =
             Grid(

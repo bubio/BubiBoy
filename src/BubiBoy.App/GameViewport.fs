@@ -17,7 +17,6 @@ module GameViewport =
           ApplyBackground: WindowState -> unit }
 
     let create (owner: Window) =
-        let normalBackground = SolidColorBrush(Color.Parse("#F4F5F7")) :> IBrush
         let fullscreenBackground = Brushes.Black :> IBrush
 
         let framebuffer =
@@ -46,7 +45,8 @@ module GameViewport =
 
         framebuffer.Child <- framebufferImage
 
-        let host = Grid(Background = normalBackground)
+        let host = Grid()
+        AppTheme.bindBrush host Panel.BackgroundProperty AppTheme.WindowBackground
 
         host.PointerPressed.Add(fun args ->
             let pointer = args.GetCurrentPoint(host)
@@ -60,11 +60,10 @@ module GameViewport =
                 args.Handled <- true)
 
         let applyBackground windowState =
-            host.Background <-
-                if windowState = WindowState.FullScreen then
-                    fullscreenBackground
-                else
-                    normalBackground
+            if windowState = WindowState.FullScreen then
+                host.Background <- fullscreenBackground
+            else
+                AppTheme.bindBrush host Panel.BackgroundProperty AppTheme.WindowBackground
 
         let applyScale scale windowState =
             let videoWidth = float Hardware.ScreenWidth * float scale

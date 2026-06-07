@@ -33,6 +33,7 @@
 
   <ItemGroup>
     <Compile Include="AppFonts.fs" />
+    <Compile Include="AppTheme.fs" />
     <Compile Include="AboutWindow.fs" />
     <Compile Include="PerfTrace.fs" />
     <Compile Include="DisplayHelpers.fs" />

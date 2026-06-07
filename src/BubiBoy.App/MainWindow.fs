@@ -22,7 +22,7 @@ type MainWindow() as this =
         this.MinWidth <- float Hardware.ScreenWidth
         this.MinHeight <- float Hardware.ScreenHeight
         this.CanResize <- false
-        this.Background <- SolidColorBrush(Color.Parse("#F4F5F7"))
+        AppTheme.bindBrush this Window.BackgroundProperty AppTheme.WindowBackground
         this.FontFamily <- AppFonts.ui
         this.Focusable <- true
 
