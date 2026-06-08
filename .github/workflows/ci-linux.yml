@@ -23,7 +23,16 @@ on:
       - "docs/**"
       - ".github/workflows/ci-macos.yml"
       - ".github/workflows/ci-windows.yml"
+  release:
+    types: [published]
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
 
 jobs:
   build-test-publish:
@@ -42,10 +51,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.107
 
@@ -124,8 +133,18 @@ jobs:
           ARCH=${{ matrix.appimage_arch }} ./appimagetool --appimage-extract-and-run "${appdir}" "artifacts/BubiBoy-${{ matrix.rid }}.AppImage"
 
       - name: Upload app artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: BubiBoy-${{ matrix.rid }}
           path: artifacts/BubiBoy-${{ matrix.rid }}.AppImage
           if-no-files-found: error
+
+      - name: Upload to release
+        if: ${{ github.event_name == 'release' && !env.ACT }}
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: artifacts/BubiBoy-${{ matrix.rid }}.AppImage
+          asset_name: BubiBoy-${{ matrix.rid }}.AppImage
+          overwrite: true
+          tag: ${{ github.ref_name }}

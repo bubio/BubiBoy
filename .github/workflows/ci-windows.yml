@@ -23,7 +23,16 @@ on:
       - "docs/**"
       - ".github/workflows/ci-linux.yml"
       - ".github/workflows/ci-macos.yml"
+  release:
+    types: [published]
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
 
 jobs:
   build-test-publish:
@@ -40,10 +49,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.107
 
@@ -91,8 +100,26 @@ jobs:
           cp src/BubiBoy.App/bin/Release/net10.0/${{ matrix.rid }}/publish/BubiBoy.exe "${artifact_directory}/"
 
       - name: Upload app artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: BubiBoy-${{ matrix.rid }}
           path: artifacts/BubiBoy-${{ matrix.rid }}
           if-no-files-found: error
+
+      - name: Package app for release
+        if: ${{ github.event_name == 'release' && !env.ACT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cp "artifacts/BubiBoy-${{ matrix.rid }}/BubiBoy.exe" "BubiBoy-${{ matrix.rid }}.exe"
+
+      - name: Upload to release
+        if: ${{ github.event_name == 'release' && !env.ACT }}
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: BubiBoy-${{ matrix.rid }}.exe
+          asset_name: BubiBoy-${{ matrix.rid }}.exe
+          overwrite: true
+          tag: ${{ github.ref_name }}
