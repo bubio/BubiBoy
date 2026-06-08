@@ -96,12 +96,20 @@ type WindowLayoutController
         applyScale true
 
     /// Refreshes viewport sizing after an external window-state change.
-    member _.HandleWindowStateChanged() = applyScale false
+    member _.HandleWindowStateChanged() =
+        let isFullScreen = owner.WindowState = WindowState.FullScreen
+
+        if not isFullScreen then
+            owner.CanResize <- false
+
+        applyScale (owner.WindowState = WindowState.Normal)
 
     /// Toggles native fullscreen state.
     member _.ToggleFullScreen() =
-        owner.WindowState <-
-            if owner.WindowState = WindowState.FullScreen then
-                WindowState.Normal
-            else
-                WindowState.FullScreen
+        if owner.WindowState = WindowState.FullScreen then
+            owner.CanResize <- false
+            owner.WindowState <- WindowState.Normal
+        else
+            // CanResize must be true on Linux for the WM to honor the fullscreen request.
+            owner.CanResize <- true
+            owner.WindowState <- WindowState.FullScreen
