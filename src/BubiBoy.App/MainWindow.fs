@@ -216,6 +216,36 @@ type MainWindow(?startupRomPath: string) as this =
             if args.Key = Key.P && args.KeyModifiers = platformModifier then
                 executeCommand viewModel.RunPauseCommand
                 args.Handled <- true
+            elif not isMacOS && args.Key = Key.O && args.KeyModifiers = platformModifier then
+                executeCommand viewModel.OpenRomCommand
+                args.Handled <- true
+            elif not isMacOS && args.Key = Key.R && args.KeyModifiers = platformModifier then
+                executeCommand viewModel.ResetCommand
+                args.Handled <- true
+            elif not isMacOS && args.Key = Key.S && args.KeyModifiers = platformModifier then
+                sessionController.SaveState()
+                args.Handled <- true
+            elif not isMacOS && args.Key = Key.L && args.KeyModifiers = platformModifier then
+                sessionController.LoadState()
+                args.Handled <- true
+            elif not isMacOS && args.Key = Key.F && args.KeyModifiers = platformModifier then
+                toggleFullScreen ()
+                args.Handled <- true
+            elif not isMacOS && args.Key = Key.F && args.KeyModifiers = (platformModifier ||| KeyModifiers.Shift) then
+                setFloating (not layoutController.IsFloating)
+                args.Handled <- true
+            elif not isMacOS && args.Key = Key.D1 && args.KeyModifiers = platformModifier then
+                setScale 1
+                args.Handled <- true
+            elif not isMacOS && args.Key = Key.D2 && args.KeyModifiers = platformModifier then
+                setScale 2
+                args.Handled <- true
+            elif not isMacOS && args.Key = Key.D4 && args.KeyModifiers = platformModifier then
+                setScale 4
+                args.Handled <- true
+            elif not isMacOS && args.Key = Key.D8 && args.KeyModifiers = platformModifier then
+                setScale 8
+                args.Handled <- true
             elif inputHost.UpdateKeyboardKey(args.Key, true) then
                 args.Handled <- true)
 
