@@ -63,18 +63,22 @@ module RomWorkflow =
               ToastMessage = None }
 
     let reset (rom: RomFile.LoadedRom) =
-        let sessionResult = RomSession.createForRom rom
+        let creationResult = RomSession.createForRom rom
+        let sessionResult = creationResult |> Result.map (fun creation -> creation.Session)
         let session = sessionResult |> Result.toOption
 
         { SessionResult = sessionResult
           Session = session
           ToastMessage =
-            match sessionResult with
-            | Ok _ -> $"Reset {romFileName rom}"
+            match creationResult with
+            | Ok creation ->
+                match creation.BootRomWarning with
+                | Some warning -> $"Reset {romFileName rom}. {warning}"
+                | None -> $"Reset {romFileName rom}"
             | Error message -> $"Could not reset ROM: {UserMessage.formatRomStartError message}"
           DebugDetails =
-            match sessionResult with
-            | Ok _ -> "Reset complete."
+            match creationResult with
+            | Ok creation -> $"Reset complete.\n{creation.BootRomStatus}"
             | Error message -> UserMessage.formatRomStartError message }
 
     let load (path: string) (lastSaveStatus: string option) =
@@ -84,7 +88,8 @@ module RomWorkflow =
             match RomFile.load path with
             | Ok loaded ->
                 let header = loaded.Header
-                let sessionResult = RomSession.createForRom loaded
+                let creationResult = RomSession.createForRom loaded
+                let sessionResult = creationResult |> Result.map (fun creation -> creation.Session)
                 let session = sessionResult |> Result.toOption
 
                 Loaded
@@ -92,14 +97,19 @@ module RomWorkflow =
                       SessionResult = sessionResult
                       Session = session
                       ToastMessage =
-                        match sessionResult, lastSaveStatus with
-                        | Ok _, Some saveMessage -> $"Loaded {romFileName loaded}  {saveMessage}"
-                        | Ok _, None -> $"Loaded {romFileName loaded}"
+                        match creationResult, lastSaveStatus with
+                        | Ok creation, saveStatus ->
+                            let messages =
+                                [ yield $"Loaded {romFileName loaded}"
+                                  yield! creation.BootRomWarning |> Option.toList
+                                  yield! saveStatus |> Option.toList ]
+
+                            String.concat "  " messages
                         | Error message, _ -> $"Could not start ROM: {UserMessage.formatRomStartError message}"
                       RomDetails = formatHeaderDetails header
                       DebugDetails =
-                        match sessionResult with
-                        | Ok _ -> "Ready to run frames."
+                        match creationResult with
+                        | Ok creation -> $"Ready to run frames.\n{creation.BootRomStatus}"
                         | Error message -> UserMessage.formatRomStartError message }
             | Error message ->
                 let displayMessage = UserMessage.formatRomLoadError message

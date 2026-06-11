@@ -48,6 +48,28 @@ let ``createSession starts CGB cartridges in CGB post boot state`` () =
     Assert.Equal(0x80uy, session.Cpu.Registers.F)
 
 [<Fact>]
+let ``createSessionWithDmgBootRom starts from DMG power on state`` () =
+    let rom = makeRomWithProgram [| 0x00uy |]
+    let bootRom = Array.zeroCreate<byte> 256
+
+    match Emulator.createSessionWithDmgBootRom bootRom rom with
+    | Error message -> Assert.Fail message
+    | Ok session ->
+        Assert.Equal(Hardware.Dmg, Bus.mode session.Bus)
+        Assert.Equal(Cpu.powerOnState, session.Cpu)
+        Assert.True(Bus.isBootRomEnabled session.Bus)
+        Assert.Equal(0uy, Bus.readByte 0xFF40us session.Bus)
+
+[<Fact>]
+let ``createSession retains post boot compatibility`` () =
+    let session = createSession [| 0x00uy |]
+
+    Assert.Equal(0x0100us, session.Cpu.Registers.PC)
+    Assert.Equal(0x01uy, session.Cpu.Registers.A)
+    Assert.False(Bus.isBootRomEnabled session.Bus)
+    Assert.Equal(0x91uy, Bus.readByte 0xFF40us session.Bus)
+
+[<Fact>]
 let ``runFrame returns scanline framebuffer captured during the frame`` () =
     let session = createSession [| 0x00uy |]
 

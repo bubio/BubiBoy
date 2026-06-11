@@ -31,12 +31,36 @@ let private encodeSession session =
     session |> SaveState.capture |> SaveState.encode
 
 [<Fact>]
-let ``version 3 wire format remains stable`` () =
+let ``version 4 wire format remains stable`` () =
     let bytes = makeRom "S" Array.empty |> createSession |> encodeSession
     let hash = SHA256.HashData bytes |> Convert.ToHexString
 
-    Assert.Equal(142_175, bytes.Length)
-    Assert.Equal("52E3AB123133B3CAE36396C45D00FA05AF668FD21E176F165D60E52BCA1F7E17", hash)
+    Assert.Equal(142_177, bytes.Length)
+    Assert.Equal("1366D44EE4F3D8C74850B8F09C9C4BBC27EC3FDCE096A6401F7EAD4439587662", hash)
+
+[<Fact>]
+let ``version 3 post boot wire format remains readable`` () =
+    let session = makeRom "S" Array.empty |> createSession
+    let version4 = encodeSession session
+    let bootRomMetadataOffset = 57
+
+    let version3 =
+        Array.concat
+            [ version4[.. bootRomMetadataOffset - 1]
+              version4[bootRomMetadataOffset + 2 ..] ]
+
+    BitConverter.GetBytes(3).CopyTo(version3, 9)
+
+    Assert.Equal(142_175, version3.Length)
+
+    Assert.Equal(
+        "52E3AB123133B3CAE36396C45D00FA05AF668FD21E176F165D60E52BCA1F7E17",
+        SHA256.HashData version3 |> Convert.ToHexString
+    )
+
+    match SaveState.restoreBytes version3 session with
+    | Error message -> Assert.Fail message
+    | Ok restored -> Assert.Equal(session.Cpu, restored.Cpu)
 
 [<Fact>]
 let ``save state round trips session and can continue deterministically`` () =
@@ -113,3 +137,72 @@ let ``save state restore rejects bus array size mismatch`` () =
     match SaveState.restore { snapshot with Bus = invalidBus } session with
     | Ok _ -> failwith "Expected VRAM size mismatch."
     | Error message -> Assert.Contains("VRAM size mismatch", message)
+
+[<Fact>]
+let ``save state restores an enabled boot ROM with matching identity`` () =
+    let rom = makeRom "BOOT" [| 0x00uy |]
+    let bootRom = Array.init 256 byte
+
+    let createBootSession bytes =
+        match Emulator.createSessionWithDmgBootRom bytes rom with
+        | Ok session -> session
+        | Error message -> failwith message
+
+    let session =
+        createBootSession bootRom |> Emulator.run 1 |> (fun result -> result.Session)
+
+    let encoded = encodeSession session
+
+    match SaveState.restoreBytes encoded (createBootSession bootRom) with
+    | Error message -> Assert.Fail message
+    | Ok restored ->
+        Assert.True(Bus.isBootRomEnabled restored.Bus)
+        Assert.Equal(session.Cpu, restored.Cpu)
+
+[<Fact>]
+let ``save state rejects an enabled boot ROM with a different identity`` () =
+    let rom = makeRom "BOOT-ID" [| 0x00uy |]
+
+    let createBootSession bytes =
+        match Emulator.createSessionWithDmgBootRom bytes rom with
+        | Ok session -> session
+        | Error message -> failwith message
+
+    let encoded = createBootSession (Array.create 256 0x00uy) |> encodeSession
+
+    match SaveState.restoreBytes encoded (createBootSession (Array.create 256 0x01uy)) with
+    | Ok _ -> Assert.Fail "Expected boot ROM identity mismatch."
+    | Error message -> Assert.Contains("Boot ROM identity mismatch", message)
+
+[<Fact>]
+let ``save state rejects an enabled boot ROM when no BIOS is available`` () =
+    let rom = makeRom "BOOT-NONE" [| 0x00uy |]
+
+    let bootSession =
+        match Emulator.createSessionWithDmgBootRom (Array.zeroCreate<byte> 256) rom with
+        | Ok session -> session
+        | Error message -> failwith message
+
+    match SaveState.restoreBytes (encodeSession bootSession) (createSession rom) with
+    | Ok _ -> Assert.Fail "Expected unavailable boot ROM error."
+    | Error message -> Assert.Contains("Boot ROM required by save state is unavailable", message)
+
+[<Fact>]
+let ``save state restores a disabled boot ROM without the BIOS file`` () =
+    let rom = makeRom "BOOT-OFF" [| 0x00uy |]
+    let bootRom = Array.zeroCreate<byte> 256
+
+    let bootSession =
+        match Emulator.createSessionWithDmgBootRom bootRom rom with
+        | Ok session -> session
+        | Error message -> failwith message
+
+    let disabled =
+        { bootSession with
+            Bus = Bus.writeByte 0xFF50us 1uy bootSession.Bus }
+
+    let encoded = encodeSession disabled
+
+    match SaveState.restoreBytes encoded (createSession rom) with
+    | Error message -> Assert.Fail message
+    | Ok restored -> Assert.False(Bus.isBootRomEnabled restored.Bus)

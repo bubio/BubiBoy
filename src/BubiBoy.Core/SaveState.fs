@@ -8,7 +8,7 @@ open System.Text
 module SaveState =
     /// The current binary save-state format version.
     [<Literal>]
-    let CurrentVersion = 3
+    let CurrentVersion = 4
 
     /// Contains all session state stored in a save-state payload.
     type Snapshot =
@@ -125,7 +125,7 @@ module SaveState =
             else
                 let version = reader.ReadInt()
 
-                if version <> 2 && version <> CurrentVersion then
+                if version <> 2 && version <> 3 && version <> CurrentVersion then
                     Error $"Unsupported save state version: {version}."
                 else
                     Ok version
@@ -329,6 +329,14 @@ module SaveState =
         let writeBusSnapshot (snapshot: Bus.Snapshot) =
             writeCartridgeSnapshot snapshot.CartridgeSnapshot
             writeGameBoyMode snapshot.ModeSnapshot
+            writeBool snapshot.BootRomEnabledSnapshot
+
+            match snapshot.BootRomSha256Snapshot with
+            | Some sha256 ->
+                writeBool true
+                writeString sha256
+            | None -> writeBool false
+
             writeBytes snapshot.VramSnapshot
             writeBytes snapshot.WramSnapshot
             writeBytes snapshot.OamSnapshot
@@ -619,8 +627,21 @@ module SaveState =
                   SnapshotPendingSamples = { Samples = samples } }
 
             let readBusSnapshot () : Bus.Snapshot =
-                { CartridgeSnapshot = readCartridgeSnapshot ()
-                  ModeSnapshot = readGameBoyMode ()
+                let cartridge = readCartridgeSnapshot ()
+                let mode = readGameBoyMode ()
+
+                let bootRomEnabled, bootRomSha256 =
+                    if version >= 4 then
+                        let enabled = readBool ()
+                        let sha256 = if readBool () then Some(readString ()) else None
+                        enabled, sha256
+                    else
+                        false, None
+
+                { CartridgeSnapshot = cartridge
+                  ModeSnapshot = mode
+                  BootRomEnabledSnapshot = bootRomEnabled
+                  BootRomSha256Snapshot = bootRomSha256
                   VramSnapshot = readBytes ()
                   WramSnapshot = readBytes ()
                   OamSnapshot = readBytes ()

@@ -1,12 +1,21 @@
 namespace BubiBoy.Core
 
+open System
+open System.Security.Cryptography
+
 /// Maps CPU addresses to cartridge and hardware devices and advances shared hardware state.
 module Bus =
+    type private BootRom =
+        { Bytes: byte[]
+          Sha256: string
+          Enabled: bool }
+
     /// Represents the complete mutable-memory and device state visible through the CPU bus.
     type Memory =
         private
             { Cartridge: CartridgeMemory.CartridgeImage
               Mode: Hardware.GameBoyMode
+              BootRom: BootRom option
               Vram: byte[]
               Wram: byte[]
               Oam: byte[]
@@ -32,6 +41,8 @@ module Bus =
     type Snapshot =
         { CartridgeSnapshot: CartridgeMemory.Snapshot
           ModeSnapshot: Hardware.GameBoyMode
+          BootRomEnabledSnapshot: bool
+          BootRomSha256Snapshot: string option
           VramSnapshot: byte[]
           WramSnapshot: byte[]
           OamSnapshot: byte[]
@@ -81,7 +92,7 @@ module Bus =
     [<Literal>]
     let HramSize = 127
 
-    let private initialIo mode =
+    let private postBootIo mode =
         let io = Array.zeroCreate<byte> IoSize
         io[0x00] <- 0xCFuy
         io[0x01] <- 0x00uy
@@ -131,22 +142,24 @@ module Bus =
 
         io
 
+    let private powerOnIo () = Array.zeroCreate<byte> IoSize
+
     let private modeForCartridge cartridge =
         match (CartridgeMemory.header cartridge).CgbSupport with
         | Cartridge.DmgOnly -> Hardware.Dmg
         | Cartridge.CgbEnhanced
         | Cartridge.CgbOnly -> Hardware.Cgb
 
-    /// Creates reset bus state for a loaded cartridge.
-    let create cartridge =
+    let private createMemory cartridge bootRom io =
         let mode = modeForCartridge cartridge
 
         { Cartridge = cartridge
           Mode = mode
+          BootRom = bootRom
           Vram = Array.zeroCreate<byte> VramSize
           Wram = Array.zeroCreate<byte> WramSize
           Oam = Array.zeroCreate<byte> OamSize
-          Io = initialIo mode
+          Io = io mode
           Hram = Array.zeroCreate<byte> HramSize
           VramBank = 0
           WramBank = 1
@@ -164,6 +177,31 @@ module Bus =
           Apu = Apu.initial
           InterruptEnable = 0uy }
 
+    /// Creates reset bus state after the built-in boot sequence has completed.
+    let create cartridge = createMemory cartridge None postBootIo
+
+    /// Creates DMG power-on bus state with a 256-byte boot ROM mapped.
+    let createWithDmgBootRom (bootRom: byte[]) cartridge =
+        if isNull bootRom then
+            Error "DMG boot ROM data is null."
+        elif bootRom.Length <> 256 then
+            Error $"DMG boot ROM size mismatch: expected 256 bytes, got {bootRom.Length} bytes."
+        elif modeForCartridge cartridge <> Hardware.Dmg then
+            Error "DMG boot ROM can only be used with a DMG-only cartridge."
+        else
+            let bytes = Array.copy bootRom
+            let sha256 = SHA256.HashData bytes |> Convert.ToHexString
+
+            Ok(
+                createMemory
+                    cartridge
+                    (Some
+                        { Bytes = bytes
+                          Sha256 = sha256
+                          Enabled = true })
+                    (fun _ -> powerOnIo ())
+            )
+
     module private MemorySnapshot =
         let private validateArray name expected (bytes: byte[]) =
             if isNull bytes then
@@ -176,6 +214,8 @@ module Bus =
         let capture (memory: Memory) : Snapshot =
             { CartridgeSnapshot = CartridgeMemory.snapshot memory.Cartridge
               ModeSnapshot = memory.Mode
+              BootRomEnabledSnapshot = memory.BootRom |> Option.exists (fun bootRom -> bootRom.Enabled)
+              BootRomSha256Snapshot = memory.BootRom |> Option.map (fun bootRom -> bootRom.Sha256)
               VramSnapshot = Array.copy memory.Vram
               WramSnapshot = Array.copy memory.Wram
               OamSnapshot = Array.copy memory.Oam
@@ -205,10 +245,30 @@ module Bus =
             |> Result.bind (fun () -> validateArray "HRAM" HramSize snapshot.HramSnapshot)
             |> Result.bind (fun () -> validateArray "CGB background palette RAM" 64 snapshot.BgPaletteRamSnapshot)
             |> Result.bind (fun () -> validateArray "CGB object palette RAM" 64 snapshot.ObjPaletteRamSnapshot)
+            |> Result.bind (fun () ->
+                if snapshot.BootRomEnabledSnapshot then
+                    match current.BootRom, snapshot.BootRomSha256Snapshot with
+                    | Some bootRom, Some expected when bootRom.Sha256 = expected -> Ok()
+                    | Some bootRom, Some expected ->
+                        Error
+                            $"Boot ROM identity mismatch: save state requires {expected}, current boot ROM is {bootRom.Sha256}."
+                    | None, Some expected -> Error $"Boot ROM required by save state is unavailable: {expected}."
+                    | _, None -> Error "Save state has an enabled boot ROM without an identity."
+                else
+                    Ok())
             |> Result.bind (fun () -> CartridgeMemory.restoreSnapshot snapshot.CartridgeSnapshot current.Cartridge)
             |> Result.map (fun cartridge ->
+                let bootRom =
+                    if snapshot.BootRomEnabledSnapshot then
+                        current.BootRom
+                    else
+                        current.BootRom
+                        |> Option.filter (fun value -> snapshot.BootRomSha256Snapshot = Some value.Sha256)
+                        |> Option.map (fun value -> { value with Enabled = false })
+
                 { Cartridge = cartridge
                   Mode = snapshot.ModeSnapshot
+                  BootRom = bootRom
                   Vram = Array.copy snapshot.VramSnapshot
                   Wram = Array.copy snapshot.WramSnapshot
                   Oam = Array.copy snapshot.OamSnapshot
@@ -250,6 +310,14 @@ module Bus =
 
     /// Returns the active DMG or CGB hardware mode.
     let mode memory = memory.Mode
+
+    /// Returns whether the boot ROM is still mapped into the CPU address space.
+    let isBootRomEnabled memory =
+        memory.BootRom |> Option.exists (fun bootRom -> bootRom.Enabled)
+
+    /// Returns the SHA-256 identity of the attached boot ROM, when present.
+    let bootRomSha256 memory =
+        memory.BootRom |> Option.map (fun bootRom -> bootRom.Sha256)
 
     let internal hardwareCyclesForCpuCycles cycles memory =
         if memory.DoubleSpeed then cycles / 2 else cycles
@@ -423,6 +491,7 @@ module Bus =
         let address = int address
 
         match address with
+        | value when value <= 0x00FF && isBootRomEnabled memory -> memory.BootRom.Value.Bytes[value]
         | value when value <= 0x7FFF -> CartridgeMemory.readByte (uint16 value) memory.Cartridge
         | value when value >= 0x8000 && value <= 0x9FFF ->
             if vramBlocked memory then
@@ -510,6 +579,14 @@ module Bus =
 
             { memory with
                 Lcd = Lcd.resetLine memory.Lcd }
+        | 0xFF50 ->
+            if value = 0uy then
+                memory
+            else
+                memory.Io[0x50] <- value
+
+                { memory with
+                    BootRom = memory.BootRom |> Option.map (fun bootRom -> { bootRom with Enabled = false }) }
         | 0xFF46 ->
             let sourceBase = uint16 value <<< 8
 

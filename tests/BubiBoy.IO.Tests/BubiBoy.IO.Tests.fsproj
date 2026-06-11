@@ -7,6 +7,7 @@
 
   <ItemGroup>
     <Compile Include="AppSettingsTests.fs" />
+    <Compile Include="BootRomFileTests.fs" />
     <Compile Include="RomFileTests.fs" />
     <Compile Include="SaveRamTests.fs" />
     <Compile Include="SaveStateFileTests.fs" />

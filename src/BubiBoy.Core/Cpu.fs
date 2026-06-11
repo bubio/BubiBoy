@@ -61,9 +61,25 @@ module Cpu =
           SP = 0xFFFEus
           PC = 0x0100us }
 
-    /// The initial DMG CPU execution state.
+    /// The initial DMG CPU execution state after the boot ROM has completed.
     let initialState =
         { Registers = initialRegisters
+          Halted = false
+          InterruptsEnabled = false }
+
+    /// The DMG CPU power-on state used when executing a boot ROM.
+    let powerOnState =
+        { Registers =
+            { A = 0uy
+              F = 0uy
+              B = 0uy
+              C = 0uy
+              D = 0uy
+              E = 0uy
+              H = 0uy
+              L = 0uy
+              SP = 0us
+              PC = 0us }
           Halted = false
           InterruptsEnabled = false }
 
