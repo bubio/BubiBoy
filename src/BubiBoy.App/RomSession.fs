@@ -30,11 +30,22 @@ module RomSession =
                       BootRomWarning = Some warning })
         | Cartridge.CgbEnhanced
         | Cartridge.CgbOnly ->
-            Emulator.createSession rom.Bytes
-            |> Result.map (fun session ->
-                { Session = session
-                  BootRomStatus = "CGB boot ROM support is not implemented; using post-boot initialization."
-                  BootRomWarning = None })
+            match BootRomFile.loadCgb () with
+            | Ok bootRom ->
+                Emulator.createSessionWithCgbBootRom bootRom.Bytes rom.Bytes
+                |> Result.map (fun session ->
+                    { Session = session
+                      BootRomStatus = $"CGB boot ROM loaded: {bootRom.Path} ({bootRom.Sha256})"
+                      BootRomWarning = None })
+            | Error message ->
+                Emulator.createSession rom.Bytes
+                |> Result.map (fun session ->
+                    let warning =
+                        $"CGB boot ROM unavailable; using post-boot initialization. Expected: {BootRomFile.cgbPath ()}"
+
+                    { Session = session
+                      BootRomStatus = $"{warning}\n{message}"
+                      BootRomWarning = Some warning })
 
     let createForRom (rom: RomFile.LoadedRom) =
         createSession rom

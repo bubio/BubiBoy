@@ -12,6 +12,12 @@ module BootRomFile =
     [<Literal>]
     let DmgSize = 256
 
+    [<Literal>]
+    let CgbFileName = "cgb_boot.bin"
+
+    [<Literal>]
+    let CgbSize = 2304
+
     type LoadedBootRom =
         { Path: string
           Bytes: byte[]
@@ -36,24 +42,32 @@ module BootRomFile =
     let dmgPath () =
         Path.Combine(dataDirectory (), DmgFileName)
 
-    let loadDmgFromPath path =
+    let cgbPath () =
+        Path.Combine(dataDirectory (), CgbFileName)
+
+    let private loadFromPath label expectedSize path =
         if String.IsNullOrWhiteSpace path then
-            Error "DMG boot ROM path is empty."
+            Error $"{label} boot ROM path is empty."
         elif not (File.Exists path) then
-            Error $"DMG boot ROM does not exist: {path}"
+            Error $"{label} boot ROM does not exist: {path}"
         else
             try
                 let bytes = File.ReadAllBytes path
 
-                if bytes.Length <> DmgSize then
-                    Error $"DMG boot ROM size mismatch: expected {DmgSize} bytes, got {bytes.Length} bytes: {path}"
+                if bytes.Length <> expectedSize then
+                    Error
+                        $"{label} boot ROM size mismatch: expected {expectedSize} bytes, got {bytes.Length} bytes: {path}"
                 else
                     Ok
                         { Path = path
                           Bytes = bytes
                           Sha256 = SHA256.HashData bytes |> Convert.ToHexString }
             with
-            | :? IOException as ex -> Error $"Could not read DMG boot ROM: {ex.Message}"
-            | :? UnauthorizedAccessException as ex -> Error $"Could not read DMG boot ROM: {ex.Message}"
+            | :? IOException as ex -> Error $"Could not read {label} boot ROM: {ex.Message}"
+            | :? UnauthorizedAccessException as ex -> Error $"Could not read {label} boot ROM: {ex.Message}"
 
+    let loadDmgFromPath path = loadFromPath "DMG" DmgSize path
     let loadDmg () = dmgPath () |> loadDmgFromPath
+
+    let loadCgbFromPath path = loadFromPath "CGB" CgbSize path
+    let loadCgb () = cgbPath () |> loadCgbFromPath

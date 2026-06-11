@@ -33,6 +33,21 @@ let private makeBootBus bootRom =
         | Error message -> failwith message
     | Error message -> failwith message
 
+let private makeCgbBootBus bootRom =
+    let rom = makeRom ()
+    rom[0x0100] <- 0x42uy
+    rom[0x0200] <- 0x24uy
+    rom[0x08FF] <- 0x81uy
+    rom[0x0900] <- 0x18uy
+    rom[0x0143] <- 0xC0uy
+
+    match rom |> CartridgeMemory.create with
+    | Ok cartridge ->
+        match Bus.createWithCgbBootRom bootRom cartridge with
+        | Ok bus -> bus
+        | Error message -> failwith message
+    | Error message -> failwith message
+
 [<Fact>]
 let ``readByte delegates ROM area to cartridge`` () =
     let bus = makeBus ()
@@ -50,6 +65,39 @@ let ``DMG boot ROM overlays only the first 256 cartridge bytes`` () =
     Assert.Equal(bootRom[0xFF], Bus.readByte 0x00FFus bus)
     Assert.Equal(0uy, Bus.readByte 0x0100us bus)
     Assert.Equal(0xC3uy, Bus.readByte 0x4000us bus)
+
+[<Fact>]
+let ``CGB boot ROM overlays its two mapped ranges`` () =
+    let bootRom = Array.init 2304 (fun index -> byte (index ^^^ 0x5A))
+    let bus = makeCgbBootBus bootRom
+
+    Assert.True(Bus.isBootRomEnabled bus)
+    Assert.Equal(bootRom[0], Bus.readByte 0x0000us bus)
+    Assert.Equal(bootRom[0xFF], Bus.readByte 0x00FFus bus)
+    Assert.Equal(0x42uy, Bus.readByte 0x0100us bus)
+    Assert.Equal(bootRom[0x200], Bus.readByte 0x0200us bus)
+    Assert.Equal(bootRom[0x8FF], Bus.readByte 0x08FFus bus)
+    Assert.Equal(0x18uy, Bus.readByte 0x0900us bus)
+
+[<Fact>]
+let ``FF50 disables all CGB boot ROM ranges`` () =
+    let bootRom = Array.create 2304 0x99uy
+    let disabled = makeCgbBootBus bootRom |> Bus.writeByte 0xFF50us 1uy
+
+    Assert.False(Bus.isBootRomEnabled disabled)
+    Assert.Equal(0x31uy, Bus.readByte 0x0000us disabled)
+    Assert.Equal(0x24uy, Bus.readByte 0x0200us disabled)
+
+[<Fact>]
+let ``CGB boot ROM rejects a DMG-only cartridge`` () =
+    let cartridge =
+        match makeRom () |> CartridgeMemory.create with
+        | Ok cartridge -> cartridge
+        | Error message -> failwith message
+
+    match Bus.createWithCgbBootRom (Array.zeroCreate<byte> 2304) cartridge with
+    | Ok _ -> Assert.Fail "Expected CGB boot ROM mode error."
+    | Error message -> Assert.Contains("CGB-capable cartridge", message)
 
 [<Fact>]
 let ``FF50 permanently disables the boot ROM after a nonzero write`` () =

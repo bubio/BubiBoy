@@ -5,8 +5,13 @@ open System.Security.Cryptography
 
 /// Maps CPU addresses to cartridge and hardware devices and advances shared hardware state.
 module Bus =
+    type private BootRomKind =
+        | Dmg
+        | Cgb
+
     type private BootRom =
-        { Bytes: byte[]
+        { Kind: BootRomKind
+          Bytes: byte[]
           Sha256: string
           Enabled: bool }
 
@@ -196,7 +201,31 @@ module Bus =
                 createMemory
                     cartridge
                     (Some
-                        { Bytes = bytes
+                        { Kind = Dmg
+                          Bytes = bytes
+                          Sha256 = sha256
+                          Enabled = true })
+                    (fun _ -> powerOnIo ())
+            )
+
+    /// Creates CGB power-on bus state with a 2304-byte boot ROM mapped.
+    let createWithCgbBootRom (bootRom: byte[]) cartridge =
+        if isNull bootRom then
+            Error "CGB boot ROM data is null."
+        elif bootRom.Length <> 2304 then
+            Error $"CGB boot ROM size mismatch: expected 2304 bytes, got {bootRom.Length} bytes."
+        elif modeForCartridge cartridge <> Hardware.Cgb then
+            Error "CGB boot ROM can only be used with a CGB-capable cartridge."
+        else
+            let bytes = Array.copy bootRom
+            let sha256 = SHA256.HashData bytes |> Convert.ToHexString
+
+            Ok(
+                createMemory
+                    cartridge
+                    (Some
+                        { Kind = Cgb
+                          Bytes = bytes
                           Sha256 = sha256
                           Enabled = true })
                     (fun _ -> powerOnIo ())
@@ -486,49 +515,62 @@ module Bus =
                 HdmaRemaining = 0
                 HdmaActive = false }
 
+    let private tryReadBootRom address memory =
+        memory.BootRom
+        |> Option.bind (fun bootRom ->
+            if not bootRom.Enabled then
+                None
+            else
+                match bootRom.Kind with
+                | Dmg when address <= 0x00FF -> Some bootRom.Bytes[address]
+                | Cgb when address <= 0x00FF || (address >= 0x0200 && address <= 0x08FF) -> Some bootRom.Bytes[address]
+                | _ -> None)
+
     /// Reads one byte through the CPU-visible memory map.
     let readByte (address: uint16) memory =
         let address = int address
 
-        match address with
-        | value when value <= 0x00FF && isBootRomEnabled memory -> memory.BootRom.Value.Bytes[value]
-        | value when value <= 0x7FFF -> CartridgeMemory.readByte (uint16 value) memory.Cartridge
-        | value when value >= 0x8000 && value <= 0x9FFF ->
-            if vramBlocked memory then
-                unusableRead
-            else
-                memory.Vram[memory.VramBank * VramBankSize + value - 0x8000]
-        | value when value >= 0xA000 && value <= 0xBFFF -> CartridgeMemory.readByte (uint16 value) memory.Cartridge
-        | value when value >= 0xC000 && value <= 0xDFFF -> memory.Wram[CgbMemory.wramOffset value memory]
-        | value when value >= 0xE000 && value <= 0xFDFF -> memory.Wram[CgbMemory.wramOffset value memory]
-        | value when value >= 0xFE00 && value <= 0xFE9F ->
-            if oamBlocked memory then
-                unusableRead
-            else
-                memory.Oam[value - 0xFE00]
-        | value when value >= 0xFEA0 && value <= 0xFEFF -> unusableRead
-        | 0xFF00 -> Joypad.readP1 memory.Joypad
-        | 0xFF04 -> Timer.div memory.Timer
-        | 0xFF41 -> IoRegisters.lcdStatus memory memory.Lcd
-        | 0xFF44 -> memory.Lcd.Line
-        | 0xFF4D when CgbMemory.isCgb memory ->
-            0x7Euy
-            ||| (if memory.DoubleSpeed then 0x80uy else 0uy)
-            ||| (if memory.SpeedSwitchPrepared then 0x01uy else 0uy)
-        | 0xFF4F when CgbMemory.isCgb memory -> 0xFEuy ||| byte memory.VramBank
-        | 0xFF55 when CgbMemory.isCgb memory ->
-            if memory.HdmaActive then
-                byte (memory.HdmaRemaining - 1)
-            else
-                0xFFuy
-        | 0xFF69 when CgbMemory.isCgb memory -> CgbMemory.paletteRead memory.Io[0x68] memory.BgPaletteRam
-        | 0xFF6B when CgbMemory.isCgb memory -> CgbMemory.paletteRead memory.Io[0x6A] memory.ObjPaletteRam
-        | 0xFF6C when CgbMemory.isCgb memory -> 0xFEuy ||| (memory.Io[0x6C] &&& 0x01uy)
-        | 0xFF70 when CgbMemory.isCgb memory -> 0xF8uy ||| byte memory.WramBank
-        | value when value >= 0xFF00 && value <= 0xFF7F -> memory.Io[value - 0xFF00]
-        | value when value >= 0xFF80 && value <= 0xFFFE -> memory.Hram[value - 0xFF80]
-        | 0xFFFF -> memory.InterruptEnable
-        | _ -> unusableRead
+        match tryReadBootRom address memory with
+        | Some value -> value
+        | None ->
+            match address with
+            | value when value <= 0x7FFF -> CartridgeMemory.readByte (uint16 value) memory.Cartridge
+            | value when value >= 0x8000 && value <= 0x9FFF ->
+                if vramBlocked memory then
+                    unusableRead
+                else
+                    memory.Vram[memory.VramBank * VramBankSize + value - 0x8000]
+            | value when value >= 0xA000 && value <= 0xBFFF -> CartridgeMemory.readByte (uint16 value) memory.Cartridge
+            | value when value >= 0xC000 && value <= 0xDFFF -> memory.Wram[CgbMemory.wramOffset value memory]
+            | value when value >= 0xE000 && value <= 0xFDFF -> memory.Wram[CgbMemory.wramOffset value memory]
+            | value when value >= 0xFE00 && value <= 0xFE9F ->
+                if oamBlocked memory then
+                    unusableRead
+                else
+                    memory.Oam[value - 0xFE00]
+            | value when value >= 0xFEA0 && value <= 0xFEFF -> unusableRead
+            | 0xFF00 -> Joypad.readP1 memory.Joypad
+            | 0xFF04 -> Timer.div memory.Timer
+            | 0xFF41 -> IoRegisters.lcdStatus memory memory.Lcd
+            | 0xFF44 -> memory.Lcd.Line
+            | 0xFF4D when CgbMemory.isCgb memory ->
+                0x7Euy
+                ||| (if memory.DoubleSpeed then 0x80uy else 0uy)
+                ||| (if memory.SpeedSwitchPrepared then 0x01uy else 0uy)
+            | 0xFF4F when CgbMemory.isCgb memory -> 0xFEuy ||| byte memory.VramBank
+            | 0xFF55 when CgbMemory.isCgb memory ->
+                if memory.HdmaActive then
+                    byte (memory.HdmaRemaining - 1)
+                else
+                    0xFFuy
+            | 0xFF69 when CgbMemory.isCgb memory -> CgbMemory.paletteRead memory.Io[0x68] memory.BgPaletteRam
+            | 0xFF6B when CgbMemory.isCgb memory -> CgbMemory.paletteRead memory.Io[0x6A] memory.ObjPaletteRam
+            | 0xFF6C when CgbMemory.isCgb memory -> 0xFEuy ||| (memory.Io[0x6C] &&& 0x01uy)
+            | 0xFF70 when CgbMemory.isCgb memory -> 0xF8uy ||| byte memory.WramBank
+            | value when value >= 0xFF00 && value <= 0xFF7F -> memory.Io[value - 0xFF00]
+            | value when value >= 0xFF80 && value <= 0xFFFE -> memory.Hram[value - 0xFF80]
+            | 0xFFFF -> memory.InterruptEnable
+            | _ -> unusableRead
 
     /// Writes one byte through the CPU-visible memory map.
     let writeByte (address: uint16) (value: byte) memory =

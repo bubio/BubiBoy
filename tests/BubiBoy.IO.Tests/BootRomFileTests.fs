@@ -38,3 +38,34 @@ let ``loadDmgFromPath rejects an invalid size`` () =
     match BootRomFile.loadDmgFromPath path with
     | Ok _ -> Assert.Fail "Expected boot ROM size error."
     | Error message -> Assert.Contains("expected 256 bytes, got 255 bytes", message)
+
+[<Fact>]
+let ``loadCgbFromPath loads a 2304 byte boot ROM`` () =
+    let path = tempPath BootRomFile.CgbFileName
+    Directory.CreateDirectory(Path.GetDirectoryName path) |> ignore
+    File.WriteAllBytes(path, Array.init BootRomFile.CgbSize (fun index -> byte index))
+
+    match BootRomFile.loadCgbFromPath path with
+    | Error message -> Assert.Fail message
+    | Ok bootRom ->
+        Assert.Equal(path, bootRom.Path)
+        Assert.Equal(BootRomFile.CgbSize, bootRom.Bytes.Length)
+        Assert.Equal(64, bootRom.Sha256.Length)
+
+[<Fact>]
+let ``loadCgbFromPath reports a missing boot ROM`` () =
+    let path = tempPath BootRomFile.CgbFileName
+
+    match BootRomFile.loadCgbFromPath path with
+    | Ok _ -> Assert.Fail "Expected missing boot ROM error."
+    | Error message -> Assert.Contains(path, message)
+
+[<Fact>]
+let ``loadCgbFromPath rejects an invalid size`` () =
+    let path = tempPath BootRomFile.CgbFileName
+    Directory.CreateDirectory(Path.GetDirectoryName path) |> ignore
+    File.WriteAllBytes(path, Array.zeroCreate<byte> (BootRomFile.CgbSize - 1))
+
+    match BootRomFile.loadCgbFromPath path with
+    | Ok _ -> Assert.Fail "Expected boot ROM size error."
+    | Error message -> Assert.Contains("expected 2304 bytes, got 2303 bytes", message)

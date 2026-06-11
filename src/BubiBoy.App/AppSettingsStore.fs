@@ -1,5 +1,6 @@
 namespace BubiBoy.App
 
+open System.IO
 open BubiBoy.IO
 
 /// Owns the mutable application settings used by the Avalonia shell.
@@ -57,9 +58,20 @@ module AppSettingsStore =
         let settingsPath = AppSettings.defaultPath ()
 
         let settings, loadError =
-            match AppSettings.loadFromPath settingsPath with
-            | Ok settings -> settings, None
-            | Error message -> AppSettings.defaults, Some message
+            if File.Exists settingsPath then
+                match AppSettings.loadFromPath settingsPath with
+                | Ok settings -> settings, None
+                | Error message -> AppSettings.defaults, Some message
+            else
+                match AppSettings.legacyDefaultPath () with
+                | Some legacyPath when File.Exists legacyPath ->
+                    match AppSettings.loadFromPath legacyPath with
+                    | Error message -> AppSettings.defaults, Some message
+                    | Ok settings ->
+                        match AppSettings.saveToPath settingsPath settings with
+                        | Ok() -> settings, None
+                        | Error message -> settings, Some message
+                | _ -> AppSettings.defaults, None
 
         { Store = AppSettingsStore(settingsPath, settings)
           LoadError = loadError }

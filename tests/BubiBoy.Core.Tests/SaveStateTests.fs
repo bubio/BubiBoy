@@ -206,3 +206,24 @@ let ``save state restores a disabled boot ROM without the BIOS file`` () =
     match SaveState.restoreBytes encoded (createSession rom) with
     | Error message -> Assert.Fail message
     | Ok restored -> Assert.False(Bus.isBootRomEnabled restored.Bus)
+
+[<Fact>]
+let ``save state restores an enabled CGB boot ROM with matching identity`` () =
+    let rom = makeRom "CGB-BOOT" [| 0x00uy |]
+    rom[0x0143] <- 0xC0uy
+    let bootRom = Array.init 2304 (fun index -> byte index)
+
+    let createBootSession bytes =
+        match Emulator.createSessionWithCgbBootRom bytes rom with
+        | Ok session -> session
+        | Error message -> failwith message
+
+    let session =
+        createBootSession bootRom |> Emulator.run 1 |> (fun result -> result.Session)
+
+    match SaveState.restoreBytes (encodeSession session) (createBootSession bootRom) with
+    | Error message -> Assert.Fail message
+    | Ok restored ->
+        Assert.Equal(Hardware.Cgb, Bus.mode restored.Bus)
+        Assert.True(Bus.isBootRomEnabled restored.Bus)
+        Assert.Equal(session.Cpu, restored.Cpu)

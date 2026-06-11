@@ -66,6 +66,19 @@ module Emulator =
                   Steps = 0
                   Cpu = Cpu.powerOnState }))
 
+    /// Creates a CGB emulator session that starts by executing a 2304-byte boot ROM.
+    let createSessionWithCgbBootRom bootRom rom =
+        rom
+        |> CartridgeMemory.create
+        |> Result.bind (fun cartridge ->
+            Bus.createWithCgbBootRom bootRom cartridge
+            |> Result.map (fun bus ->
+                { Bus = bus
+                  Framebuffer = Video.blankFrame ()
+                  TotalCycles = 0L
+                  Steps = 0
+                  Cpu = Cpu.powerOnState }))
+
     let private lcdEnabled (bus: Bus.Memory) =
         Bus.readByte 0xFF40us bus &&& 0x80uy <> 0uy
 

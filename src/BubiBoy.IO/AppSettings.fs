@@ -3,6 +3,7 @@ namespace BubiBoy.IO
 open System
 open System.Collections.Generic
 open System.IO
+open System.Runtime.InteropServices
 open System.Text.Json
 
 module AppSettings =
@@ -203,22 +204,41 @@ module AppSettings =
           KeyboardMapping = normalizeKeyboardMapping settings.KeyboardMapping
           ControllerMapping = normalizeControllerMapping settings.ControllerMapping }
 
-    let defaultPath () =
-        let root =
-            match Environment.GetEnvironmentVariable("BUBIBOY_SETTINGS_PATH") with
-            | path when not (String.IsNullOrWhiteSpace path) -> path
-            | _ ->
-                let appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)
-
-                if String.IsNullOrWhiteSpace appData then
-                    Path.Combine(Path.GetTempPath(), "BubiBoy")
-                else
-                    Path.Combine(appData, "BubiBoy")
-
+    let private settingsPath (root: string) =
         if Path.HasExtension root then
             root
         else
             Path.Combine(root, "settings.json")
+
+    let private appDirectory specialFolder =
+        let root = Environment.GetFolderPath specialFolder
+
+        if String.IsNullOrWhiteSpace root then
+            Path.Combine(Path.GetTempPath(), "BubiBoy")
+        else
+            Path.Combine(root, "BubiBoy")
+
+    let defaultPath () =
+        match Environment.GetEnvironmentVariable("BUBIBOY_SETTINGS_PATH") with
+        | path when not (String.IsNullOrWhiteSpace path) -> settingsPath path
+        | _ ->
+            let specialFolder =
+                if RuntimeInformation.IsOSPlatform(OSPlatform.Windows) then
+                    Environment.SpecialFolder.LocalApplicationData
+                else
+                    Environment.SpecialFolder.ApplicationData
+
+            appDirectory specialFolder |> settingsPath
+
+    let legacyDefaultPath () =
+        match Environment.GetEnvironmentVariable("BUBIBOY_SETTINGS_PATH") with
+        | path when not (String.IsNullOrWhiteSpace path) -> None
+        | _ when RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ->
+            Environment.SpecialFolder.ApplicationData
+            |> appDirectory
+            |> settingsPath
+            |> Some
+        | _ -> None
 
     let loadFromPath path =
         if String.IsNullOrWhiteSpace path then

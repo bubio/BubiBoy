@@ -1,18 +1,22 @@
 # Boot ROMs
 
-BubiBoy can execute an external 256-byte DMG boot ROM for DMG-only cartridges. Boot ROM files are
-copyrighted system software and are not included in or redistributed with the repository.
+BubiBoy can execute external DMG and CGB boot ROMs. Boot ROM files are copyrighted system software
+and are not included in or redistributed with the repository.
 
-The expected file name is `dmg_boot.bin`. Place it in the platform data directory:
+The expected file names are:
 
-- macOS: `~/Library/Application Support/BubiBoy/dmg_boot.bin`
-- Linux: `$XDG_DATA_HOME/BubiBoy/dmg_boot.bin`, or `~/.local/share/BubiBoy/dmg_boot.bin` when
-  `XDG_DATA_HOME` is unset
-- Windows: `%LOCALAPPDATA%\BubiBoy\dmg_boot.bin`
+- DMG: `dmg_boot.bin` (256 bytes)
+- CGB: `cgb_boot.bin` (2304 bytes)
 
-The file must be exactly 256 bytes. BubiBoy records its SHA-256 identity in save states but does not
-restrict the accepted hash. If the file is missing, unreadable, or the wrong size, DMG games fall back
-to the existing post-boot initialization and report the reason in the application status.
+Place them in the platform data directory:
 
-CGB boot ROM execution is not implemented yet. CGB-capable cartridges continue to use post-boot
-initialization.
+- macOS: `~/Library/Application Support/BubiBoy`
+- Linux: `$XDG_DATA_HOME/BubiBoy`, or `~/.local/share/BubiBoy` when `XDG_DATA_HOME` is unset
+- Windows: `%LOCALAPPDATA%\BubiBoy`
+
+BubiBoy records the selected boot ROM's SHA-256 identity in save states but does not restrict accepted
+hashes. If a file is missing, unreadable, or the wrong size, games for that hardware mode fall back to
+the existing post-boot initialization and report the reason in the application status.
+
+On Windows, `settings.json` is also stored in `%LOCALAPPDATA%\BubiBoy`. An existing settings file under
+`%APPDATA%\BubiBoy` is migrated automatically when the Local settings file does not exist.
