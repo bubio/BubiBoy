@@ -7,7 +7,8 @@ open Avalonia.Platform
 
 module MainWindowMenus =
     type Actions =
-        { OpenInputMapping: unit -> unit
+        { OpenSettings: unit -> unit
+          OpenInputMapping: unit -> unit
           SaveState: unit -> unit
           LoadState: unit -> unit
           SetScale: int -> unit
@@ -94,6 +95,7 @@ module MainWindowMenus =
             nativeItem "Load State" Key.L platformModifier actions.LoadState
 
         let nativeInputMappingItem = nativePlain "Input Mapping..." actions.OpenInputMapping
+        let nativeSettingsItem = nativePlain "Settings..." actions.OpenSettings
 
         let nativeFullscreenItem =
             nativeItem "Full Screen" Key.F platformModifier actions.ToggleFullScreen
@@ -121,6 +123,7 @@ module MainWindowMenus =
         let saveStateItem = menuItem "Save State" Key.S platformModifier actions.SaveState
         let loadStateItem = menuItem "Load State" Key.L platformModifier actions.LoadState
         let inputMappingItem = plainMenuItem "Input Mapping..." actions.OpenInputMapping
+        let settingsItem = plainMenuItem "Settings..." actions.OpenSettings
 
         let fullscreenItem =
             menuItem "Full Screen" Key.F platformModifier actions.ToggleFullScreen
@@ -196,6 +199,7 @@ module MainWindowMenus =
         nativeEmulationSubmenu.Items.Add nativeSaveStateItem |> ignore
         nativeEmulationSubmenu.Items.Add nativeLoadStateItem |> ignore
         nativeEmulationSubmenu.Items.Add(NativeMenuItemSeparator()) |> ignore
+        nativeEmulationSubmenu.Items.Add nativeSettingsItem |> ignore
         nativeEmulationSubmenu.Items.Add nativeInputMappingItem |> ignore
         nativeEmulationMenu.Menu <- nativeEmulationSubmenu
 
@@ -231,6 +235,7 @@ module MainWindowMenus =
         emulationMenu.Items.Add saveStateItem |> ignore
         emulationMenu.Items.Add loadStateItem |> ignore
         emulationMenu.Items.Add(Separator()) |> ignore
+        emulationMenu.Items.Add settingsItem |> ignore
         emulationMenu.Items.Add inputMappingItem |> ignore
 
         let viewMenu = MenuItem(Header = "View")

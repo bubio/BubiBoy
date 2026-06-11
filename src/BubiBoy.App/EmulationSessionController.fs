@@ -98,7 +98,12 @@ type EmulationSessionController(dependencies: EmulationSessionDependencies) =
             saveCurrentRam ()
             stopRunning ()
 
-            match RomWorkflow.load path dependencies.Notifications.LastStatus with
+            match
+                RomWorkflow.load
+                    dependencies.SettingsStore.Current.BootRomSelection
+                    path
+                    dependencies.Notifications.LastStatus
+            with
             | RomWorkflow.EmptyPath -> dependencies.Notifications.Show "Could not open the selected ROM path."
             | RomWorkflow.Loaded outcome ->
                 loadedRom <- Some outcome.Rom
@@ -139,7 +144,8 @@ type EmulationSessionController(dependencies: EmulationSessionDependencies) =
             saveCurrentRam ()
             stopRunning ()
 
-            let outcome = RomWorkflow.reset rom
+            let outcome =
+                RomWorkflow.reset dependencies.SettingsStore.Current.BootRomSelection rom
 
             setCurrentSession outcome.Session
             dependencies.Runner.ClearFrames()

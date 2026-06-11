@@ -8,7 +8,7 @@ open System.Text.Json
 
 module AppSettings =
     [<Literal>]
-    let CurrentVersion = 4
+    let CurrentVersion = 5
 
     [<Literal>]
     let MaxRecentRoms = 10
@@ -58,12 +58,19 @@ module AppSettings =
           "Start", "Start" ]
         |> Map.ofList
 
+    type BootRomSelection =
+        | Disabled
+        | Automatic
+        | Cgb
+        | Dmg
+
     [<CLIMutable>]
     type SettingsFile =
         { Version: int
           VolumePercent: int
           RecentRoms: string[]
           Scale: int
+          BootRomSelection: string
           KeyboardMapping: Dictionary<string, string>
           ControllerMapping: Dictionary<string, string> }
 
@@ -71,6 +78,7 @@ module AppSettings =
         { VolumePercent: int
           RecentRoms: string list
           Scale: int
+          BootRomSelection: BootRomSelection
           KeyboardMapping: Map<string, string>
           ControllerMapping: Map<string, string> }
 
@@ -78,6 +86,7 @@ module AppSettings =
         { VolumePercent = 50
           RecentRoms = []
           Scale = 2
+          BootRomSelection = Disabled
           KeyboardMapping = defaultKeyboardMapping
           ControllerMapping = defaultControllerMapping }
 
@@ -201,6 +210,7 @@ module AppSettings =
         { VolumePercent = Math.Clamp(settings.VolumePercent, 0, 100)
           RecentRoms = recent
           Scale = scale
+          BootRomSelection = settings.BootRomSelection
           KeyboardMapping = normalizeKeyboardMapping settings.KeyboardMapping
           ControllerMapping = normalizeControllerMapping settings.ControllerMapping }
 
@@ -254,6 +264,7 @@ module AppSettings =
                     raise (InvalidDataException "Settings file is empty.")
                 elif
                     file.Version <> CurrentVersion
+                    && file.Version <> 4
                     && file.Version <> 3
                     && file.Version <> 2
                     && file.Version <> 1
@@ -274,6 +285,16 @@ module AppSettings =
                             |> Seq.map (fun pair -> pair.Key, pair.Value)
                             |> Map.ofSeq
 
+                    let bootRomSelection =
+                        if file.Version < 5 then
+                            Disabled
+                        else
+                            match file.BootRomSelection with
+                            | "Automatic" -> Automatic
+                            | "Cgb" -> Cgb
+                            | "Dmg" -> Dmg
+                            | _ -> Disabled
+
                     normalize
                         { VolumePercent = file.VolumePercent
                           RecentRoms =
@@ -282,6 +303,7 @@ module AppSettings =
                             else
                                 Array.toList file.RecentRoms
                           Scale = if file.Version = 1 then defaults.Scale else file.Scale
+                          BootRomSelection = bootRomSelection
                           KeyboardMapping = keyboardMapping
                           ControllerMapping = controllerMapping })
 
@@ -296,6 +318,12 @@ module AppSettings =
                   VolumePercent = normalized.VolumePercent
                   RecentRoms = List.toArray normalized.RecentRoms
                   Scale = normalized.Scale
+                  BootRomSelection =
+                    match normalized.BootRomSelection with
+                    | Disabled -> "Disabled"
+                    | Automatic -> "Automatic"
+                    | Cgb -> "Cgb"
+                    | Dmg -> "Dmg"
                   KeyboardMapping = Dictionary<string, string>(normalized.KeyboardMapping)
                   ControllerMapping = Dictionary<string, string>(normalized.ControllerMapping) }
 
@@ -327,6 +355,11 @@ module AppSettings =
 
     let withScale scale settings =
         normalize { settings with Scale = scale }
+
+    let withBootRomSelection selection settings =
+        normalize
+            { settings with
+                BootRomSelection = selection }
 
     let withKeyboardMapping mapping settings =
         normalize

@@ -94,7 +94,7 @@ module Video =
         new System.Threading.ThreadLocal<RenderScratch>(fun () -> createScratch ())
 
     let private coordinateSpritePriority memory =
-        Bus.mode memory = Hardware.Dmg || io 0x6C memory &&& 0x01uy <> 0uy
+        Bus.mode memory <> Hardware.Cgb || io 0x6C memory &&& 0x01uy <> 0uy
 
     // Ordering that reproduces the previous Seq.sortWith / Seq.sortByDescending: returns
     // a positive value when `a` should be drawn before `b` (later draws win on screen).
@@ -247,8 +247,20 @@ module Video =
                     else
                         io 0x48 memory
 
-                let cgbPalette = int (attributes &&& 0x07uy)
-                let cgbTileBank = int ((attributes >>> 3) &&& 0x01uy)
+                let cgbPalette =
+                    if Bus.mode memory = Hardware.Cgb then
+                        int (attributes &&& 0x07uy)
+                    elif bitSet 4 attributes then
+                        1
+                    else
+                        0
+
+                let cgbTileBank =
+                    if Bus.mode memory = Hardware.Cgb then
+                        int ((attributes >>> 3) &&& 0x01uy)
+                    else
+                        0
+
                 let xFlip = bitSet 5 attributes
                 let yFlip = bitSet 6 attributes
                 let behindBackground = bitSet 7 attributes
@@ -276,7 +288,7 @@ module Video =
 
                                 if not backgroundWins && (not behindBackground || not backgroundIsOpaque) then
                                     framebuffer[pixelIndex] <-
-                                        if Bus.mode memory = Hardware.Cgb then
+                                        if Bus.usesColorPalettes memory then
                                             cgbColor Bus.rawObjPaletteByte cgbPalette colorNumber memory
                                         else
                                             pixelColor palette colorNumber
@@ -298,7 +310,7 @@ module Video =
                     scratch.BackgroundPriority[x] <- backgroundPixel.Priority
 
                     framebuffer[pixelIndex] <-
-                        if Bus.mode memory = Hardware.Cgb then
+                        if Bus.usesColorPalettes memory then
                             cgbColor Bus.rawBgPaletteByte backgroundPixel.Palette backgroundPixel.ColorNumber memory
                         else
                             pixelColor bgp backgroundPixel.ColorNumber

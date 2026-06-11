@@ -171,13 +171,29 @@ type MainWindow(?startupRomPath: string) as this =
 
         let platformModifier = if isMacOS then KeyModifiers.Meta else KeyModifiers.Control
 
+        let openSettings () =
+            async {
+                let! result =
+                    AppDialogs.showSettings this settingsStore.Current.BootRomSelection
+                    |> Async.AwaitTask
+
+                match result with
+                | Some selection ->
+                    settingsStore.SetBootRomSelection selection |> ignore
+                    saveSettings ()
+                    notifications.Show "Boot ROM setting saved. It will apply on the next ROM load or reset."
+                | None -> ()
+            }
+            |> Async.StartImmediate
+
         let menuElements =
             MainWindowMenus.create
                 this
                 isMacOS
                 platformModifier
                 viewModel
-                { OpenInputMapping = inputHost.OpenMapping
+                { OpenSettings = openSettings
+                  OpenInputMapping = inputHost.OpenMapping
                   SaveState = sessionController.SaveState
                   LoadState = sessionController.LoadState
                   SetScale = setScale
@@ -231,7 +247,11 @@ type MainWindow(?startupRomPath: string) as this =
             elif not isMacOS && args.Key = Key.F && args.KeyModifiers = platformModifier then
                 toggleFullScreen ()
                 args.Handled <- true
-            elif not isMacOS && args.Key = Key.F && args.KeyModifiers = (platformModifier ||| KeyModifiers.Shift) then
+            elif
+                not isMacOS
+                && args.Key = Key.F
+                && args.KeyModifiers = (platformModifier ||| KeyModifiers.Shift)
+            then
                 setFloating (not layoutController.IsFloating)
                 args.Handled <- true
             elif not isMacOS && args.Key = Key.D1 && args.KeyModifiers = platformModifier then

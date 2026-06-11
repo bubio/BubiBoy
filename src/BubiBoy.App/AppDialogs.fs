@@ -39,3 +39,6 @@ module AppDialogs =
         (controllerHost: GamepadHost)
         =
         InputMappingWindow.Show(owner, keyboardMapping, controllerMapping, controllerHost)
+
+    /// Shows the boot ROM settings editor.
+    let showSettings owner selection = SettingsWindow.Show(owner, selection)

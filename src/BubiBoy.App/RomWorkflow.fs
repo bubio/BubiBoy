@@ -62,8 +62,8 @@ module RomWorkflow =
             { LastSaveStatus = None
               ToastMessage = None }
 
-    let reset (rom: RomFile.LoadedRom) =
-        let creationResult = RomSession.createForRom rom
+    let reset bootRomSelection (rom: RomFile.LoadedRom) =
+        let creationResult = RomSession.createForRom bootRomSelection rom
         let sessionResult = creationResult |> Result.map (fun creation -> creation.Session)
         let session = sessionResult |> Result.toOption
 
@@ -81,14 +81,14 @@ module RomWorkflow =
             | Ok creation -> $"Reset complete.\n{creation.BootRomStatus}"
             | Error message -> UserMessage.formatRomStartError message }
 
-    let load (path: string) (lastSaveStatus: string option) =
+    let load bootRomSelection (path: string) (lastSaveStatus: string option) =
         if String.IsNullOrWhiteSpace path then
             EmptyPath
         else
             match RomFile.load path with
             | Ok loaded ->
                 let header = loaded.Header
-                let creationResult = RomSession.createForRom loaded
+                let creationResult = RomSession.createForRom bootRomSelection loaded
                 let sessionResult = creationResult |> Result.map (fun creation -> creation.Session)
                 let session = sessionResult |> Result.toOption
 

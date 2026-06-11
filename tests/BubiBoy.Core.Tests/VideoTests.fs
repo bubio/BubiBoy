@@ -73,6 +73,32 @@ let ``CGB background uses tile attributes and color palettes`` () =
     Assert.Equal(0xFF000000u, pixel 1 0 framebuffer)
 
 [<Fact>]
+let ``CGB compatibility background ignores attributes and uses palette zero`` () =
+    let bus =
+        match makeRom () |> CartridgeMemory.create with
+        | Error message -> failwith message
+        | Ok cartridge ->
+            match Bus.createWithCgbBootRom (Array.zeroCreate<byte> 2304) cartridge with
+            | Error message -> failwith message
+            | Ok bus -> bus
+
+    let framebuffer =
+        bus
+        |> Bus.writeByte 0xFF68us 0x82uy
+        |> Bus.writeByte 0xFF69us 0x1Fuy
+        |> Bus.writeByte 0xFF69us 0x00uy
+        |> Bus.writeByte 0xFF4Cus 0x04uy
+        |> withIo 0x40 0x91uy
+        |> withVramBank 0 0x9800 0x01uy
+        |> withVramBank 1 0x9800 0x0Fuy
+        |> withVramBank 0 0x8010 0x80uy
+        |> withVramBank 0 0x8011 0x00uy
+        |> Video.renderFrame
+
+    Assert.Equal(Hardware.CgbCompatibility, Bus.mode (Bus.writeByte 0xFF4Cus 0x04uy bus))
+    Assert.Equal(0xFFFF0000u, pixel 0 0 framebuffer)
+
+[<Fact>]
 let ``background supports signed tile data area`` () =
     let framebuffer =
         makeBus ()
@@ -137,6 +163,35 @@ let ``sprites render nonzero pixels over background`` () =
 
     Assert.Equal(Video.DmgColors[1], pixel 0 0 framebuffer)
     Assert.Equal(Video.DmgColors[0], pixel 1 0 framebuffer)
+
+[<Fact>]
+let ``CGB compatibility sprites select OBJ palette with DMG attribute bit`` () =
+    let bus =
+        match makeRom () |> CartridgeMemory.create with
+        | Error message -> failwith message
+        | Ok cartridge ->
+            match Bus.createWithCgbBootRom (Array.zeroCreate<byte> 2304) cartridge with
+            | Error message -> failwith message
+            | Ok bus -> bus
+
+    let framebuffer =
+        bus
+        |> Bus.writeByte 0xFF6Aus 0x8Auy
+        |> Bus.writeByte 0xFF6Bus 0x00uy
+        |> Bus.writeByte 0xFF6Bus 0x7Cuy
+        |> Bus.writeByte 0xFF4Cus 0x04uy
+        |> withIo 0x40 0x93uy
+        |> withVramBank 0 0x8010 0x80uy
+        |> withVramBank 0 0x8011 0x00uy
+        |> withVramBank 1 0x8010 0x00uy
+        |> withVramBank 1 0x8011 0x00uy
+        |> withOam 0 16uy
+        |> withOam 1 8uy
+        |> withOam 2 1uy
+        |> withOam 3 0x18uy
+        |> Video.renderFrame
+
+    Assert.Equal(0xFF0000FFu, pixel 0 0 framebuffer)
 
 [<Fact>]
 let ``sprites behind background keep nonzero background pixels`` () =

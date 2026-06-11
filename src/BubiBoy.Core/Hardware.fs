@@ -21,4 +21,5 @@ module Hardware =
     /// Identifies the active Game Boy hardware compatibility mode.
     type GameBoyMode =
         | Dmg
+        | CgbCompatibility
         | Cgb

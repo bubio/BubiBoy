@@ -9,9 +9,20 @@ module RomSession =
           BootRomStatus: string
           BootRomWarning: string option }
 
-    let private createSession (rom: RomFile.LoadedRom) =
-        match rom.Header.CgbSupport with
-        | Cartridge.DmgOnly ->
+    let private postBoot rom status warning =
+        Emulator.createSession rom
+        |> Result.map (fun session ->
+            { Session = session
+              BootRomStatus = status
+              BootRomWarning = warning })
+
+    let private createWithDmgBootRom (rom: RomFile.LoadedRom) =
+        if rom.Header.CgbSupport <> Cartridge.DmgOnly then
+            let warning =
+                "DMG boot ROM is incompatible with CGB-capable cartridges; using post-boot initialization."
+
+            postBoot rom.Bytes warning (Some warning)
+        else
             match BootRomFile.loadDmg () with
             | Ok bootRom ->
                 Emulator.createSessionWithDmgBootRom bootRom.Bytes rom.Bytes
@@ -20,35 +31,38 @@ module RomSession =
                       BootRomStatus = $"DMG boot ROM loaded: {bootRom.Path} ({bootRom.Sha256})"
                       BootRomWarning = None })
             | Error message ->
-                Emulator.createSession rom.Bytes
-                |> Result.map (fun session ->
-                    let warning =
-                        $"DMG boot ROM unavailable; using post-boot initialization. Expected: {BootRomFile.dmgPath ()}"
+                let warning =
+                    $"DMG boot ROM unavailable; using post-boot initialization. Expected: {BootRomFile.dmgPath ()}"
 
-                    { Session = session
-                      BootRomStatus = $"{warning}\n{message}"
-                      BootRomWarning = Some warning })
-        | Cartridge.CgbEnhanced
-        | Cartridge.CgbOnly ->
-            match BootRomFile.loadCgb () with
-            | Ok bootRom ->
-                Emulator.createSessionWithCgbBootRom bootRom.Bytes rom.Bytes
-                |> Result.map (fun session ->
-                    { Session = session
-                      BootRomStatus = $"CGB boot ROM loaded: {bootRom.Path} ({bootRom.Sha256})"
-                      BootRomWarning = None })
-            | Error message ->
-                Emulator.createSession rom.Bytes
-                |> Result.map (fun session ->
-                    let warning =
-                        $"CGB boot ROM unavailable; using post-boot initialization. Expected: {BootRomFile.cgbPath ()}"
+                postBoot rom.Bytes $"{warning}\n{message}" (Some warning)
 
-                    { Session = session
-                      BootRomStatus = $"{warning}\n{message}"
-                      BootRomWarning = Some warning })
+    let private createWithCgbBootRom (rom: RomFile.LoadedRom) =
+        match BootRomFile.loadCgb () with
+        | Ok bootRom ->
+            Emulator.createSessionWithCgbBootRom bootRom.Bytes rom.Bytes
+            |> Result.map (fun session ->
+                { Session = session
+                  BootRomStatus = $"CGB boot ROM loaded: {bootRom.Path} ({bootRom.Sha256})"
+                  BootRomWarning = None })
+        | Error message ->
+            let warning =
+                $"CGB boot ROM unavailable; using post-boot initialization. Expected: {BootRomFile.cgbPath ()}"
 
-    let createForRom (rom: RomFile.LoadedRom) =
-        createSession rom
+            postBoot rom.Bytes $"{warning}\n{message}" (Some warning)
+
+    let private createSession selection (rom: RomFile.LoadedRom) =
+        match selection with
+        | AppSettings.Disabled -> postBoot rom.Bytes "Boot ROM disabled; using post-boot initialization." None
+        | AppSettings.Automatic ->
+            match rom.Header.CgbSupport with
+            | Cartridge.DmgOnly -> createWithDmgBootRom rom
+            | Cartridge.CgbEnhanced
+            | Cartridge.CgbOnly -> createWithCgbBootRom rom
+        | AppSettings.Cgb -> createWithCgbBootRom rom
+        | AppSettings.Dmg -> createWithDmgBootRom rom
+
+    let createForRom selection (rom: RomFile.LoadedRom) =
+        createSession selection rom
         |> Result.bind (fun creation ->
             SaveRam.loadForRom rom.Path (Bus.cartridge creation.Session.Bus)
             |> Result.map (fun cartridge ->

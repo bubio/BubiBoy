@@ -31,12 +31,24 @@ let private encodeSession session =
     session |> SaveState.capture |> SaveState.encode
 
 [<Fact>]
-let ``version 4 wire format remains stable`` () =
+let ``version 5 wire format remains stable and version 4 remains readable`` () =
     let bytes = makeRom "S" Array.empty |> createSession |> encodeSession
     let hash = SHA256.HashData bytes |> Convert.ToHexString
 
     Assert.Equal(142_177, bytes.Length)
-    Assert.Equal("1366D44EE4F3D8C74850B8F09C9C4BBC27EC3FDCE096A6401F7EAD4439587662", hash)
+    Assert.Equal("9075F74520A731E81DA4CEDBB689660F6874D0BD00AD515BAF7163FCC243D307", hash)
+
+    let version4 = Array.copy bytes
+    BitConverter.GetBytes(4).CopyTo(version4, 9)
+
+    Assert.Equal(
+        "1366D44EE4F3D8C74850B8F09C9C4BBC27EC3FDCE096A6401F7EAD4439587662",
+        SHA256.HashData version4 |> Convert.ToHexString
+    )
+
+    match SaveState.restoreBytes version4 (makeRom "S" Array.empty |> createSession) with
+    | Error message -> Assert.Fail message
+    | Ok restored -> Assert.Equal(Hardware.Dmg, Bus.mode restored.Bus)
 
 [<Fact>]
 let ``version 3 post boot wire format remains readable`` () =
@@ -227,3 +239,28 @@ let ``save state restores an enabled CGB boot ROM with matching identity`` () =
         Assert.Equal(Hardware.Cgb, Bus.mode restored.Bus)
         Assert.True(Bus.isBootRomEnabled restored.Bus)
         Assert.Equal(session.Cpu, restored.Cpu)
+
+[<Fact>]
+let ``save state restores CGB compatibility mode`` () =
+    let rom = makeRom "CGB-DMG" [| 0x00uy |]
+    let bootRom = Array.init 2304 (fun index -> byte index)
+
+    let createBootSession () =
+        match Emulator.createSessionWithCgbBootRom bootRom rom with
+        | Ok session -> session
+        | Error message -> failwith message
+
+    let session =
+        let bootSession = createBootSession ()
+
+        { bootSession with
+            Bus =
+                bootSession.Bus
+                |> Bus.writeByte 0xFF4Cus 0x04uy
+                |> Bus.writeByte 0xFF50us 0x01uy }
+
+    match SaveState.restoreBytes (encodeSession session) (createSession rom) with
+    | Error message -> Assert.Fail message
+    | Ok restored ->
+        Assert.Equal(Hardware.CgbCompatibility, Bus.mode restored.Bus)
+        Assert.False(Bus.isBootRomEnabled restored.Bus)

@@ -45,7 +45,8 @@ module Emulator =
                             { Cpu.initialRegisters with
                                 A = 0x11uy
                                 F = 0x80uy } }
-                | Hardware.Dmg -> Cpu.initialState
+                | Hardware.Dmg
+                | Hardware.CgbCompatibility -> Cpu.initialState
 
             { Bus = bus
               Framebuffer = Video.blankFrame ()

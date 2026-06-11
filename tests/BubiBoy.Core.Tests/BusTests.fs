@@ -48,6 +48,14 @@ let private makeCgbBootBus bootRom =
         | Error message -> failwith message
     | Error message -> failwith message
 
+let private makeDmgCgbBootBus bootRom =
+    match makeRom () |> CartridgeMemory.create with
+    | Ok cartridge ->
+        match Bus.createWithCgbBootRom bootRom cartridge with
+        | Ok bus -> bus
+        | Error message -> failwith message
+    | Error message -> failwith message
+
 [<Fact>]
 let ``readByte delegates ROM area to cartridge`` () =
     let bus = makeBus ()
@@ -89,15 +97,29 @@ let ``FF50 disables all CGB boot ROM ranges`` () =
     Assert.Equal(0x24uy, Bus.readByte 0x0200us disabled)
 
 [<Fact>]
-let ``CGB boot ROM rejects a DMG-only cartridge`` () =
-    let cartridge =
-        match makeRom () |> CartridgeMemory.create with
-        | Ok cartridge -> cartridge
-        | Error message -> failwith message
+let ``CGB boot ROM starts a DMG-only cartridge in full CGB mode`` () =
+    let bus = makeDmgCgbBootBus (Array.zeroCreate<byte> 2304)
 
-    match Bus.createWithCgbBootRom (Array.zeroCreate<byte> 2304) cartridge with
-    | Ok _ -> Assert.Fail "Expected CGB boot ROM mode error."
-    | Error message -> Assert.Contains("CGB-capable cartridge", message)
+    Assert.Equal(Hardware.Cgb, Bus.mode bus)
+    Assert.True(Bus.isBootRomEnabled bus)
+
+[<Fact>]
+let ``KEY0 selects CGB compatibility mode for a DMG-only cartridge`` () =
+    let bus =
+        makeDmgCgbBootBus (Array.zeroCreate<byte> 2304) |> Bus.writeByte 0xFF4Cus 0x04uy
+
+    Assert.Equal(Hardware.CgbCompatibility, Bus.mode bus)
+    Assert.True(Bus.isBootRomEnabled bus)
+
+[<Fact>]
+let ``KEY0 cannot change mode after the boot ROM is disabled`` () =
+    let bus =
+        makeDmgCgbBootBus (Array.zeroCreate<byte> 2304)
+        |> Bus.writeByte 0xFF50us 0x01uy
+        |> Bus.writeByte 0xFF4Cus 0x04uy
+
+    Assert.Equal(Hardware.Cgb, Bus.mode bus)
+    Assert.False(Bus.isBootRomEnabled bus)
 
 [<Fact>]
 let ``FF50 permanently disables the boot ROM after a nonzero write`` () =

@@ -8,7 +8,7 @@ open System.Text
 module SaveState =
     /// The current binary save-state format version.
     [<Literal>]
-    let CurrentVersion = 4
+    let CurrentVersion = 5
 
     /// Contains all session state stored in a save-state payload.
     type Snapshot =
@@ -125,7 +125,7 @@ module SaveState =
             else
                 let version = reader.ReadInt()
 
-                if version <> 2 && version <> 3 && version <> CurrentVersion then
+                if version <> 2 && version <> 3 && version <> 4 && version <> CurrentVersion then
                     Error $"Unsupported save state version: {version}."
                 else
                     Ok version
@@ -145,6 +145,7 @@ module SaveState =
         let writeGameBoyMode mode =
             match mode with
             | Hardware.Dmg -> writeByte 0uy
+            | Hardware.CgbCompatibility -> writeByte 2uy
             | Hardware.Cgb -> writeByte 1uy
 
         let writeCgbSupport value =
@@ -399,6 +400,7 @@ module SaveState =
                 match readByte () with
                 | 0uy -> Hardware.Dmg
                 | 1uy -> Hardware.Cgb
+                | 2uy when version >= 5 -> Hardware.CgbCompatibility
                 | value -> failwith $"Unsupported Game Boy mode in save state: {value}"
 
             let readCgbSupport () =

@@ -132,6 +132,7 @@ module Bus =
 
         match mode with
         | Hardware.Dmg -> ()
+        | Hardware.CgbCompatibility
         | Hardware.Cgb ->
             io[0x4D] <- 0x7Euy
             io[0x4F] <- 0xFEuy
@@ -155,9 +156,7 @@ module Bus =
         | Cartridge.CgbEnhanced
         | Cartridge.CgbOnly -> Hardware.Cgb
 
-    let private createMemory cartridge bootRom io =
-        let mode = modeForCartridge cartridge
-
+    let private createMemory cartridge mode bootRom io =
         { Cartridge = cartridge
           Mode = mode
           BootRom = bootRom
@@ -183,7 +182,8 @@ module Bus =
           InterruptEnable = 0uy }
 
     /// Creates reset bus state after the built-in boot sequence has completed.
-    let create cartridge = createMemory cartridge None postBootIo
+    let create cartridge =
+        createMemory cartridge (modeForCartridge cartridge) None postBootIo
 
     /// Creates DMG power-on bus state with a 256-byte boot ROM mapped.
     let createWithDmgBootRom (bootRom: byte[]) cartridge =
@@ -200,6 +200,7 @@ module Bus =
             Ok(
                 createMemory
                     cartridge
+                    Hardware.Dmg
                     (Some
                         { Kind = Dmg
                           Bytes = bytes
@@ -214,8 +215,6 @@ module Bus =
             Error "CGB boot ROM data is null."
         elif bootRom.Length <> 2304 then
             Error $"CGB boot ROM size mismatch: expected 2304 bytes, got {bootRom.Length} bytes."
-        elif modeForCartridge cartridge <> Hardware.Cgb then
-            Error "CGB boot ROM can only be used with a CGB-capable cartridge."
         else
             let bytes = Array.copy bootRom
             let sha256 = SHA256.HashData bytes |> Convert.ToHexString
@@ -223,6 +222,7 @@ module Bus =
             Ok(
                 createMemory
                     cartridge
+                    Hardware.Cgb
                     (Some
                         { Kind = Cgb
                           Bytes = bytes
@@ -337,8 +337,12 @@ module Bus =
     /// Returns the current joypad state.
     let joypad memory = memory.Joypad
 
-    /// Returns the active DMG or CGB hardware mode.
+    /// Returns the active hardware compatibility mode.
     let mode memory = memory.Mode
+
+    /// Returns whether CGB palette RAM supplies the displayed colors.
+    let usesColorPalettes memory =
+        memory.Mode = Hardware.Cgb || memory.Mode = Hardware.CgbCompatibility
 
     /// Returns whether the boot ROM is still mapped into the CPU address space.
     let isBootRomEnabled memory =
@@ -621,6 +625,17 @@ module Bus =
 
             { memory with
                 Lcd = Lcd.resetLine memory.Lcd }
+        | 0xFF4C when CgbMemory.isCgb memory && isBootRomEnabled memory ->
+            memory.Io[0x4C] <- value
+
+            if
+                value &&& 0x04uy <> 0uy
+                && (CartridgeMemory.header memory.Cartridge).CgbSupport = Cartridge.DmgOnly
+            then
+                { memory with
+                    Mode = Hardware.CgbCompatibility }
+            else
+                memory
         | 0xFF50 ->
             if value = 0uy then
                 memory

@@ -43,7 +43,9 @@
     <Compile Include="ControllerInputAdapter.fs" />
     <Compile Include="InputStateController.fs" />
     <Compile Include="EmulationRunner.fs" />
+    <Compile Include="DialogLayout.fs" />
     <Compile Include="InputMappingWindow.fs" />
+    <Compile Include="SettingsWindow.fs" />
     <Compile Include="RomSession.fs" />
     <Compile Include="RomWorkflow.fs" />
     <Compile Include="AppSettingsStore.fs" />

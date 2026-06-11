@@ -75,6 +75,17 @@ let ``createSessionWithCgbBootRom starts from CGB power on state`` () =
         Assert.Equal(0uy, Bus.readByte 0xFF40us session.Bus)
 
 [<Fact>]
+let ``createSessionWithCgbBootRom accepts a DMG-only cartridge`` () =
+    let rom = makeRomWithProgram [| 0x00uy |]
+    let bootRom = Array.zeroCreate<byte> 2304
+
+    match Emulator.createSessionWithCgbBootRom bootRom rom with
+    | Error message -> Assert.Fail message
+    | Ok session ->
+        Assert.Equal(Hardware.Cgb, Bus.mode session.Bus)
+        Assert.Equal(Cpu.powerOnState, session.Cpu)
+
+[<Fact>]
 let ``createSession retains post boot compatibility`` () =
     let session = createSession [| 0x00uy |]
 

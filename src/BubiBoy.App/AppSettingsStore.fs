@@ -39,6 +39,11 @@ type AppSettingsStore(settingsPath: string, initialSettings: AppSettings.Setting
         let next = this.Replace(AppSettings.withVolumePercent percent current)
         next.VolumePercent
 
+    /// Updates the boot ROM selection used for future ROM loads and resets.
+    member this.SetBootRomSelection(selection: AppSettings.BootRomSelection) =
+        let next = this.Replace(AppSettings.withBootRomSelection selection current)
+        next.BootRomSelection
+
     /// Updates keyboard and controller mappings atomically.
     member this.SetInputMappings(keyboardMapping: Map<string, string>, controllerMapping: Map<string, string>) =
         this.Replace(

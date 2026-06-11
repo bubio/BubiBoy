@@ -47,7 +47,7 @@ type InputMappingWindow
     let statusText =
         TextBlock(
             Text = "Select a keyboard or controller cell, then press an input.",
-            FontSize = 12.0,
+            FontSize = DialogLayout.BodyFontSize,
             TextWrapping = TextWrapping.Wrap,
             MinHeight = 20.0
         )
@@ -151,12 +151,9 @@ type InputMappingWindow
         controllerCaptureTimer.Tick.Add(fun _ -> pollControllerCapture ())
 
         let root =
-            Grid(RowDefinitions = RowDefinitions("Auto,12,Auto,12,Auto,*,Auto"), Margin = Thickness(16.0))
+            Grid(RowDefinitions = RowDefinitions("Auto,12,Auto,12,Auto,*,Auto"), Margin = DialogLayout.contentMargin)
 
-        let title =
-            TextBlock(Text = "Input Mapping", FontSize = 20.0, FontWeight = FontWeight.SemiBold)
-
-        AppTheme.bindBrush title TextBlock.ForegroundProperty AppTheme.PrimaryText
+        let title = DialogLayout.title "Input Mapping"
 
         let list =
             Border(BorderThickness = Thickness(1.0), CornerRadius = CornerRadius(8.0), ClipToBounds = true)
@@ -173,7 +170,7 @@ type InputMappingWindow
             let label =
                 TextBlock(
                     Text = text,
-                    FontSize = 12.0,
+                    FontSize = DialogLayout.CaptionFontSize,
                     FontWeight = FontWeight.SemiBold,
                     VerticalAlignment = VerticalAlignment.Center,
                     Margin = Thickness(12.0, 0.0)
@@ -196,7 +193,7 @@ type InputMappingWindow
             let buttonLabel =
                 TextBlock(
                     Text = InputMapping.buttonDisplayName button,
-                    FontSize = 13.0,
+                    FontSize = DialogLayout.BodyFontSize,
                     VerticalAlignment = VerticalAlignment.Center,
                     Margin = Thickness(12.0, 0.0)
                 )
@@ -206,7 +203,7 @@ type InputMappingWindow
             let createCell width =
                 let label =
                     TextBlock(
-                        FontSize = 13.0,
+                        FontSize = DialogLayout.BodyFontSize,
                         HorizontalAlignment = HorizontalAlignment.Center,
                         VerticalAlignment = VerticalAlignment.Center,
                         TextTrimming = TextTrimming.CharacterEllipsis
@@ -287,19 +284,10 @@ type InputMappingWindow
 
         list.Child <- rows
 
-        let buttonBar =
-            Grid(ColumnDefinitions = ColumnDefinitions("Auto,*,Auto,8,Auto"), Height = 34.0)
-
-        let resetButton = Button(Content = "Reset Defaults", MinWidth = 112.0)
-        let cancelButton = Button(Content = "Cancel", MinWidth = 78.0)
-        let saveButton = Button(Content = "Save", MinWidth = 78.0)
-
-        Grid.SetColumn(resetButton, 0)
-        Grid.SetColumn(cancelButton, 2)
-        Grid.SetColumn(saveButton, 4)
-        buttonBar.Children.Add resetButton |> ignore
-        buttonBar.Children.Add cancelButton |> ignore
-        buttonBar.Children.Add saveButton |> ignore
+        let resetButton = DialogLayout.actionButton "Reset Defaults" 112.0
+        let cancelButton = DialogLayout.actionButton "Cancel" 80.0
+        let saveButton = DialogLayout.actionButton "Save" 80.0
+        let buttonBar = DialogLayout.actionBar (Some resetButton) cancelButton saveButton
 
         Grid.SetRow(title, 0)
         Grid.SetRow(list, 2)
