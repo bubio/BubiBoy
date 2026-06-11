@@ -36,6 +36,24 @@ let private pixel x y (framebuffer: uint32[]) =
     framebuffer[y * Hardware.ScreenWidth + x]
 
 [<Fact>]
+let ``CGB color correction preserves black and white`` () =
+    Assert.Equal(0xFF000000u, Video.cgbColorFromRgb555 0x0000us)
+    Assert.Equal(0xFFFFFFFFu, Video.cgbColorFromRgb555 0x7FFFus)
+
+[<Fact>]
+let ``CGB color correction mixes display primaries`` () =
+    let red = Video.cgbColorFromRgb555 0x001Fus
+    let green = Video.cgbColorFromRgb555 0x03E0us
+    let blue = Video.cgbColorFromRgb555 0x7C00us
+
+    Assert.NotEqual(0xFFFF0000u, red)
+    Assert.NotEqual(0xFF00FF00u, green)
+    Assert.NotEqual(0xFF0000FFu, blue)
+    Assert.NotEqual(0u, red &&& 0x0000FFFFu)
+    Assert.NotEqual(0u, green &&& 0x00FF00FFu)
+    Assert.NotEqual(0u, blue &&& 0x00FFFF00u)
+
+[<Fact>]
 let ``disabled LCD renders blank DMG shade zero`` () =
     let framebuffer = makeBus () |> withIo 0x40 0x00uy |> Video.renderFrame
 
@@ -69,7 +87,7 @@ let ``CGB background uses tile attributes and color palettes`` () =
         |> withVramBank 1 0x8011 0x00uy
         |> Video.renderFrame
 
-    Assert.Equal(0xFFFF0000u, pixel 0 0 framebuffer)
+    Assert.Equal(Video.cgbColorFromRgb555 0x001Fus, pixel 0 0 framebuffer)
     Assert.Equal(0xFF000000u, pixel 1 0 framebuffer)
 
 [<Fact>]
@@ -88,15 +106,49 @@ let ``CGB compatibility background ignores attributes and uses palette zero`` ()
         |> Bus.writeByte 0xFF69us 0x1Fuy
         |> Bus.writeByte 0xFF69us 0x00uy
         |> Bus.writeByte 0xFF4Cus 0x04uy
+        |> Bus.writeByte 0xFF50us 0x01uy
         |> withIo 0x40 0x91uy
+        |> withIo 0x47 0xE4uy
         |> withVramBank 0 0x9800 0x01uy
         |> withVramBank 1 0x9800 0x0Fuy
         |> withVramBank 0 0x8010 0x80uy
         |> withVramBank 0 0x8011 0x00uy
         |> Video.renderFrame
 
-    Assert.Equal(Hardware.CgbCompatibility, Bus.mode (Bus.writeByte 0xFF4Cus 0x04uy bus))
-    Assert.Equal(0xFFFF0000u, pixel 0 0 framebuffer)
+    Assert.Equal(
+        Hardware.CgbCompatibility,
+        Bus.mode (bus |> Bus.writeByte 0xFF4Cus 0x04uy |> Bus.writeByte 0xFF50us 0x01uy)
+    )
+
+    Assert.Equal(Video.cgbColorFromRgb555 0x001Fus, pixel 0 0 framebuffer)
+
+[<Fact>]
+let ``CGB compatibility background maps DMG shades through BGP`` () =
+    let bus =
+        match makeRom () |> CartridgeMemory.create with
+        | Error message -> failwith message
+        | Ok cartridge ->
+            match Bus.createWithCgbBootRom (Array.zeroCreate<byte> 2304) cartridge with
+            | Error message -> failwith message
+            | Ok bus -> bus
+
+    let framebuffer =
+        bus
+        |> Bus.writeByte 0xFF68us 0x82uy
+        |> Bus.writeByte 0xFF69us 0x00uy
+        |> Bus.writeByte 0xFF69us 0x7Cuy
+        |> Bus.writeByte 0xFF69us 0x1Fuy
+        |> Bus.writeByte 0xFF69us 0x00uy
+        |> Bus.writeByte 0xFF4Cus 0x04uy
+        |> Bus.writeByte 0xFF50us 0x01uy
+        |> withIo 0x40 0x91uy
+        |> withIo 0x47 0x08uy
+        |> withVramBank 0 0x9800 0x01uy
+        |> withVramBank 0 0x8010 0x80uy
+        |> withVramBank 0 0x8011 0x00uy
+        |> Video.renderFrame
+
+    Assert.Equal(Video.cgbColorFromRgb555 0x001Fus, pixel 0 0 framebuffer)
 
 [<Fact>]
 let ``background supports signed tile data area`` () =
@@ -180,7 +232,9 @@ let ``CGB compatibility sprites select OBJ palette with DMG attribute bit`` () =
         |> Bus.writeByte 0xFF6Bus 0x00uy
         |> Bus.writeByte 0xFF6Bus 0x7Cuy
         |> Bus.writeByte 0xFF4Cus 0x04uy
+        |> Bus.writeByte 0xFF50us 0x01uy
         |> withIo 0x40 0x93uy
+        |> withIo 0x49 0xE4uy
         |> withVramBank 0 0x8010 0x80uy
         |> withVramBank 0 0x8011 0x00uy
         |> withVramBank 1 0x8010 0x00uy
@@ -191,7 +245,38 @@ let ``CGB compatibility sprites select OBJ palette with DMG attribute bit`` () =
         |> withOam 3 0x18uy
         |> Video.renderFrame
 
-    Assert.Equal(0xFF0000FFu, pixel 0 0 framebuffer)
+    Assert.Equal(Video.cgbColorFromRgb555 0x7C00us, pixel 0 0 framebuffer)
+
+[<Fact>]
+let ``CGB compatibility sprites map DMG shades through OBP`` () =
+    let bus =
+        match makeRom () |> CartridgeMemory.create with
+        | Error message -> failwith message
+        | Ok cartridge ->
+            match Bus.createWithCgbBootRom (Array.zeroCreate<byte> 2304) cartridge with
+            | Error message -> failwith message
+            | Ok bus -> bus
+
+    let framebuffer =
+        bus
+        |> Bus.writeByte 0xFF6Aus 0x8Auy
+        |> Bus.writeByte 0xFF6Bus 0x00uy
+        |> Bus.writeByte 0xFF6Bus 0x7Cuy
+        |> Bus.writeByte 0xFF6Bus 0x1Fuy
+        |> Bus.writeByte 0xFF6Bus 0x00uy
+        |> Bus.writeByte 0xFF4Cus 0x04uy
+        |> Bus.writeByte 0xFF50us 0x01uy
+        |> withIo 0x40 0x93uy
+        |> withIo 0x49 0x08uy
+        |> withVramBank 0 0x8010 0x80uy
+        |> withVramBank 0 0x8011 0x00uy
+        |> withOam 0 16uy
+        |> withOam 1 8uy
+        |> withOam 2 1uy
+        |> withOam 3 0x10uy
+        |> Video.renderFrame
+
+    Assert.Equal(Video.cgbColorFromRgb555 0x001Fus, pixel 0 0 framebuffer)
 
 [<Fact>]
 let ``sprites behind background keep nonzero background pixels`` () =
@@ -298,7 +383,7 @@ let ``CGB sprites prioritize lower OAM index over smaller x coordinate`` () =
         |> withOam 7 0uy
         |> Video.renderFrame
 
-    Assert.Equal(0xFFFF0000u, pixel 1 0 framebuffer)
+    Assert.Equal(Video.cgbColorFromRgb555 0x001Fus, pixel 1 0 framebuffer)
 
 [<Fact>]
 let ``CGB sprite attributes select tile VRAM bank`` () =
@@ -316,7 +401,7 @@ let ``CGB sprite attributes select tile VRAM bank`` () =
         |> withOam 3 0x08uy
         |> Video.renderFrame
 
-    Assert.Equal(0xFFFF0000u, pixel 0 0 framebuffer)
+    Assert.Equal(Video.cgbColorFromRgb555 0x001Fus, pixel 0 0 framebuffer)
 
 [<Fact>]
 let ``CGB background priority attribute hides sprite over nonzero background`` () =
@@ -341,7 +426,7 @@ let ``CGB background priority attribute hides sprite over nonzero background`` (
         |> withOam 3 0uy
         |> Video.renderFrame
 
-    Assert.Equal(0xFF0000FFu, pixel 0 0 framebuffer)
+    Assert.Equal(Video.cgbColorFromRgb555 0x7C00us, pixel 0 0 framebuffer)
 
 [<Fact>]
 let ``only first ten OAM sprites on a scanline are rendered`` () =

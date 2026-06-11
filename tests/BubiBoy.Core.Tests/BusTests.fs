@@ -104,12 +104,25 @@ let ``CGB boot ROM starts a DMG-only cartridge in full CGB mode`` () =
     Assert.True(Bus.isBootRomEnabled bus)
 
 [<Fact>]
-let ``KEY0 selects CGB compatibility mode for a DMG-only cartridge`` () =
+let ``KEY0 selects CGB compatibility mode when the boot ROM is disabled`` () =
     let bus =
-        makeDmgCgbBootBus (Array.zeroCreate<byte> 2304) |> Bus.writeByte 0xFF4Cus 0x04uy
+        makeDmgCgbBootBus (Array.zeroCreate<byte> 2304)
+        |> Bus.writeByte 0xFF4Cus 0x04uy
+        |> Bus.writeByte 0xFF50us 0x01uy
 
     Assert.Equal(Hardware.CgbCompatibility, Bus.mode bus)
-    Assert.True(Bus.isBootRomEnabled bus)
+    Assert.False(Bus.isBootRomEnabled bus)
+
+[<Fact>]
+let ``CGB registers remain available after KEY0 until the boot ROM is disabled`` () =
+    let bus =
+        makeDmgCgbBootBus (Array.zeroCreate<byte> 2304)
+        |> Bus.writeByte 0xFF4Cus 0x04uy
+        |> Bus.writeByte 0xFF68us 0x80uy
+        |> Bus.writeByte 0xFF69us 0x1Fuy
+
+    Assert.Equal(Hardware.Cgb, Bus.mode bus)
+    Assert.Equal(0x1Fuy, Bus.readByte 0xFF69us (Bus.writeByte 0xFF68us 0x00uy bus))
 
 [<Fact>]
 let ``KEY0 cannot change mode after the boot ROM is disabled`` () =

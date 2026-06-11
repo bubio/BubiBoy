@@ -1,5 +1,7 @@
 namespace BubiBoy.Core
 
+open System
+
 /// Renders DMG and CGB scanlines from bus-visible video state.
 module Video =
     /// The number of pixels in a complete framebuffer.
@@ -23,16 +25,53 @@ module Video =
     let private pixelColor palette colorNumber =
         DmgColors[paletteShade palette colorNumber]
 
+    let private compatibilityColorNumber palette colorNumber = paletteShade palette colorNumber
+
+    module private CgbColor =
+        [<Literal>]
+        let private DisplayGamma = 2.2
+
+        let private decode channel =
+            Math.Pow(float channel / 31.0, DisplayGamma)
+
+        let private encode channel =
+            let linear = Math.Clamp(channel, 0.0, 1.0)
+
+            let srgb =
+                if linear <= 0.0031308 then
+                    linear * 12.92
+                else
+                    1.055 * Math.Pow(linear, 1.0 / 2.4) - 0.055
+
+            uint32 (Math.Round(srgb * 255.0))
+
+        let private convert raw =
+            let red = decode (raw &&& 0x1F)
+            let green = decode ((raw >>> 5) &&& 0x1F)
+            let blue = decode ((raw >>> 10) &&& 0x1F)
+
+            // Approximate the reflective CGB LCD's pigment cross-talk in linear light.
+            let correctedRed = red * 0.86 + green * 0.08 + blue * 0.06
+            let correctedGreen = red * 0.12 + green * 0.78 + blue * 0.10
+            let correctedBlue = red * 0.05 + green * 0.12 + blue * 0.83
+
+            let outputRed = encode correctedRed
+            let outputGreen = encode correctedGreen
+            let outputBlue = encode correctedBlue
+            0xFF000000u ||| (outputRed <<< 16) ||| (outputGreen <<< 8) ||| outputBlue
+
+        let table = Array.init 0x8000 convert
+
+    /// Converts one RGB555 CGB palette color to display-ready sRGB with LCD color correction.
+    let cgbColorFromRgb555 color =
+        CgbColor.table[int (color &&& 0x7FFFus)]
+
     let private cgbColor (paletteRamByte: int -> Bus.Memory -> byte) palette colorNumber memory =
         let index = palette * 8 + colorNumber * 2
         let low = uint16 (paletteRamByte index memory)
         let high = uint16 (paletteRamByte (index + 1) memory)
         let raw = low ||| (high <<< 8)
-        let scale value = uint32 ((value * 255 + 15) / 31)
-        let red = scale (int (raw &&& 0x001Fus))
-        let green = scale (int ((raw >>> 5) &&& 0x001Fus))
-        let blue = scale (int ((raw >>> 10) &&& 0x001Fus))
-        0xFF000000u ||| (red <<< 16) ||| (green <<< 8) ||| blue
+        cgbColorFromRgb555 raw
 
     let private unsignedTileAddress tileIndex row = 0x8000 + int tileIndex * 16 + row * 2
 
@@ -288,10 +327,15 @@ module Video =
 
                                 if not backgroundWins && (not behindBackground || not backgroundIsOpaque) then
                                     framebuffer[pixelIndex] <-
-                                        if Bus.usesColorPalettes memory then
-                                            cgbColor Bus.rawObjPaletteByte cgbPalette colorNumber memory
-                                        else
-                                            pixelColor palette colorNumber
+                                        match Bus.mode memory with
+                                        | Hardware.Dmg -> pixelColor palette colorNumber
+                                        | Hardware.CgbCompatibility ->
+                                            cgbColor
+                                                Bus.rawObjPaletteByte
+                                                cgbPalette
+                                                (compatibilityColorNumber palette colorNumber)
+                                                memory
+                                        | Hardware.Cgb -> cgbColor Bus.rawObjPaletteByte cgbPalette colorNumber memory
 
     let private renderScanlineWithScratch y memory (framebuffer: uint32[]) scratch =
         let lcdc = io 0x40 memory
@@ -310,10 +354,16 @@ module Video =
                     scratch.BackgroundPriority[x] <- backgroundPixel.Priority
 
                     framebuffer[pixelIndex] <-
-                        if Bus.usesColorPalettes memory then
+                        match Bus.mode memory with
+                        | Hardware.Dmg -> pixelColor bgp backgroundPixel.ColorNumber
+                        | Hardware.CgbCompatibility ->
+                            cgbColor
+                                Bus.rawBgPaletteByte
+                                0
+                                (compatibilityColorNumber bgp backgroundPixel.ColorNumber)
+                                memory
+                        | Hardware.Cgb ->
                             cgbColor Bus.rawBgPaletteByte backgroundPixel.Palette backgroundPixel.ColorNumber memory
-                        else
-                            pixelColor bgp backgroundPixel.ColorNumber
 
                 renderSpriteLine memory lcdc y scratch framebuffer
             else

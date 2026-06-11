@@ -627,15 +627,7 @@ module Bus =
                 Lcd = Lcd.resetLine memory.Lcd }
         | 0xFF4C when CgbMemory.isCgb memory && isBootRomEnabled memory ->
             memory.Io[0x4C] <- value
-
-            if
-                value &&& 0x04uy <> 0uy
-                && (CartridgeMemory.header memory.Cartridge).CgbSupport = Cartridge.DmgOnly
-            then
-                { memory with
-                    Mode = Hardware.CgbCompatibility }
-            else
-                memory
+            memory
         | 0xFF50 ->
             if value = 0uy then
                 memory
@@ -643,6 +635,16 @@ module Bus =
                 memory.Io[0x50] <- value
 
                 { memory with
+                    Mode =
+                        if
+                            CgbMemory.isCgb memory
+                            && isBootRomEnabled memory
+                            && memory.Io[0x4C] &&& 0x04uy <> 0uy
+                            && (CartridgeMemory.header memory.Cartridge).CgbSupport = Cartridge.DmgOnly
+                        then
+                            Hardware.CgbCompatibility
+                        else
+                            memory.Mode
                     BootRom = memory.BootRom |> Option.map (fun bootRom -> { bootRom with Enabled = false }) }
         | 0xFF46 ->
             let sourceBase = uint16 value <<< 8
