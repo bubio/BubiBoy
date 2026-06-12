@@ -8,7 +8,7 @@ open System.Text.Json
 
 module AppSettings =
     [<Literal>]
-    let CurrentVersion = 5
+    let CurrentVersion = 6
 
     [<Literal>]
     let MaxRecentRoms = 10
@@ -70,6 +70,7 @@ module AppSettings =
           VolumePercent: int
           RecentRoms: string[]
           Scale: int
+          ShowFullScreenInfo: bool
           BootRomSelection: string
           KeyboardMapping: Dictionary<string, string>
           ControllerMapping: Dictionary<string, string> }
@@ -78,6 +79,7 @@ module AppSettings =
         { VolumePercent: int
           RecentRoms: string list
           Scale: int
+          ShowFullScreenInfo: bool
           BootRomSelection: BootRomSelection
           KeyboardMapping: Map<string, string>
           ControllerMapping: Map<string, string> }
@@ -86,6 +88,7 @@ module AppSettings =
         { VolumePercent = 50
           RecentRoms = []
           Scale = 2
+          ShowFullScreenInfo = true
           BootRomSelection = Disabled
           KeyboardMapping = defaultKeyboardMapping
           ControllerMapping = defaultControllerMapping }
@@ -210,6 +213,7 @@ module AppSettings =
         { VolumePercent = Math.Clamp(settings.VolumePercent, 0, 100)
           RecentRoms = recent
           Scale = scale
+          ShowFullScreenInfo = settings.ShowFullScreenInfo
           BootRomSelection = settings.BootRomSelection
           KeyboardMapping = normalizeKeyboardMapping settings.KeyboardMapping
           ControllerMapping = normalizeControllerMapping settings.ControllerMapping }
@@ -264,6 +268,7 @@ module AppSettings =
                     raise (InvalidDataException "Settings file is empty.")
                 elif
                     file.Version <> CurrentVersion
+                    && file.Version <> 5
                     && file.Version <> 4
                     && file.Version <> 3
                     && file.Version <> 2
@@ -303,6 +308,11 @@ module AppSettings =
                             else
                                 Array.toList file.RecentRoms
                           Scale = if file.Version = 1 then defaults.Scale else file.Scale
+                          ShowFullScreenInfo =
+                            if file.Version < 6 then
+                                defaults.ShowFullScreenInfo
+                            else
+                                file.ShowFullScreenInfo
                           BootRomSelection = bootRomSelection
                           KeyboardMapping = keyboardMapping
                           ControllerMapping = controllerMapping })
@@ -318,6 +328,7 @@ module AppSettings =
                   VolumePercent = normalized.VolumePercent
                   RecentRoms = List.toArray normalized.RecentRoms
                   Scale = normalized.Scale
+                  ShowFullScreenInfo = normalized.ShowFullScreenInfo
                   BootRomSelection =
                     match normalized.BootRomSelection with
                     | Disabled -> "Disabled"
@@ -355,6 +366,11 @@ module AppSettings =
 
     let withScale scale settings =
         normalize { settings with Scale = scale }
+
+    let withShowFullScreenInfo enabled settings =
+        normalize
+            { settings with
+                ShowFullScreenInfo = enabled }
 
     let withBootRomSelection selection settings =
         normalize

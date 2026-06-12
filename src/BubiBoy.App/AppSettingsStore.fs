@@ -34,6 +34,11 @@ type AppSettingsStore(settingsPath: string, initialSettings: AppSettings.Setting
         let next = this.Replace(AppSettings.withScale scale current)
         next.Scale
 
+    /// Enables or disables informational side panels in full-screen mode.
+    member this.SetShowFullScreenInfo(enabled: bool) =
+        let next = this.Replace(AppSettings.withShowFullScreenInfo enabled current)
+        next.ShowFullScreenInfo
+
     /// Updates the configured output volume and returns the normalized value.
     member this.SetVolumePercent(percent: int) =
         let next = this.Replace(AppSettings.withVolumePercent percent current)

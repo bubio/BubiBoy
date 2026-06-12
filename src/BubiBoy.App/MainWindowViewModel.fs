@@ -39,6 +39,7 @@ type MainWindowViewModel
     let mutable isRunning = false
     let mutable hasSession = false
     let mutable hasLoadedRom = false
+    let mutable romDisplayName: string option = None
     let mutable selectedScale = initialScale
     let mutable isFloating = initialFloating
     let mutable volumePercent = initialVolumePercent
@@ -83,6 +84,10 @@ type MainWindowViewModel
         and set value =
             if setValue &hasLoadedRom value "HasLoadedRom" then
                 resetCommand.RaiseCanExecuteChanged()
+
+    member _.RomDisplayName
+        with get () = romDisplayName
+        and set value = setValue &romDisplayName value "RomDisplayName" |> ignore
 
     member _.SelectedScale
         with get () = selectedScale

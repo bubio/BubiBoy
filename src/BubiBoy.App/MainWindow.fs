@@ -46,7 +46,7 @@ type MainWindow(?startupRomPath: string) as this =
 
         this.DataContext <- viewModel
 
-        let viewport = GameViewport.create this
+        let viewport = GameViewport.create this settingsStore.Current.ShowFullScreenInfo
         let runIndicator = AppChrome.createRunIndicator ()
         let volumeControl = VolumeControl.create settingsStore.Current.VolumePercent
         let statusBar = AppChrome.createStatusBar false runIndicator.Host volumeControl.Host
@@ -125,7 +125,10 @@ type MainWindow(?startupRomPath: string) as this =
 
         viewModel.PropertyChanged.Add(fun args ->
             if args.PropertyName = "IsRunning" then
-                runIndicator.SetRunning viewModel.IsRunning)
+                runIndicator.SetRunning viewModel.IsRunning
+                viewport.UpdateSessionInfo viewModel.RomDisplayName viewModel.IsRunning
+            elif args.PropertyName = "RomDisplayName" then
+                viewport.UpdateSessionInfo viewModel.RomDisplayName viewModel.IsRunning)
 
         let openRomPicker () =
             async {
@@ -173,6 +176,14 @@ type MainWindow(?startupRomPath: string) as this =
             layoutController.ToggleFullScreen()
             refreshMenus ()
 
+        let toggleFullScreenInfo () =
+            let enabled =
+                settingsStore.SetShowFullScreenInfo(not settingsStore.Current.ShowFullScreenInfo)
+
+            viewport.SetSidePanelsEnabled enabled
+            refreshMenus ()
+            saveSettings ()
+
         let platformModifier = if isMacOS then KeyModifiers.Meta else KeyModifiers.Control
 
         let openSettings () =
@@ -202,6 +213,7 @@ type MainWindow(?startupRomPath: string) as this =
                   LoadState = sessionController.LoadState
                   SetScale = setScale
                   ToggleFullScreen = toggleFullScreen
+                  ToggleFullScreenInfo = toggleFullScreenInfo
                   ToggleFloating = fun () -> setFloating (not layoutController.IsFloating)
                   ToggleAlwaysOnTop = toggleAlwaysOnTop
                   LoadRecent = fun path -> sessionController.LoadRomPath(path, true)
@@ -216,7 +228,8 @@ type MainWindow(?startupRomPath: string) as this =
                     { RecentRoms = settingsStore.Current.RecentRoms
                       IsFloating = layoutController.IsFloating
                       IsAlwaysOnTop = layoutController.IsAlwaysOnTop
-                      IsFullScreen = this.WindowState = WindowState.FullScreen }
+                      IsFullScreen = this.WindowState = WindowState.FullScreen
+                      ShowFullScreenInfo = settingsStore.Current.ShowFullScreenInfo }
 
         let frameDisplayTimer =
             FrameDisplayTimer(
@@ -295,6 +308,7 @@ type MainWindow(?startupRomPath: string) as this =
         this.Closed.Add(fun _ ->
             sessionController.StopRunning()
             frameDisplayTimer.Stop()
+            viewport.StopTimers()
             inputHost.Dispose()
             PerfTrace.close perfTrace)
 

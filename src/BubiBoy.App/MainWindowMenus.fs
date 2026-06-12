@@ -13,6 +13,7 @@ module MainWindowMenus =
           LoadState: unit -> unit
           SetScale: int -> unit
           ToggleFullScreen: unit -> unit
+          ToggleFullScreenInfo: unit -> unit
           ToggleFloating: unit -> unit
           ToggleAlwaysOnTop: unit -> unit
           LoadRecent: string -> unit
@@ -23,7 +24,8 @@ module MainWindowMenus =
         { RecentRoms: string list
           IsFloating: bool
           IsAlwaysOnTop: bool
-          IsFullScreen: bool }
+          IsFullScreen: bool
+          ShowFullScreenInfo: bool }
 
     type Elements =
         { MenuBar: Menu
@@ -102,6 +104,9 @@ module MainWindowMenus =
         let nativeFullscreenItem =
             nativeItem "Full Screen" Key.F platformModifier actions.ToggleFullScreen
 
+        let nativeFullScreenInfoItem =
+            nativePlain "Full Screen Info" actions.ToggleFullScreenInfo
+
         let nativeFloatingItem =
             nativeItem "Floating Mode" Key.F (platformModifier ||| KeyModifiers.Shift) actions.ToggleFloating
 
@@ -131,6 +136,9 @@ module MainWindowMenus =
 
         let fullscreenItem =
             menuItem "Full Screen" Key.F platformModifier actions.ToggleFullScreen
+
+        let fullScreenInfoItem =
+            plainMenuItem "Full Screen Info" actions.ToggleFullScreenInfo
 
         let floatingItem =
             menuItem "Floating Mode" Key.F (platformModifier ||| KeyModifiers.Shift) actions.ToggleFloating
@@ -178,6 +186,8 @@ module MainWindowMenus =
             loadStateItem.IsEnabled <- viewModel.HasSession
             nativeFullscreenItem.IsChecked <- state.IsFullScreen
             fullscreenItem.IsChecked <- state.IsFullScreen
+            nativeFullScreenInfoItem.IsChecked <- state.ShowFullScreenInfo
+            fullScreenInfoItem.IsChecked <- state.ShowFullScreenInfo
             nativeFloatingItem.IsChecked <- state.IsFloating
             floatingItem.IsChecked <- state.IsFloating
             nativeAlwaysOnTopItem.IsChecked <- state.IsAlwaysOnTop
@@ -221,6 +231,7 @@ module MainWindowMenus =
 
         nativeViewSubmenu.Items.Add(NativeMenuItemSeparator()) |> ignore
         nativeViewSubmenu.Items.Add nativeFullscreenItem |> ignore
+        nativeViewSubmenu.Items.Add nativeFullScreenInfoItem |> ignore
         nativeViewSubmenu.Items.Add nativeFloatingItem |> ignore
         nativeViewSubmenu.Items.Add nativeAlwaysOnTopItem |> ignore
         nativeViewMenu.Menu <- nativeViewSubmenu
@@ -256,6 +267,7 @@ module MainWindowMenus =
 
         viewMenu.Items.Add(Separator()) |> ignore
         viewMenu.Items.Add fullscreenItem |> ignore
+        viewMenu.Items.Add fullScreenInfoItem |> ignore
         viewMenu.Items.Add floatingItem |> ignore
         viewMenu.Items.Add alwaysOnTopItem |> ignore
 

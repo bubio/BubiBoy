@@ -1,6 +1,7 @@
 namespace BubiBoy.App
 
 open System
+open System.IO
 open Avalonia.Controls
 open BubiBoy.Audio
 open BubiBoy.Core
@@ -107,6 +108,14 @@ type EmulationSessionController(dependencies: EmulationSessionDependencies) =
             | RomWorkflow.EmptyPath -> dependencies.Notifications.Show "Could not open the selected ROM path."
             | RomWorkflow.Loaded outcome ->
                 loadedRom <- Some outcome.Rom
+                let headerTitle = outcome.Rom.Header.Title
+
+                dependencies.ViewModel.RomDisplayName <-
+                    if String.IsNullOrWhiteSpace headerTitle then
+                        Some(Path.GetFileNameWithoutExtension outcome.Rom.Path)
+                    else
+                        Some headerTitle
+
                 setCurrentSession outcome.Session
                 dependencies.Runner.ClearFrames()
                 updateSessionState ()
@@ -127,6 +136,7 @@ type EmulationSessionController(dependencies: EmulationSessionDependencies) =
                 dependencies.Owner.Focus() |> ignore
             | RomWorkflow.LoadFailed(toastMessage, romDetails, debugDetails) ->
                 loadedRom <- None
+                dependencies.ViewModel.RomDisplayName <- None
                 setCurrentSession None
                 dependencies.Runner.ClearFrames()
                 updateSessionState ()
