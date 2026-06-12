@@ -16,6 +16,7 @@ type WindowLayoutController
     ) =
     let mutable selectedScale = initialScale
     let mutable isFloating = false
+    let mutable isAlwaysOnTop = false
     let mutable menuBar: Menu option = None
     let mutable contentGrid: Grid option = None
 
@@ -29,6 +30,8 @@ type WindowLayoutController
                     RowDefinitions("Auto,*,Auto"))
 
     let applyWindowChrome () =
+        owner.Topmost <- isFloating && isAlwaysOnTop
+
         if isFloating then
             if owner.WindowState = WindowState.FullScreen then
                 owner.WindowState <- WindowState.Normal
@@ -74,6 +77,9 @@ type WindowLayoutController
     /// Gets whether floating mode is active.
     member _.IsFloating = isFloating
 
+    /// Gets whether the floating window stays above other windows.
+    member _.IsAlwaysOnTop = isAlwaysOnTop
+
     /// Attaches controls that are created after menu actions are wired.
     member _.Attach(menu: Menu, content: Grid) =
         menuBar <- Some menu
@@ -92,8 +98,17 @@ type WindowLayoutController
     /// Enables or disables floating mode.
     member _.SetFloating(enabled: bool) =
         isFloating <- enabled
+
+        if not enabled then
+            isAlwaysOnTop <- false
+
         applyWindowChrome ()
         applyScale true
+
+    /// Enables or disables always-on-top while floating mode is active.
+    member _.SetAlwaysOnTop(enabled: bool) =
+        isAlwaysOnTop <- isFloating && enabled
+        owner.Topmost <- isAlwaysOnTop
 
     /// Refreshes viewport sizing after an external window-state change.
     member _.HandleWindowStateChanged() =

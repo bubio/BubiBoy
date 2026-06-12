@@ -162,6 +162,10 @@ type MainWindow(?startupRomPath: string) as this =
             viewModel.IsFloating <- enabled
             refreshMenus ()
 
+        let toggleAlwaysOnTop () =
+            layoutController.SetAlwaysOnTop(not layoutController.IsAlwaysOnTop)
+            refreshMenus ()
+
         let toggleFullScreen () =
             if layoutController.IsFloating then
                 setFloating false
@@ -199,6 +203,7 @@ type MainWindow(?startupRomPath: string) as this =
                   SetScale = setScale
                   ToggleFullScreen = toggleFullScreen
                   ToggleFloating = fun () -> setFloating (not layoutController.IsFloating)
+                  ToggleAlwaysOnTop = toggleAlwaysOnTop
                   LoadRecent = fun path -> sessionController.LoadRomPath(path, true)
                   Close = fun () -> this.Close()
                   ShowAbout = this.ShowAbout }
@@ -210,6 +215,7 @@ type MainWindow(?startupRomPath: string) as this =
                 menuElements.Refresh
                     { RecentRoms = settingsStore.Current.RecentRoms
                       IsFloating = layoutController.IsFloating
+                      IsAlwaysOnTop = layoutController.IsAlwaysOnTop
                       IsFullScreen = this.WindowState = WindowState.FullScreen }
 
         let frameDisplayTimer =
