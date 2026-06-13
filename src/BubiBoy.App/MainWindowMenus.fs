@@ -47,6 +47,11 @@ module MainWindowMenus =
         item.Click.Add(fun _ -> action ())
         item
 
+    let private nativeToggleItem toggleType header action =
+        let item = nativePlain header action
+        item.ToggleType <- toggleType
+        item
+
     let private nativeCommandItem header key modifiers command =
         let item = NativeMenuItem(header)
         item.Gesture <- gesture key modifiers
@@ -67,6 +72,11 @@ module MainWindowMenus =
     let private plainMenuItem header action =
         let item = MenuItem(Header = header)
         item.Click.Add(fun _ -> action ())
+        item
+
+    let private toggleMenuItem toggleType header action =
+        let item = plainMenuItem header action
+        item.ToggleType <- toggleType
         item
 
     let private commandMenuItem header key modifiers command =
@@ -107,28 +117,39 @@ module MainWindowMenus =
         let nativeFullscreenItem =
             nativeItem "Full Screen" Key.F platformModifier actions.ToggleFullScreen
 
+        nativeFullscreenItem.ToggleType <- MenuItemToggleType.CheckBox
+
         let nativeFullScreenInfoItem =
-            nativePlain "Full Screen Info" actions.ToggleFullScreenInfo
+            nativeToggleItem MenuItemToggleType.CheckBox "Full Screen Info" actions.ToggleFullScreenInfo
 
         let nativeFloatingItem =
             nativeItem "Floating Mode" Key.F (platformModifier ||| KeyModifiers.Shift) actions.ToggleFloating
 
-        let nativeAlwaysOnTopItem = nativePlain "Always on Top" actions.ToggleAlwaysOnTop
+        nativeFloatingItem.ToggleType <- MenuItemToggleType.CheckBox
+
+        let nativeAlwaysOnTopItem =
+            nativeToggleItem MenuItemToggleType.CheckBox "Always on Top" actions.ToggleAlwaysOnTop
 
         let nativeScaleItems =
             [ 1, nativeItem "Scale x1" Key.D1 platformModifier (fun () -> actions.SetScale 1)
               2, nativeItem "Scale x2" Key.D2 platformModifier (fun () -> actions.SetScale 2)
               4, nativeItem "Scale x4" Key.D4 platformModifier (fun () -> actions.SetScale 4)
               8, nativeItem "Scale x8" Key.D8 platformModifier (fun () -> actions.SetScale 8) ]
+            |> List.map (fun (scale, item) ->
+                item.ToggleType <- MenuItemToggleType.Radio
+                scale, item)
 
         let nativeVideoFilterMenu = NativeMenu()
         let nativeVideoFilterItem = NativeMenuItem("Image Filter")
         nativeVideoFilterItem.Menu <- nativeVideoFilterMenu
 
         let nativeVideoFilterItems =
-            [ AppSettings.Off, nativePlain "Off" (fun () -> actions.SetVideoFilter AppSettings.Off)
-              AppSettings.Smooth, nativePlain "Smooth" (fun () -> actions.SetVideoFilter AppSettings.Smooth)
-              AppSettings.Lcd, nativePlain "LCD" (fun () -> actions.SetVideoFilter AppSettings.Lcd) ]
+            [ AppSettings.Off,
+              nativeToggleItem MenuItemToggleType.Radio "Off" (fun () -> actions.SetVideoFilter AppSettings.Off)
+              AppSettings.Smooth,
+              nativeToggleItem MenuItemToggleType.Radio "Smooth" (fun () -> actions.SetVideoFilter AppSettings.Smooth)
+              AppSettings.Lcd,
+              nativeToggleItem MenuItemToggleType.Radio "LCD" (fun () -> actions.SetVideoFilter AppSettings.Lcd) ]
 
         for _, item in nativeVideoFilterItems do
             nativeVideoFilterMenu.Items.Add item |> ignore
@@ -152,26 +173,37 @@ module MainWindowMenus =
         let fullscreenItem =
             menuItem "Full Screen" Key.F platformModifier actions.ToggleFullScreen
 
+        fullscreenItem.ToggleType <- MenuItemToggleType.CheckBox
+
         let fullScreenInfoItem =
-            plainMenuItem "Full Screen Info" actions.ToggleFullScreenInfo
+            toggleMenuItem MenuItemToggleType.CheckBox "Full Screen Info" actions.ToggleFullScreenInfo
 
         let floatingItem =
             menuItem "Floating Mode" Key.F (platformModifier ||| KeyModifiers.Shift) actions.ToggleFloating
 
-        let alwaysOnTopItem = plainMenuItem "Always on Top" actions.ToggleAlwaysOnTop
+        floatingItem.ToggleType <- MenuItemToggleType.CheckBox
+
+        let alwaysOnTopItem =
+            toggleMenuItem MenuItemToggleType.CheckBox "Always on Top" actions.ToggleAlwaysOnTop
 
         let scaleItems =
             [ 1, menuItem "Scale x1" Key.D1 platformModifier (fun () -> actions.SetScale 1)
               2, menuItem "Scale x2" Key.D2 platformModifier (fun () -> actions.SetScale 2)
               4, menuItem "Scale x4" Key.D4 platformModifier (fun () -> actions.SetScale 4)
               8, menuItem "Scale x8" Key.D8 platformModifier (fun () -> actions.SetScale 8) ]
+            |> List.map (fun (scale, item) ->
+                item.ToggleType <- MenuItemToggleType.Radio
+                scale, item)
 
         let videoFilterMenu = MenuItem(Header = "Image Filter")
 
         let videoFilterItems =
-            [ AppSettings.Off, plainMenuItem "Off" (fun () -> actions.SetVideoFilter AppSettings.Off)
-              AppSettings.Smooth, plainMenuItem "Smooth" (fun () -> actions.SetVideoFilter AppSettings.Smooth)
-              AppSettings.Lcd, plainMenuItem "LCD" (fun () -> actions.SetVideoFilter AppSettings.Lcd) ]
+            [ AppSettings.Off,
+              toggleMenuItem MenuItemToggleType.Radio "Off" (fun () -> actions.SetVideoFilter AppSettings.Off)
+              AppSettings.Smooth,
+              toggleMenuItem MenuItemToggleType.Radio "Smooth" (fun () -> actions.SetVideoFilter AppSettings.Smooth)
+              AppSettings.Lcd,
+              toggleMenuItem MenuItemToggleType.Radio "LCD" (fun () -> actions.SetVideoFilter AppSettings.Lcd) ]
 
         for _, item in videoFilterItems do
             videoFilterMenu.Items.Add item |> ignore
