@@ -39,6 +39,11 @@ type AppSettingsStore(settingsPath: string, initialSettings: AppSettings.Setting
         let next = this.Replace(AppSettings.withShowFullScreenInfo enabled current)
         next.ShowFullScreenInfo
 
+    /// Updates the image filter used by the game viewport.
+    member this.SetVideoFilter(filter: AppSettings.VideoFilter) =
+        let next = this.Replace(AppSettings.withVideoFilter filter current)
+        next.VideoFilter
+
     /// Updates the configured output volume and returns the normalized value.
     member this.SetVolumePercent(percent: int) =
         let next = this.Replace(AppSettings.withVolumePercent percent current)

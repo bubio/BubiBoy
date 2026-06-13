@@ -37,6 +37,7 @@
     <Compile Include="AboutWindow.fs" />
     <Compile Include="PerfTrace.fs" />
     <Compile Include="DisplayHelpers.fs" />
+    <Compile Include="VideoDisplay.fs" />
     <Compile Include="GameViewport.fs" />
     <Compile Include="RuntimeCounters.fs" />
     <Compile Include="InputMapping.fs" />

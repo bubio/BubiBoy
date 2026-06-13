@@ -123,7 +123,7 @@ module UserMessage =
             message
 
 module FramebufferBitmap =
-    let private copyToBgraBytes (pixels: uint32[]) (bytes: byte[]) : unit =
+    let copyToBgraBytes (pixels: uint32[]) (bytes: byte[]) : unit =
         for index in 0 .. pixels.Length - 1 do
             let color = pixels[index]
             let offset = index * 4
@@ -132,17 +132,27 @@ module FramebufferBitmap =
             bytes[offset + 2] <- byte ((color >>> 16) &&& 0x000000FFu)
             bytes[offset + 3] <- byte ((color >>> 24) &&& 0x000000FFu)
 
-    let writeInto (pixels: uint32[]) (bitmap: WriteableBitmap) (bytes: byte[]) : unit =
-        copyToBgraBytes pixels bytes
-
+    let writeBytesInto (bytes: byte[]) (bitmap: WriteableBitmap) : unit =
         use locked = bitmap.Lock()
-        let rowBytes = Hardware.ScreenWidth * 4
+        let width = bitmap.PixelSize.Width
+        let height = bitmap.PixelSize.Height
+        let rowBytes = width * 4
+        let requiredLength = rowBytes * height
+
+        if bytes.Length <> requiredLength then
+            invalidArg
+                (nameof bytes)
+                $"Pixel buffer length {bytes.Length} does not match bitmap size {width}x{height} ({requiredLength} bytes)."
 
         if locked.RowBytes = rowBytes then
-            Marshal.Copy(bytes, 0, locked.Address, bytes.Length)
+            Marshal.Copy(bytes, 0, locked.Address, requiredLength)
         else
-            for y in 0 .. Hardware.ScreenHeight - 1 do
+            for y in 0 .. height - 1 do
                 Marshal.Copy(bytes, y * rowBytes, IntPtr.Add(locked.Address, y * locked.RowBytes), rowBytes)
+
+    let writeInto (pixels: uint32[]) (bitmap: WriteableBitmap) (bytes: byte[]) : unit =
+        copyToBgraBytes pixels bytes
+        writeBytesInto bytes bitmap
 
     /// Creates the single, reusable display bitmap. The pixel buffer is written into
     /// it in place each frame via writeInto, so no per-frame bitmap is ever allocated.

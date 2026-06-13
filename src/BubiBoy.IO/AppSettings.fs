@@ -8,7 +8,7 @@ open System.Text.Json
 
 module AppSettings =
     [<Literal>]
-    let CurrentVersion = 6
+    let CurrentVersion = 7
 
     [<Literal>]
     let MaxRecentRoms = 10
@@ -64,6 +64,11 @@ module AppSettings =
         | Cgb
         | Dmg
 
+    type VideoFilter =
+        | Off
+        | Smooth
+        | Lcd
+
     [<CLIMutable>]
     type SettingsFile =
         { Version: int
@@ -71,6 +76,7 @@ module AppSettings =
           RecentRoms: string[]
           Scale: int
           ShowFullScreenInfo: bool
+          VideoFilter: string
           BootRomSelection: string
           KeyboardMapping: Dictionary<string, string>
           ControllerMapping: Dictionary<string, string> }
@@ -80,6 +86,7 @@ module AppSettings =
           RecentRoms: string list
           Scale: int
           ShowFullScreenInfo: bool
+          VideoFilter: VideoFilter
           BootRomSelection: BootRomSelection
           KeyboardMapping: Map<string, string>
           ControllerMapping: Map<string, string> }
@@ -89,6 +96,7 @@ module AppSettings =
           RecentRoms = []
           Scale = 2
           ShowFullScreenInfo = true
+          VideoFilter = Off
           BootRomSelection = Disabled
           KeyboardMapping = defaultKeyboardMapping
           ControllerMapping = defaultControllerMapping }
@@ -214,6 +222,7 @@ module AppSettings =
           RecentRoms = recent
           Scale = scale
           ShowFullScreenInfo = settings.ShowFullScreenInfo
+          VideoFilter = settings.VideoFilter
           BootRomSelection = settings.BootRomSelection
           KeyboardMapping = normalizeKeyboardMapping settings.KeyboardMapping
           ControllerMapping = normalizeControllerMapping settings.ControllerMapping }
@@ -268,6 +277,7 @@ module AppSettings =
                     raise (InvalidDataException "Settings file is empty.")
                 elif
                     file.Version <> CurrentVersion
+                    && file.Version <> 6
                     && file.Version <> 5
                     && file.Version <> 4
                     && file.Version <> 3
@@ -300,6 +310,15 @@ module AppSettings =
                             | "Dmg" -> Dmg
                             | _ -> Disabled
 
+                    let videoFilter =
+                        if file.Version < 7 then
+                            Off
+                        else
+                            match file.VideoFilter with
+                            | "Smooth" -> Smooth
+                            | "Lcd" -> Lcd
+                            | _ -> Off
+
                     normalize
                         { VolumePercent = file.VolumePercent
                           RecentRoms =
@@ -313,6 +332,7 @@ module AppSettings =
                                 defaults.ShowFullScreenInfo
                             else
                                 file.ShowFullScreenInfo
+                          VideoFilter = videoFilter
                           BootRomSelection = bootRomSelection
                           KeyboardMapping = keyboardMapping
                           ControllerMapping = controllerMapping })
@@ -329,6 +349,11 @@ module AppSettings =
                   RecentRoms = List.toArray normalized.RecentRoms
                   Scale = normalized.Scale
                   ShowFullScreenInfo = normalized.ShowFullScreenInfo
+                  VideoFilter =
+                    match normalized.VideoFilter with
+                    | Off -> "Off"
+                    | Smooth -> "Smooth"
+                    | Lcd -> "Lcd"
                   BootRomSelection =
                     match normalized.BootRomSelection with
                     | Disabled -> "Disabled"
@@ -371,6 +396,9 @@ module AppSettings =
         normalize
             { settings with
                 ShowFullScreenInfo = enabled }
+
+    let withVideoFilter filter settings =
+        normalize { settings with VideoFilter = filter }
 
     let withBootRomSelection selection settings =
         normalize

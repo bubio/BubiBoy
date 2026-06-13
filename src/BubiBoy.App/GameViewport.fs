@@ -10,6 +10,7 @@ open Avalonia.Layout
 open Avalonia.Media
 open Avalonia.Threading
 open BubiBoy.Core
+open BubiBoy.IO
 
 module GameViewport =
     [<Literal>]
@@ -34,13 +35,14 @@ module GameViewport =
         { Host: Grid
           Framebuffer: Border
           PresentFrame: uint32[] -> unit
+          SetVideoFilter: AppSettings.VideoFilter -> unit
           ApplyScale: int -> WindowState -> unit
           ApplyBackground: WindowState -> unit
           UpdateSessionInfo: string option -> bool -> unit
           SetSidePanelsEnabled: bool -> unit
           StopTimers: unit -> unit }
 
-    let create (owner: Window) initialSidePanelsEnabled =
+    let create (owner: Window) initialSidePanelsEnabled (initialVideoFilter: AppSettings.VideoFilter) =
         let fullscreenBackground = Brushes.Black :> IBrush
         let primaryText = SolidColorBrush(Color.Parse("#D7DBE0"))
         let secondaryText = SolidColorBrush(Color.Parse("#7E858E"))
@@ -56,25 +58,18 @@ module GameViewport =
                 VerticalAlignment = VerticalAlignment.Center
             )
 
-        // A single display bitmap and BGRA scratch buffer are reused for every frame;
-        // writeInto blits the emulator framebuffer into them in place (no per-frame
-        // WriteableBitmap or 100 KiB byte[] allocation).
-        let displayBitmap = FramebufferBitmap.createBitmap ()
-
-        let displayBytes =
-            Array.zeroCreate<byte> (Hardware.ScreenWidth * Hardware.ScreenHeight * 4)
-
-        FramebufferBitmap.writeInto (Video.blankFrame ()) displayBitmap displayBytes
-
-        let framebufferImage =
-            Image(
+        let videoDisplay =
+            VideoDisplay(
+                initialVideoFilter,
                 Width = float Hardware.ScreenWidth * 2.0,
                 Height = float Hardware.ScreenHeight * 2.0,
-                Stretch = Stretch.Uniform,
-                Source = displayBitmap
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
             )
 
-        framebuffer.Child <- framebufferImage
+        videoDisplay.PresentFrame(Video.blankFrame ())
+        videoDisplay.SetVideoFilter initialVideoFilter
+        framebuffer.Child <- videoDisplay
 
         let host = Grid()
         AppTheme.bindBrush host Panel.BackgroundProperty AppTheme.WindowBackground
@@ -299,19 +294,19 @@ module GameViewport =
                 framebuffer.Height <- Double.NaN
                 framebuffer.HorizontalAlignment <- HorizontalAlignment.Stretch
                 framebuffer.VerticalAlignment <- VerticalAlignment.Stretch
-                framebufferImage.Width <- Double.NaN
-                framebufferImage.Height <- Double.NaN
-                framebufferImage.HorizontalAlignment <- HorizontalAlignment.Stretch
-                framebufferImage.VerticalAlignment <- VerticalAlignment.Stretch
+                videoDisplay.Width <- Double.NaN
+                videoDisplay.Height <- Double.NaN
+                videoDisplay.HorizontalAlignment <- HorizontalAlignment.Stretch
+                videoDisplay.VerticalAlignment <- VerticalAlignment.Stretch
             else
                 framebuffer.Width <- videoWidth
                 framebuffer.Height <- videoHeight
                 framebuffer.HorizontalAlignment <- HorizontalAlignment.Center
                 framebuffer.VerticalAlignment <- VerticalAlignment.Center
-                framebufferImage.Width <- videoWidth
-                framebufferImage.Height <- videoHeight
-                framebufferImage.HorizontalAlignment <- HorizontalAlignment.Center
-                framebufferImage.VerticalAlignment <- VerticalAlignment.Center
+                videoDisplay.Width <- videoWidth
+                videoDisplay.Height <- videoHeight
+                videoDisplay.HorizontalAlignment <- HorizontalAlignment.Center
+                videoDisplay.VerticalAlignment <- VerticalAlignment.Center
 
             if isFullScreen && sidePanelsEnabled then
                 updateClock ()
@@ -341,9 +336,7 @@ module GameViewport =
                 revealTimer.Stop()
                 startFadeIn ()
 
-        let presentFrame (pixels: uint32[]) =
-            FramebufferBitmap.writeInto pixels displayBitmap displayBytes
-            framebufferImage.InvalidateVisual()
+        let presentFrame (pixels: uint32[]) = videoDisplay.PresentFrame pixels
 
         let updateSessionInfo romDisplayName running =
             match romDisplayName with
@@ -371,6 +364,7 @@ module GameViewport =
         { Host = host
           Framebuffer = framebuffer
           PresentFrame = presentFrame
+          SetVideoFilter = videoDisplay.SetVideoFilter
           ApplyScale = applyScale
           ApplyBackground = applyBackground
           UpdateSessionInfo = updateSessionInfo
@@ -379,4 +373,5 @@ module GameViewport =
             fun () ->
                 revealTimer.Stop()
                 fadeTimer.Stop()
-                clockTimer.Stop() }
+                clockTimer.Stop()
+                videoDisplay.Dispose() }

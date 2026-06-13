@@ -4,6 +4,7 @@ open System.IO
 open Avalonia.Controls
 open Avalonia.Input
 open Avalonia.Platform
+open BubiBoy.IO
 
 module MainWindowMenus =
     type Actions =
@@ -12,6 +13,7 @@ module MainWindowMenus =
           SaveState: unit -> unit
           LoadState: unit -> unit
           SetScale: int -> unit
+          SetVideoFilter: AppSettings.VideoFilter -> unit
           ToggleFullScreen: unit -> unit
           ToggleFullScreenInfo: unit -> unit
           ToggleFloating: unit -> unit
@@ -25,7 +27,8 @@ module MainWindowMenus =
           IsFloating: bool
           IsAlwaysOnTop: bool
           IsFullScreen: bool
-          ShowFullScreenInfo: bool }
+          ShowFullScreenInfo: bool
+          VideoFilter: AppSettings.VideoFilter }
 
     type Elements =
         { MenuBar: Menu
@@ -118,6 +121,18 @@ module MainWindowMenus =
               4, nativeItem "Scale x4" Key.D4 platformModifier (fun () -> actions.SetScale 4)
               8, nativeItem "Scale x8" Key.D8 platformModifier (fun () -> actions.SetScale 8) ]
 
+        let nativeVideoFilterMenu = NativeMenu()
+        let nativeVideoFilterItem = NativeMenuItem("Image Filter")
+        nativeVideoFilterItem.Menu <- nativeVideoFilterMenu
+
+        let nativeVideoFilterItems =
+            [ AppSettings.Off, nativePlain "Off" (fun () -> actions.SetVideoFilter AppSettings.Off)
+              AppSettings.Smooth, nativePlain "Smooth" (fun () -> actions.SetVideoFilter AppSettings.Smooth)
+              AppSettings.Lcd, nativePlain "LCD" (fun () -> actions.SetVideoFilter AppSettings.Lcd) ]
+
+        for _, item in nativeVideoFilterItems do
+            nativeVideoFilterMenu.Items.Add item |> ignore
+
         let openRecentMenu = MenuItem(Header = "Open Recent")
 
         let clearRecentItem =
@@ -150,6 +165,16 @@ module MainWindowMenus =
               2, menuItem "Scale x2" Key.D2 platformModifier (fun () -> actions.SetScale 2)
               4, menuItem "Scale x4" Key.D4 platformModifier (fun () -> actions.SetScale 4)
               8, menuItem "Scale x8" Key.D8 platformModifier (fun () -> actions.SetScale 8) ]
+
+        let videoFilterMenu = MenuItem(Header = "Image Filter")
+
+        let videoFilterItems =
+            [ AppSettings.Off, plainMenuItem "Off" (fun () -> actions.SetVideoFilter AppSettings.Off)
+              AppSettings.Smooth, plainMenuItem "Smooth" (fun () -> actions.SetVideoFilter AppSettings.Smooth)
+              AppSettings.Lcd, plainMenuItem "LCD" (fun () -> actions.SetVideoFilter AppSettings.Lcd) ]
+
+        for _, item in videoFilterItems do
+            videoFilterMenu.Items.Add item |> ignore
 
         let rebuildRecentMenus (recentRoms: string list) =
             nativeOpenRecentMenu.Items.Clear()
@@ -201,6 +226,12 @@ module MainWindowMenus =
             for scale, item in scaleItems do
                 item.IsChecked <- (scale = viewModel.SelectedScale)
 
+            for filter, item in nativeVideoFilterItems do
+                item.IsChecked <- (filter = state.VideoFilter)
+
+            for filter, item in videoFilterItems do
+                item.IsChecked <- (filter = state.VideoFilter)
+
         let nativeMenu = NativeMenu()
         let nativeFileMenu = NativeMenuItem("File")
         let nativeFileSubmenu = NativeMenu()
@@ -229,6 +260,7 @@ module MainWindowMenus =
         for _, item in nativeScaleItems do
             nativeViewSubmenu.Items.Add item |> ignore
 
+        nativeViewSubmenu.Items.Add nativeVideoFilterItem |> ignore
         nativeViewSubmenu.Items.Add(NativeMenuItemSeparator()) |> ignore
         nativeViewSubmenu.Items.Add nativeFullscreenItem |> ignore
         nativeViewSubmenu.Items.Add nativeFullScreenInfoItem |> ignore
@@ -265,6 +297,7 @@ module MainWindowMenus =
         for _, item in scaleItems do
             viewMenu.Items.Add item |> ignore
 
+        viewMenu.Items.Add videoFilterMenu |> ignore
         viewMenu.Items.Add(Separator()) |> ignore
         viewMenu.Items.Add fullscreenItem |> ignore
         viewMenu.Items.Add fullScreenInfoItem |> ignore

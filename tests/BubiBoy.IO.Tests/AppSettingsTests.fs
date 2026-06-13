@@ -20,6 +20,7 @@ let ``saveToPath writes versioned settings and creates directories`` () =
           RecentRoms = recentRoms
           Scale = 4
           ShowFullScreenInfo = false
+          VideoFilter = AppSettings.Smooth
           BootRomSelection = AppSettings.Cgb
           KeyboardMapping = AppSettings.defaultKeyboardMapping |> Map.add "A" "C" |> Map.add "B" "V"
           ControllerMapping =
@@ -31,7 +32,10 @@ let ``saveToPath writes versioned settings and creates directories`` () =
     | Error message -> Assert.Fail message
     | Ok() ->
         Assert.True(File.Exists path)
-        Assert.DoesNotContain("IsFloating", File.ReadAllText path)
+        let savedJson = File.ReadAllText path
+        Assert.Contains("\"Version\": 7", savedJson)
+        Assert.Contains("\"VideoFilter\": \"Smooth\"", savedJson)
+        Assert.DoesNotContain("IsFloating", savedJson)
 
         match AppSettings.loadFromPath path with
         | Error message -> Assert.Fail message
@@ -40,6 +44,7 @@ let ``saveToPath writes versioned settings and creates directories`` () =
             Assert.Equal<string list>(recentRoms |> List.map fullPath, loaded.RecentRoms)
             Assert.Equal(4, loaded.Scale)
             Assert.False(loaded.ShowFullScreenInfo)
+            Assert.Equal(AppSettings.Smooth, loaded.VideoFilter)
             Assert.Equal(AppSettings.Cgb, loaded.BootRomSelection)
             Assert.Equal("C", loaded.KeyboardMapping["A"])
             Assert.Equal("V", loaded.KeyboardMapping["B"])
@@ -61,6 +66,7 @@ let ``normalize clamps volume and limits deduplicated recent ROMs`` () =
           RecentRoms = paths @ [ paths[1]; ""; "   " ]
           Scale = 99
           ShowFullScreenInfo = false
+          VideoFilter = AppSettings.Lcd
           BootRomSelection = AppSettings.Automatic
           KeyboardMapping =
             AppSettings.defaultKeyboardMapping
@@ -82,6 +88,7 @@ let ``normalize clamps volume and limits deduplicated recent ROMs`` () =
     Assert.Equal(fullPath paths[0], settings.RecentRoms.Head)
     Assert.Equal(2, settings.Scale)
     Assert.False(settings.ShowFullScreenInfo)
+    Assert.Equal(AppSettings.Lcd, settings.VideoFilter)
     Assert.Equal(AppSettings.Automatic, settings.BootRomSelection)
     Assert.Equal("Q", settings.KeyboardMapping["A"])
     Assert.Equal("X", settings.KeyboardMapping["B"])
@@ -102,6 +109,7 @@ let ``rememberRom moves existing ROM to front`` () =
           RecentRoms = [ one; two ]
           Scale = 2
           ShowFullScreenInfo = true
+          VideoFilter = AppSettings.Off
           BootRomSelection = AppSettings.Disabled
           KeyboardMapping = AppSettings.defaultKeyboardMapping
           ControllerMapping = AppSettings.defaultControllerMapping }
@@ -128,6 +136,12 @@ let ``withShowFullScreenInfo persists the selected visibility`` () =
     let settings = AppSettings.defaults |> AppSettings.withShowFullScreenInfo false
 
     Assert.False(settings.ShowFullScreenInfo)
+
+[<Fact>]
+let ``withVideoFilter persists the selected filter`` () =
+    let settings = AppSettings.defaults |> AppSettings.withVideoFilter AppSettings.Lcd
+
+    Assert.Equal(AppSettings.Lcd, settings.VideoFilter)
 
 [<Fact>]
 let ``withKeyboardMapping persists normalized keyboard mapping`` () =
@@ -159,6 +173,7 @@ let ``loadFromPath migrates version 1 settings with default scale and input mapp
         Assert.Equal<string list>([ fullPath oldRom ], settings.RecentRoms)
         Assert.Equal(2, settings.Scale)
         Assert.True(settings.ShowFullScreenInfo)
+        Assert.Equal(AppSettings.Off, settings.VideoFilter)
         Assert.Equal(AppSettings.Disabled, settings.BootRomSelection)
         Assert.Equal<Map<string, string>>(AppSettings.defaultKeyboardMapping, settings.KeyboardMapping)
         Assert.Equal<Map<string, string>>(AppSettings.defaultControllerMapping, settings.ControllerMapping)
@@ -181,6 +196,7 @@ let ``loadFromPath migrates version 2 settings and ignores floating mode`` () =
         Assert.Equal<string list>([ fullPath oldRom ], settings.RecentRoms)
         Assert.Equal(4, settings.Scale)
         Assert.True(settings.ShowFullScreenInfo)
+        Assert.Equal(AppSettings.Off, settings.VideoFilter)
         Assert.Equal(AppSettings.Disabled, settings.BootRomSelection)
         Assert.Equal<Map<string, string>>(AppSettings.defaultKeyboardMapping, settings.KeyboardMapping)
         Assert.Equal<Map<string, string>>(AppSettings.defaultControllerMapping, settings.ControllerMapping)
@@ -203,6 +219,7 @@ let ``loadFromPath migrates version 3 settings and ignores floating mode`` () =
         Assert.Equal<string list>([ fullPath oldRom ], settings.RecentRoms)
         Assert.Equal(4, settings.Scale)
         Assert.True(settings.ShowFullScreenInfo)
+        Assert.Equal(AppSettings.Off, settings.VideoFilter)
         Assert.Equal(AppSettings.Disabled, settings.BootRomSelection)
         Assert.Equal("C", settings.KeyboardMapping["A"])
         Assert.Equal<Map<string, string>>(AppSettings.defaultControllerMapping, settings.ControllerMapping)
@@ -222,6 +239,7 @@ let ``loadFromPath migrates version 4 settings with boot ROMs disabled`` () =
     | Ok settings ->
         Assert.Equal(AppSettings.Disabled, settings.BootRomSelection)
         Assert.True(settings.ShowFullScreenInfo)
+        Assert.Equal(AppSettings.Off, settings.VideoFilter)
 
 [<Fact>]
 let ``loadFromPath migrates version 5 settings with full-screen info enabled`` () =
@@ -238,6 +256,37 @@ let ``loadFromPath migrates version 5 settings with full-screen info enabled`` (
     | Ok settings ->
         Assert.Equal(AppSettings.Automatic, settings.BootRomSelection)
         Assert.True(settings.ShowFullScreenInfo)
+        Assert.Equal(AppSettings.Off, settings.VideoFilter)
+
+[<Fact>]
+let ``loadFromPath migrates version 6 settings with video filter off`` () =
+    let path = tempPath "settings.json"
+    Directory.CreateDirectory(Path.GetDirectoryName path) |> ignore
+
+    File.WriteAllText(
+        path,
+        """{"Version":6,"VolumePercent":50,"RecentRoms":[],"Scale":2,"ShowFullScreenInfo":false,"BootRomSelection":"Automatic","KeyboardMapping":{},"ControllerMapping":{}}"""
+    )
+
+    match AppSettings.loadFromPath path with
+    | Error message -> Assert.Fail message
+    | Ok settings ->
+        Assert.False(settings.ShowFullScreenInfo)
+        Assert.Equal(AppSettings.Off, settings.VideoFilter)
+
+[<Fact>]
+let ``loadFromPath normalizes unknown video filter to off`` () =
+    let path = tempPath "settings.json"
+    Directory.CreateDirectory(Path.GetDirectoryName path) |> ignore
+
+    File.WriteAllText(
+        path,
+        """{"Version":7,"VolumePercent":50,"RecentRoms":[],"Scale":2,"ShowFullScreenInfo":true,"VideoFilter":"Unknown","BootRomSelection":"Disabled","KeyboardMapping":{},"ControllerMapping":{}}"""
+    )
+
+    match AppSettings.loadFromPath path with
+    | Error message -> Assert.Fail message
+    | Ok settings -> Assert.Equal(AppSettings.Off, settings.VideoFilter)
 
 [<Fact>]
 let ``loadFromPath reports unsupported settings version`` () =

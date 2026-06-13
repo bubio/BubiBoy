@@ -9,6 +9,7 @@ open Avalonia.Media
 open Avalonia.Platform
 open BubiBoy.Audio
 open BubiBoy.Core
+open BubiBoy.IO
 
 type MainWindow(?startupRomPath: string) as this =
     inherit Window()
@@ -46,7 +47,9 @@ type MainWindow(?startupRomPath: string) as this =
 
         this.DataContext <- viewModel
 
-        let viewport = GameViewport.create this settingsStore.Current.ShowFullScreenInfo
+        let viewport =
+            GameViewport.create this settingsStore.Current.ShowFullScreenInfo settingsStore.Current.VideoFilter
+
         let runIndicator = AppChrome.createRunIndicator ()
         let volumeControl = VolumeControl.create settingsStore.Current.VolumePercent
         let statusBar = AppChrome.createStatusBar false runIndicator.Host volumeControl.Host
@@ -160,6 +163,12 @@ type MainWindow(?startupRomPath: string) as this =
             refreshMenus ()
             saveSettings ()
 
+        let setVideoFilter filter =
+            let normalizedFilter = settingsStore.SetVideoFilter filter
+            viewport.SetVideoFilter normalizedFilter
+            refreshMenus ()
+            saveSettings ()
+
         let setFloating enabled =
             layoutController.SetFloating enabled
             viewModel.IsFloating <- enabled
@@ -212,6 +221,7 @@ type MainWindow(?startupRomPath: string) as this =
                   SaveState = sessionController.SaveState
                   LoadState = sessionController.LoadState
                   SetScale = setScale
+                  SetVideoFilter = setVideoFilter
                   ToggleFullScreen = toggleFullScreen
                   ToggleFullScreenInfo = toggleFullScreenInfo
                   ToggleFloating = fun () -> setFloating (not layoutController.IsFloating)
@@ -229,7 +239,8 @@ type MainWindow(?startupRomPath: string) as this =
                       IsFloating = layoutController.IsFloating
                       IsAlwaysOnTop = layoutController.IsAlwaysOnTop
                       IsFullScreen = this.WindowState = WindowState.FullScreen
-                      ShowFullScreenInfo = settingsStore.Current.ShowFullScreenInfo }
+                      ShowFullScreenInfo = settingsStore.Current.ShowFullScreenInfo
+                      VideoFilter = settingsStore.Current.VideoFilter }
 
         let frameDisplayTimer =
             FrameDisplayTimer(
