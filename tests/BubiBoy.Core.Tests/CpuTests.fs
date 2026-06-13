@@ -1776,13 +1776,17 @@ let ``LD SP HL copies HL into stack pointer`` () =
     Assert.Equal(8, result.Cycles)
 
 [<Fact>]
-let ``EI advances PC and consumes four cycles`` () =
-    let bus = makeBus [| 0xFBuy |]
-    let result = Cpu.step Cpu.initialState bus
+let ``EI enables interrupts after the following instruction`` () =
+    let bus = makeBus [| 0xFBuy; 0x00uy |]
+    let afterEi = Cpu.step Cpu.initialState bus
+    let afterFollowingInstruction = Cpu.step afterEi.Cpu afterEi.Bus
 
-    Assert.True(result.Cpu.InterruptsEnabled)
-    Assert.Equal(0x0101us, result.Cpu.Registers.PC)
-    Assert.Equal(4, result.Cycles)
+    Assert.False(afterEi.Cpu.InterruptsEnabled)
+    Assert.True(afterEi.Cpu.EnableInterruptsAfterInstruction)
+    Assert.True(afterFollowingInstruction.Cpu.InterruptsEnabled)
+    Assert.False(afterFollowingInstruction.Cpu.EnableInterruptsAfterInstruction)
+    Assert.Equal(0x0102us, afterFollowingInstruction.Cpu.Registers.PC)
+    Assert.Equal(4, afterEi.Cycles)
 
 [<Fact>]
 let ``DI disables interrupt servicing`` () =
@@ -1846,6 +1850,25 @@ let ``halted CPU resumes through enabled pending interrupt`` () =
     Assert.Equal(0x0040us, result.Cpu.Registers.PC)
     Assert.Equal(0xCFFEus, result.Cpu.Registers.SP)
     Assert.Equal(20, result.Cycles)
+
+[<Fact>]
+let ``halted CPU resumes without servicing pending interrupt when IME is disabled`` () =
+    let bus =
+        makeBus [| 0x00uy |]
+        |> Bus.writeByte 0xFFFFus Interrupt.VBlankBit
+        |> Bus.writeByte 0xFF0Fus Interrupt.VBlankBit
+
+    let cpu =
+        { Cpu.initialState with
+            Halted = true
+            InterruptsEnabled = false }
+
+    let result = Cpu.step cpu bus
+
+    Assert.False(result.Cpu.Halted)
+    Assert.Equal(0x0101us, result.Cpu.Registers.PC)
+    Assert.Equal(Interrupt.VBlankBit, Bus.readByte 0xFF0Fus result.Bus &&& Interrupt.VBlankBit)
+    Assert.Equal(4, result.Cycles)
 
 [<Fact>]
 let ``LD B A copies accumulator`` () =

@@ -8,7 +8,7 @@ open System.Text
 module SaveState =
     /// The current binary save-state format version.
     [<Literal>]
-    let CurrentVersion = 5
+    let CurrentVersion = 7
 
     /// Contains all session state stored in a save-state payload.
     type Snapshot =
@@ -125,7 +125,7 @@ module SaveState =
             else
                 let version = reader.ReadInt()
 
-                if version <> 2 && version <> 3 && version <> 4 && version <> CurrentVersion then
+                if version < 2 || version > CurrentVersion then
                     Error $"Unsupported save state version: {version}."
                 else
                     Ok version
@@ -219,7 +219,12 @@ module SaveState =
 
         let writeTimerState (state: Timer.State) =
             writeUInt16 state.Divider
-            writeInt state.TimaCounter
+
+            match state.ReloadDelay with
+            | Some delay ->
+                writeBool true
+                writeInt delay
+            | None -> writeBool false
 
         let writeLcdMode mode =
             match mode with
@@ -375,6 +380,7 @@ module SaveState =
             writeCpuRegisters state.Registers
             writeBool state.Halted
             writeBool state.InterruptsEnabled
+            writeBool state.EnableInterruptsAfterInstruction
 
         member _.Write(snapshot: Snapshot) =
             writeCpuState snapshot.Cpu
@@ -502,8 +508,16 @@ module SaveState =
                   MbcSnapshot = readMbcState () }
 
             let readTimerState () : Timer.State =
-                { Divider = readUInt16 ()
-                  TimaCounter = readInt () }
+                let divider = readUInt16 ()
+
+                if version >= 6 then
+                    { Divider = divider
+                      ReloadDelay = if readBool () then Some(readInt ()) else None }
+                else
+                    readInt () |> ignore
+
+                    { Divider = divider
+                      ReloadDelay = None }
 
             let readLcdMode () =
                 match readByte () with
@@ -680,7 +694,8 @@ module SaveState =
             let readCpuState () : Cpu.State =
                 { Registers = readCpuRegisters ()
                   Halted = readBool ()
-                  InterruptsEnabled = readBool () }
+                  InterruptsEnabled = readBool ()
+                  EnableInterruptsAfterInstruction = if version >= 7 then readBool () else false }
 
             { Cpu = readCpuState ()
               Bus = readBusSnapshot ()

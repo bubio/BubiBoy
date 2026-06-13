@@ -24,7 +24,8 @@ module Cpu =
     type State =
         { Registers: Registers
           Halted: bool
-          InterruptsEnabled: bool }
+          InterruptsEnabled: bool
+          EnableInterruptsAfterInstruction: bool }
 
     /// Contains the CPU, bus, and cycle count after one instruction.
     type StepResult =
@@ -65,7 +66,8 @@ module Cpu =
     let initialState =
         { Registers = initialRegisters
           Halted = false
-          InterruptsEnabled = false }
+          InterruptsEnabled = false
+          EnableInterruptsAfterInstruction = false }
 
     /// The DMG CPU power-on state used when executing a boot ROM.
     let powerOnState =
@@ -81,7 +83,8 @@ module Cpu =
               SP = 0us
               PC = 0us }
           Halted = false
-          InterruptsEnabled = false }
+          InterruptsEnabled = false
+          EnableInterruptsAfterInstruction = false }
 
     module private RegisterPairs =
         let combineBytes high low = (uint16 high <<< 8) ||| uint16 low
@@ -156,7 +159,8 @@ module Cpu =
                 { cpu with
                     Registers = { registers with SP = sp; PC = vector }
                     Halted = false
-                    InterruptsEnabled = false }
+                    InterruptsEnabled = false
+                    EnableInterruptsAfterInstruction = false }
               Bus = bus
               Cycles = 20 }
 
@@ -437,9 +441,10 @@ module Cpu =
     open DecimalAdjust
 
     /// Executes one instruction or interrupt service operation.
-    let step cpu bus =
+    let rec private stepCore cpu bus =
         match pendingInterrupt bus with
         | Some(flag, vector) when cpu.InterruptsEnabled -> serviceInterrupt flag vector cpu bus
+        | Some _ when cpu.Halted -> stepCore { cpu with Halted = false } bus
         | _ when cpu.Halted -> { Cpu = cpu; Bus = bus; Cycles = 4 }
         | _ ->
             let registers = cpu.Registers
@@ -2682,7 +2687,8 @@ module Cpu =
                 { Cpu =
                     { cpu with
                         Registers = { registers with SP = sp; PC = target }
-                        InterruptsEnabled = true }
+                        InterruptsEnabled = true
+                        EnableInterruptsAfterInstruction = false }
                   Bus = bus
                   Cycles = 16 }
             | 0xD2uy ->
@@ -3683,7 +3689,8 @@ module Cpu =
                         Registers =
                             { registers with
                                 PC = registers.PC + 1us }
-                        InterruptsEnabled = false }
+                        InterruptsEnabled = false
+                        EnableInterruptsAfterInstruction = false }
                   Bus = bus
                   Cycles = 4 }
             | 0xF5uy ->
@@ -3778,7 +3785,7 @@ module Cpu =
                         Registers =
                             { registers with
                                 PC = registers.PC + 1us }
-                        InterruptsEnabled = true }
+                        EnableInterruptsAfterInstruction = true }
                   Bus = bus
                   Cycles = 4 }
             | 0xF8uy ->
@@ -3822,3 +3829,17 @@ module Cpu =
                   Bus = bus
                   Cycles = 8 }
             | unsupported -> raise (UnsupportedOpcode(unsupported, registers.PC))
+
+    /// Executes one instruction or interrupt service operation.
+    let step cpu bus =
+        let enableAfterThisInstruction = cpu.EnableInterruptsAfterInstruction
+        let result = stepCore cpu bus
+
+        if enableAfterThisInstruction && result.Cpu.EnableInterruptsAfterInstruction then
+            { result with
+                Cpu =
+                    { result.Cpu with
+                        InterruptsEnabled = true
+                        EnableInterruptsAfterInstruction = false } }
+        else
+            result

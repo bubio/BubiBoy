@@ -610,13 +610,49 @@ module Bus =
             { memory with
                 Joypad = Joypad.writeP1 value memory.Joypad }
         | 0xFF04 ->
-            memory.Io[0x04] <- 0uy
+            let registers: Timer.Registers =
+                { Div = Timer.div memory.Timer
+                  Tima = memory.Io[0x05]
+                  Tma = memory.Io[0x06]
+                  Tac = memory.Io[0x07]
+                  InterruptFlags = memory.Io[0x0F] }
+
+            let timerResult = Timer.resetDiv memory.Timer registers
             let apu = Apu.resetDiv memory.Timer.Divider memory.Io memory.Apu
+            memory.Io[0x04] <- timerResult.Registers.Div
+            memory.Io[0x05] <- timerResult.Registers.Tima
+            memory.Io[0x0F] <- timerResult.Registers.InterruptFlags
             memory.Io[0x26] <- Apu.statusRegister memory.Io apu
 
             { memory with
-                Timer = Timer.resetDiv memory.Timer
+                Timer = timerResult.State
                 Apu = apu }
+        | 0xFF05 ->
+            let registers: Timer.Registers =
+                { Div = Timer.div memory.Timer
+                  Tima = memory.Io[0x05]
+                  Tma = memory.Io[0x06]
+                  Tac = memory.Io[0x07]
+                  InterruptFlags = memory.Io[0x0F] }
+
+            let result = Timer.writeTima value memory.Timer registers
+            memory.Io[0x05] <- result.Registers.Tima
+            { memory with Timer = result.State }
+        | 0xFF06 ->
+            memory.Io[0x06] <- value
+            memory
+        | 0xFF07 ->
+            let registers: Timer.Registers =
+                { Div = Timer.div memory.Timer
+                  Tima = memory.Io[0x05]
+                  Tma = memory.Io[0x06]
+                  Tac = memory.Io[0x07]
+                  InterruptFlags = memory.Io[0x0F] }
+
+            let result = Timer.writeTac value memory.Timer registers
+            memory.Io[0x05] <- result.Registers.Tima
+            memory.Io[0x07] <- result.Registers.Tac
+            { memory with Timer = result.State }
         | 0xFF41 ->
             memory.Io[0x41] <- value &&& 0xF8uy
             memory

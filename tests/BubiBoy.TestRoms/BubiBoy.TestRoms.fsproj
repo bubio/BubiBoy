@@ -6,6 +6,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="TestRomRunner.fs" />
+    <Compile Include="TestRomRunnerTests.fs" />
     <Compile Include="MooneyeAcceptanceTests.fs" />
     <Compile Include="ExternalApuTests.fs" />
     <Compile Include="ExternalCgbSmokeTests.fs" />

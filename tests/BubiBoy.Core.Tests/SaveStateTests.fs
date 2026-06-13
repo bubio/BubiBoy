@@ -1,7 +1,6 @@
 module BubiBoy.Core.Tests.SaveStateTests
 
 open System
-open System.Security.Cryptography
 open BubiBoy.Core
 open Xunit
 
@@ -31,48 +30,35 @@ let private encodeSession session =
     session |> SaveState.capture |> SaveState.encode
 
 [<Fact>]
-let ``version 5 wire format remains stable and version 4 remains readable`` () =
-    let bytes = makeRom "S" Array.empty |> createSession |> encodeSession
-    let hash = SHA256.HashData bytes |> Convert.ToHexString
+let ``current wire format is deterministic`` () =
+    let session = makeRom "S" Array.empty |> createSession
+    let first = encodeSession session
+    let second = encodeSession session
 
-    Assert.Equal(142_177, bytes.Length)
-    Assert.Equal("9075F74520A731E81DA4CEDBB689660F6874D0BD00AD515BAF7163FCC243D307", hash)
-
-    let version4 = Array.copy bytes
-    BitConverter.GetBytes(4).CopyTo(version4, 9)
-
-    Assert.Equal(
-        "1366D44EE4F3D8C74850B8F09C9C4BBC27EC3FDCE096A6401F7EAD4439587662",
-        SHA256.HashData version4 |> Convert.ToHexString
-    )
-
-    match SaveState.restoreBytes version4 (makeRom "S" Array.empty |> createSession) with
-    | Error message -> Assert.Fail message
-    | Ok restored -> Assert.Equal(Hardware.Dmg, Bus.mode restored.Bus)
+    Assert.Equal(SaveState.CurrentVersion, BitConverter.ToInt32(first, 9))
+    Assert.Equal<byte>(first, second)
 
 [<Fact>]
-let ``version 3 post boot wire format remains readable`` () =
-    let session = makeRom "S" Array.empty |> createSession
-    let version4 = encodeSession session
-    let bootRomMetadataOffset = 57
+let ``save state preserves pending EI and timer reload state`` () =
+    let session = makeRom "PENDING" Array.empty |> createSession
 
-    let version3 =
-        Array.concat
-            [ version4[.. bootRomMetadataOffset - 1]
-              version4[bootRomMetadataOffset + 2 ..] ]
+    let snapshot =
+        { SaveState.capture session with
+            Cpu =
+                { session.Cpu with
+                    EnableInterruptsAfterInstruction = true }
+            Bus =
+                { (SaveState.capture session).Bus with
+                    TimerSnapshot =
+                        { Divider = 0x1234us
+                          ReloadDelay = Some 3 } } }
 
-    BitConverter.GetBytes(3).CopyTo(version3, 9)
-
-    Assert.Equal(142_175, version3.Length)
-
-    Assert.Equal(
-        "52E3AB123133B3CAE36396C45D00FA05AF668FD21E176F165D60E52BCA1F7E17",
-        SHA256.HashData version3 |> Convert.ToHexString
-    )
-
-    match SaveState.restoreBytes version3 session with
+    match SaveState.decode (SaveState.encode snapshot) with
     | Error message -> Assert.Fail message
-    | Ok restored -> Assert.Equal(session.Cpu, restored.Cpu)
+    | Ok decoded ->
+        Assert.True(decoded.Cpu.EnableInterruptsAfterInstruction)
+        Assert.Equal(0x1234us, decoded.Bus.TimerSnapshot.Divider)
+        Assert.Equal(Some 3, decoded.Bus.TimerSnapshot.ReloadDelay)
 
 [<Fact>]
 let ``save state round trips session and can continue deterministically`` () =

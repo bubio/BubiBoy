@@ -39,13 +39,49 @@ let ``enabled timer increments TIMA at selected period`` tac cycles =
     let result = Timer.tick cycles Timer.initial registers
 
     Assert.Equal(0x11uy, result.Registers.Tima)
-    Assert.Equal(0, result.State.TimaCounter)
+    Assert.Equal(None, result.State.ReloadDelay)
 
 [<Fact>]
-let ``timer overflow reloads TMA and requests interrupt`` () =
+let ``timer overflow reloads TMA and requests interrupt after four cycles`` () =
     let registers = registers 0uy 0xFFuy 0x77uy 0x05uy 0uy
 
-    let result = Timer.tick 16 Timer.initial registers
+    let overflowed = Timer.tick 16 Timer.initial registers
+    let beforeReload = Timer.tick 3 overflowed.State overflowed.Registers
+    let reloaded = Timer.tick 1 beforeReload.State beforeReload.Registers
 
-    Assert.Equal(0x77uy, result.Registers.Tima)
-    Assert.Equal(Interrupt.TimerBit, result.Registers.InterruptFlags &&& Interrupt.TimerBit)
+    Assert.Equal(0uy, overflowed.Registers.Tima)
+    Assert.Equal(0uy, beforeReload.Registers.Tima)
+    Assert.Equal(0x77uy, reloaded.Registers.Tima)
+    Assert.Equal(Interrupt.TimerBit, reloaded.Registers.InterruptFlags &&& Interrupt.TimerBit)
+
+[<Fact>]
+let ``resetting DIV on a high timer signal increments TIMA`` () =
+    let state =
+        { Timer.initial with
+            Divider = 0x0008us }
+
+    let result = Timer.resetDiv state (registers 0uy 0x20uy 0uy 0x05uy 0uy)
+
+    Assert.Equal(0us, result.State.Divider)
+    Assert.Equal(0x21uy, result.Registers.Tima)
+
+[<Fact>]
+let ``writing TIMA before pending reload cancels reload`` () =
+    let overflowed =
+        Timer.tick 16 Timer.initial (registers 0uy 0xFFuy 0x77uy 0x05uy 0uy)
+
+    let written = Timer.writeTima 0x44uy overflowed.State overflowed.Registers
+    let advanced = Timer.tick 4 written.State written.Registers
+
+    Assert.Equal(0x44uy, advanced.Registers.Tima)
+    Assert.Equal(0uy, advanced.Registers.InterruptFlags &&& Interrupt.TimerBit)
+
+[<Fact>]
+let ``disabling timer on a high selected divider bit increments TIMA`` () =
+    let state =
+        { Timer.initial with
+            Divider = 0x0008us }
+
+    let result = Timer.writeTac 0x00uy state (registers 0uy 0x20uy 0uy 0x05uy 0uy)
+
+    Assert.Equal(0x21uy, result.Registers.Tima)

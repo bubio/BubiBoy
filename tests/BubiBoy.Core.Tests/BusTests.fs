@@ -187,14 +187,18 @@ let ``unusable memory reads as FF and ignores writes`` () =
     Assert.Equal(0xFFuy, Bus.readByte 0xFEA0us updated)
 
 [<Fact>]
-let ``timer registers are mapped through bus and tick requests interrupt`` () =
+let ``timer registers are mapped through bus and delayed reload requests interrupt`` () =
     let bus =
         makeBus ()
         |> Bus.writeByte 0xFF05us 0xFFuy
         |> Bus.writeByte 0xFF06us 0x44uy
         |> Bus.writeByte 0xFF07us 0x05uy
 
-    let updated = Bus.tick 16 bus
+    let overflowed = Bus.tick 16 bus
+
+    Assert.Equal(0uy, Bus.readByte 0xFF05us overflowed)
+
+    let updated = Bus.tick 4 overflowed
 
     Assert.Equal(0x44uy, Bus.readByte 0xFF05us updated)
     Assert.Equal(Interrupt.TimerBit, Bus.readByte 0xFF0Fus updated &&& Interrupt.TimerBit)

@@ -37,6 +37,38 @@ For private local ROM collections, use the smoke runner documented in [rom-smoke
 
 Phase 2 CPU validation is tracked in [phase2-audit.md](phase2-audit.md). Redistributable test ROMs live under `tests/BubiBoy.TestRoms/roms/` with upstream license files.
 
+The current hardware-verified acceptance set, investigated failures, and implementation
+decisions are recorded in [quality-test-rom-audit.md](quality-test-rom-audit.md).
+
+## Resolving Specification Conflicts
+
+When documentation and a hardware-verified test ROM disagree:
+
+1. Confirm that the ROM targets the emulated model and SoC family.
+2. Confirm the ROM version, license, unmodified SHA-256, and pass/fail protocol.
+3. Compare at least two current hardware references before changing behavior.
+4. Prefer reproducible hardware observations over a single unofficial table.
+5. Add a minimal ROM-free unit test for the corrected behavior.
+6. Record the reference and result in `reference-provenance.md` or a subsystem audit.
+
+Do not change unrelated timing constants merely to make a ROM report pass.
+
+## Test ROM Failure Investigation
+
+The shared runner reports serial output, PC, opcode, registers, total cycles, and a
+bounded recent trace. Classify a failure before editing the core:
+
+- register or flag result;
+- instruction cycle count;
+- bus access timing within an instruction;
+- interrupt/HALT/IME sequencing;
+- timer edge or reload collision;
+- PPU mode or memory-access restriction;
+- model-specific DMG/CGB behavior.
+
+Add ROMs one subsystem at a time. Keep failing exploratory ROMs out of the normal CI
+set and document why they fail.
+
 Phase 5 audio status is tracked in [phase5-audio-audit.md](phase5-audio-audit.md). Dedicated APU test ROMs
 with unclear redistribution terms should stay outside the repository and be recorded as external validation
 only.
