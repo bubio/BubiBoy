@@ -19,9 +19,10 @@ Current coverage:
 - The ROM smoke runner executes local ROMs and reports load errors, unsupported opcodes, bad stack pointers, and suspicious program counters.
 - Local commercial ROMs are useful for smoke testing but cannot be committed and do not provide standardized pass/fail CPU validation.
 - `tests/BubiBoy.TestRoms` runs MIT-licensed Mooneye acceptance ROMs under `dotnet test`.
-- The pinned Mooneye subset contains 16 acceptance ROMs for flags, DAA, DIV, IME/EI/DI, HALT,
-  interrupt timing, timer frequencies, DIV-write edges, and delayed TIMA reload. Exact files and hashes
-  are recorded in `tests/BubiBoy.TestRoms/roms/mooneye/README.md`.
+- The pinned Mooneye subset contains 30 acceptance ROMs for flags, DAA, machine-cycle instruction
+  timing, DIV, IME/EI/DI, HALT, interrupt and IF/IE timing, timer frequencies, DIV-write edges,
+  delayed TIMA reload, and TIMA/TMA reload-write collisions. Exact files and hashes are recorded in
+  `tests/BubiBoy.TestRoms/roms/mooneye/README.md`.
 - The shared harness detects the documented `LD B,B` register protocol and serial pass/fail output, and
   reports a bounded register/cycle trace on failure.
 
@@ -29,8 +30,8 @@ Each imported ROM is recorded in `reference-provenance.md` with license and redi
 
 ## Follow-up Coverage
 
-Phase 2 is closed, but machine-cycle bus timing and PPU/CGB acceptance coverage remain follow-up work.
-Current investigated failures and the reason they are not enabled in CI are recorded in
+Phase 2 is closed, and machine-cycle CPU/bus timing is now covered by the normal Mooneye CI set.
+PPU variable Mode 3 and CGB acceptance coverage remain follow-up work and are tracked separately in
 `quality-test-rom-audit.md`.
 
 ## State Modeling Follow-up

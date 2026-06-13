@@ -97,7 +97,7 @@ module Emulator =
     let step session =
         let beforeBus = session.Bus
         let result = Cpu.step session.Cpu session.Bus
-        let bus = Bus.tick result.Cycles result.Bus
+        let bus = result.Bus
 
         let framebuffer =
             if shouldRenderScanline beforeBus bus then

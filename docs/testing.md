@@ -69,6 +69,23 @@ bounded recent trace. Classify a failure before editing the core:
 Add ROMs one subsystem at a time. Keep failing exploratory ROMs out of the normal CI
 set and document why they fail.
 
+For a suspected machine-cycle timing failure:
+
+1. Read the ROM source and write down the expected M-cycle sequence, including
+   opcode fetch, operand reads, writes, and internal waits.
+2. Compare that sequence with at least two hardware references and record the
+   conclusion in `reference-provenance.md`.
+3. Add a ROM-free regression that checks PC, SP, memory side effects, interrupt
+   flags, and total clocks at the relevant boundary.
+4. Use CPU machine-cycle accessors for real CPU reads and writes. Use raw bus access
+   only for debugger/host inspection or an internal signal that does not consume a
+   CPU memory cycle.
+5. Verify the focused unit tests and ROM first, then run the complete pinned
+   Mooneye set and the full solution.
+
+Do not repair an internal-timing failure by changing only the instruction's reported
+cycle count or by adding a ROM-specific exception.
+
 Phase 5 audio status is tracked in [phase5-audio-audit.md](phase5-audio-audit.md). Dedicated APU test ROMs
 with unclear redistribution terms should stay outside the repository and be recorded as external validation
 only.

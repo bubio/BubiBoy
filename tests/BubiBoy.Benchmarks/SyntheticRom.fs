@@ -3,7 +3,7 @@ namespace BubiBoy.Benchmarks
 /// Builds a small, fully synthetic Game Boy ROM in memory so the benchmarks have a
 /// deterministic, license-safe workload (no commercial ROM is ever bundled). The ROM
 /// is a 32 KiB ROM-only cartridge whose entry point runs a tight loop that exercises
-/// the ALU, WRAM writes, and lets the timer/LCD/APU advance through Bus.tick.
+/// the ALU, WRAM writes, and lets the timer/LCD/APU advance through CPU machine cycles.
 module SyntheticRom =
     [<Literal>]
     let private RomBytes = 32 * 1024
@@ -40,8 +40,7 @@ module SyntheticRom =
            0x00uy
            0x01uy |]
 
-    /// Produces the synthetic ROM image as a fresh byte array.
-    let build () : byte[] =
+    let private buildWithProgram (program: byte[]) =
         let rom = Array.zeroCreate<byte> RomBytes
 
         // Cartridge header (only the fields CartridgeMemory.create inspects matter).
@@ -58,3 +57,31 @@ module SyntheticRom =
         // Program at the entry point.
         System.Array.Copy(program, 0, rom, 0x0100, program.Length)
         rom
+
+    /// Produces the mixed-workload synthetic ROM image as a fresh byte array.
+    let build () : byte[] = buildWithProgram program
+
+    /// Produces a ROM whose loop is dominated by NOP instructions.
+    let buildNop () =
+        Array.append (Array.create 48 0x00uy) [| 0xC3uy; 0x00uy; 0x01uy |]
+        |> buildWithProgram
+
+    /// Produces a ROM whose loop is dominated by WRAM writes.
+    let buildMemoryWrite () =
+        Array.concat
+            [ [| 0x21uy; 0x00uy; 0xC0uy |]
+              Array.create 40 0x77uy
+              [| 0xC3uy; 0x03uy; 0x01uy |] ]
+        |> buildWithProgram
+
+    /// Produces a ROM that repeatedly executes CALL, RET, and JP.
+    let buildCall () =
+        [| 0xCDuy; 0x06uy; 0x01uy; 0xC3uy; 0x00uy; 0x01uy; 0xC9uy |] |> buildWithProgram
+
+    /// Produces a ROM whose loop is dominated by CB-prefixed operations on (HL).
+    let buildCbMemory () =
+        Array.concat
+            [ [| 0x21uy; 0x00uy; 0xC0uy |]
+              Array.init 20 (fun _ -> [| 0xCBuy; 0x06uy |]) |> Array.concat
+              [| 0xC3uy; 0x03uy; 0x01uy |] ]
+        |> buildWithProgram

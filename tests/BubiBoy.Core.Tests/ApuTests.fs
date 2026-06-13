@@ -10,6 +10,27 @@ let private emptyIo () =
 
 let private write index value (io, state) = Apu.writeRegister index value io state
 
+let private makeSession cgb =
+    let rom = Array.zeroCreate<byte> (2 * 16 * 1024)
+    rom[0x0143] <- if cgb then 0xC0uy else 0x00uy
+    rom[0x0147] <- 0x00uy
+    rom[0x0148] <- 0x00uy
+    rom[0x0149] <- 0x00uy
+
+    match Emulator.createSession rom with
+    | Ok session -> session
+    | Error message -> failwith message
+
+let private enablePulse bus =
+    bus
+    |> Bus.writeByte 0xFF26us 0x80uy
+    |> Bus.writeByte 0xFF24us 0x77uy
+    |> Bus.writeByte 0xFF25us 0x11uy
+    |> Bus.writeByte 0xFF11us 0x80uy
+    |> Bus.writeByte 0xFF12us 0xF0uy
+    |> Bus.writeByte 0xFF13us 0x00uy
+    |> Bus.writeByte 0xFF14us 0x80uy
+
 let private triggerPulse1 nr10 nr11 nr12 nr13 nr14 =
     (emptyIo (), Apu.initial)
     |> write 0x24 0x77uy
@@ -416,3 +437,109 @@ let ``runFrame returns generated audio and drains session buffer`` () =
 
     Assert.NotEmpty(result.AudioSamples)
     Assert.Empty(Bus.pendingAudioSamples result.Session.Bus)
+
+[<Fact>]
+let ``batched APU clocks match immediate bus ticking`` () =
+    let batchedSession = makeSession false
+    let immediateSession = makeSession false
+    let steps = 2_000
+
+    let batchedResult =
+        Emulator.run
+            steps
+            { batchedSession with
+                Bus = enablePulse batchedSession.Bus }
+
+    let immediate =
+        { immediateSession with
+            Bus =
+                immediateSession.Bus
+                |> enablePulse
+                |> Bus.tick (int batchedResult.Session.TotalCycles)
+            TotalCycles = batchedResult.Session.TotalCycles
+            Steps = steps }
+        |> SaveState.capture
+
+    let batched = SaveState.capture batchedResult.Session
+    Assert.Equal(immediate.Bus.ApuSnapshot, batched.Bus.ApuSnapshot)
+
+[<Fact>]
+let ``APU register read synchronizes clocks accumulated across instructions`` () =
+    let session = makeSession false
+
+    let bus =
+        session.Bus
+        |> Bus.writeByte 0xFF26us 0x80uy
+        |> Bus.writeByte 0xFF11us 0x3Fuy
+        |> Bus.writeByte 0xFF12us 0xF0uy
+        |> Bus.writeByte 0xFF13us 0x00uy
+        |> Bus.writeByte 0xFF14us 0xC0uy
+
+    let advanced =
+        Emulator.run 2_048 { session with Bus = bus }
+        |> fun result -> result.Session.Bus
+
+    Assert.Equal(0x00uy, Bus.readByte 0xFF26us advanced &&& 0x01uy)
+
+[<Fact>]
+let ``DIV write synchronizes pending APU clocks before divider reset`` () =
+    let session = makeSession false
+
+    let bus =
+        session.Bus
+        |> Bus.writeByte 0xFF26us 0x80uy
+        |> Bus.writeByte 0xFF11us 0x3Fuy
+        |> Bus.writeByte 0xFF12us 0xF0uy
+        |> Bus.writeByte 0xFF13us 0x00uy
+        |> Bus.writeByte 0xFF14us 0xC0uy
+
+    let advanced =
+        Emulator.run 1_024 { session with Bus = bus }
+        |> fun result -> result.Session.Bus
+
+    let reset = Bus.writeByte 0xFF04us 0x00uy advanced
+
+    Assert.Equal(0x00uy, Bus.readByte 0xFF26us reset &&& 0x01uy)
+
+[<Fact>]
+let ``double speed batched APU clocks use hardware cycle count`` () =
+    let batchedSession = makeSession true
+    let immediateSession = makeSession true
+
+    let batchedBus =
+        batchedSession.Bus |> enablePulse |> Bus.writeByte 0xFF4Dus 0x01uy |> Bus.stop
+
+    let immediateBus =
+        immediateSession.Bus |> enablePulse |> Bus.writeByte 0xFF4Dus 0x01uy |> Bus.stop
+
+    let steps = 2_000
+
+    let batchedResult = Emulator.run steps { batchedSession with Bus = batchedBus }
+
+    let immediate =
+        { immediateSession with
+            Bus = immediateBus |> Bus.tick (int batchedResult.Session.TotalCycles * 2)
+            TotalCycles = batchedResult.Session.TotalCycles
+            Steps = steps }
+        |> SaveState.capture
+
+    let batched = SaveState.capture batchedResult.Session
+    Assert.Equal(immediate.Bus.ApuSnapshot, batched.Bus.ApuSnapshot)
+
+[<Fact>]
+let ``save capture synchronizes pending APU clocks without changing format version`` () =
+    let session = makeSession false
+    let bus = enablePulse session.Bus
+
+    let advanced =
+        Emulator.run 2_000 { session with Bus = bus } |> fun result -> result.Session
+
+    let snapshot = SaveState.capture advanced
+    let encoded = SaveState.encode snapshot
+
+    Assert.Equal(7, SaveState.CurrentVersion)
+    Assert.NotEmpty(snapshot.Bus.ApuSnapshot.SnapshotPendingSamples.Samples)
+
+    match SaveState.decode encoded with
+    | Error message -> Assert.Fail message
+    | Ok decoded -> Assert.Equal(snapshot.Bus.ApuSnapshot, decoded.Bus.ApuSnapshot)

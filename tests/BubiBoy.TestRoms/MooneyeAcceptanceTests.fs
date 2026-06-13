@@ -23,6 +23,20 @@ let private romPath relativePath =
 [<InlineData("mooneye/acceptance/timer/tim11.gb")>]
 [<InlineData("mooneye/acceptance/timer/div_write.gb")>]
 [<InlineData("mooneye/acceptance/timer/tima_reload.gb")>]
+[<InlineData("mooneye/acceptance/call_timing.gb")>]
+[<InlineData("mooneye/acceptance/call_cc_timing.gb")>]
+[<InlineData("mooneye/acceptance/jp_timing.gb")>]
+[<InlineData("mooneye/acceptance/jp_cc_timing.gb")>]
+[<InlineData("mooneye/acceptance/ret_timing.gb")>]
+[<InlineData("mooneye/acceptance/ret_cc_timing.gb")>]
+[<InlineData("mooneye/acceptance/push_timing.gb")>]
+[<InlineData("mooneye/acceptance/pop_timing.gb")>]
+[<InlineData("mooneye/acceptance/rst_timing.gb")>]
+[<InlineData("mooneye/acceptance/add_sp_e_timing.gb")>]
+[<InlineData("mooneye/acceptance/ld_hl_sp_e_timing.gb")>]
+[<InlineData("mooneye/acceptance/if_ie_registers.gb")>]
+[<InlineData("mooneye/acceptance/timer/tima_write_reloading.gb")>]
+[<InlineData("mooneye/acceptance/timer/tma_write_reloading.gb")>]
 let ``Mooneye acceptance ROM reports pass`` relativePath =
     let result =
         File.ReadAllBytes(romPath relativePath)

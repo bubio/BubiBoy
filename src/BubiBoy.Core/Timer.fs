@@ -40,26 +40,26 @@ module Timer =
 
     let private incrementTima state registers =
         if state.ReloadDelay.IsSome then
-            state, registers
+            struct (state, registers)
         elif registers.Tima = 0xFFuy then
-            { state with ReloadDelay = Some 4 }, { registers with Tima = 0uy }
+            struct ({ state with ReloadDelay = Some 4 }, { registers with Tima = 0uy })
         else
-            state,
-            { registers with
-                Tima = registers.Tima + 1uy }
+            struct (state,
+                    { registers with
+                        Tima = registers.Tima + 1uy })
 
     let private advanceReload state registers =
         match state.ReloadDelay with
-        | None -> state, registers
+        | None -> struct (state, registers)
         | Some 1 ->
-            { state with ReloadDelay = None },
-            { registers with
-                Tima = registers.Tma
-                InterruptFlags = Interrupt.request Interrupt.TimerBit registers.InterruptFlags }
+            struct ({ state with ReloadDelay = None },
+                    { registers with
+                        Tima = registers.Tma
+                        InterruptFlags = Interrupt.request Interrupt.TimerBit registers.InterruptFlags })
         | Some cycles ->
-            { state with
-                ReloadDelay = Some(cycles - 1) },
-            registers
+            struct ({ state with
+                        ReloadDelay = Some(cycles - 1) },
+                    registers)
 
     /// Resets DIV and applies the timer's falling-edge increment behavior.
     let resetDiv state registers =
@@ -67,7 +67,7 @@ module Timer =
         let reset = { state with Divider = 0us }
 
         if oldSignal then
-            let state, registers = incrementTima reset registers
+            let struct (state, registers) = incrementTima reset registers
 
             { State = state
               Registers = { registers with Div = 0uy } }
@@ -88,18 +88,21 @@ module Timer =
         let registers = { registers with Tac = tac }
 
         if oldSignal && not newSignal then
-            let state, registers = incrementTima state registers
+            let struct (state, registers) = incrementTima state registers
             { State = state; Registers = registers }
         else
             { State = state; Registers = registers }
 
-    /// Advances the timer by the specified number of CPU cycles.
-    let tick cycles state registers =
+    let private tickCore cycles state registers =
         let mutable currentState = state
         let mutable currentRegisters = registers
+        let mutable reloaded = false
 
         for _ in 1..cycles do
-            let stateAfterReload, registersAfterReload =
+            if currentState.ReloadDelay = Some 1 then
+                reloaded <- true
+
+            let struct (stateAfterReload, registersAfterReload) =
                 advanceReload currentState currentRegisters
 
             let oldSignal = timerSignal stateAfterReload.Divider registersAfterReload.Tac
@@ -113,13 +116,21 @@ module Timer =
             currentRegisters <- registersAfterReload
 
             if oldSignal && not newSignal then
-                let incrementedState, incrementedRegisters =
+                let struct (incrementedState, incrementedRegisters) =
                     incrementTima currentState currentRegisters
 
                 currentState <- incrementedState
                 currentRegisters <- incrementedRegisters
 
-        { State = currentState
-          Registers =
-            { currentRegisters with
-                Div = div currentState } }
+        struct ({ State = currentState
+                  Registers =
+                    { currentRegisters with
+                        Div = div currentState } },
+                reloaded)
+
+    /// Advances the timer by the specified number of CPU cycles.
+    let tick cycles state registers =
+        let struct (result, _) = tickCore cycles state registers
+        result
+
+    let internal tickWithReload cycles state registers = tickCore cycles state registers

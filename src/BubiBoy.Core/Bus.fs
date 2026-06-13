@@ -32,14 +32,15 @@ module Bus =
               ObjPaletteRam: byte[]
               DoubleSpeed: bool
               SpeedSwitchPrepared: bool
-              HdmaSource: uint16
-              HdmaDestination: uint16
-              HdmaRemaining: int
-              HdmaActive: bool
-              Timer: Timer.State
-              Lcd: Lcd.State
+              mutable HdmaSource: uint16
+              mutable HdmaDestination: uint16
+              mutable HdmaRemaining: int
+              mutable HdmaActive: bool
+              mutable Timer: Timer.State
+              mutable Lcd: Lcd.State
               Joypad: Joypad.State
-              Apu: Apu.State
+              mutable Apu: Apu.State
+              mutable PendingApuCycles: int
               InterruptEnable: byte }
 
     /// Contains a serializable copy of bus-owned memory and device state.
@@ -97,6 +98,18 @@ module Bus =
     [<Literal>]
     let HramSize = 127
 
+    [<Literal>]
+    let private OamDmaProgressIndex = 0x7F
+
+    [<Literal>]
+    let private TimerReloadMarkerIndex = 0x7E
+
+    [<Literal>]
+    let private InternalStateSignatureIndex = 0x7D
+
+    [<Literal>]
+    let private InternalStateSignature = 0xB7uy
+
     let private postBootIo mode =
         let io = Array.zeroCreate<byte> IoSize
         io[0x00] <- 0xCFuy
@@ -129,6 +142,9 @@ module Bus =
         io[0x47] <- 0xFCuy
         io[0x48] <- 0xFFuy
         io[0x49] <- 0xFFuy
+        io[InternalStateSignatureIndex] <- InternalStateSignature
+        io[TimerReloadMarkerIndex] <- 0uy
+        io[OamDmaProgressIndex] <- 0xFFuy
 
         match mode with
         | Hardware.Dmg -> ()
@@ -148,7 +164,12 @@ module Bus =
 
         io
 
-    let private powerOnIo () = Array.zeroCreate<byte> IoSize
+    let private powerOnIo () =
+        let io = Array.zeroCreate<byte> IoSize
+        io[InternalStateSignatureIndex] <- InternalStateSignature
+        io[TimerReloadMarkerIndex] <- 0uy
+        io[OamDmaProgressIndex] <- 0xFFuy
+        io
 
     let private modeForCartridge cartridge =
         match (CartridgeMemory.header cartridge).CgbSupport with
@@ -179,6 +200,7 @@ module Bus =
           Lcd = Lcd.initial
           Joypad = Joypad.initial
           Apu = Apu.initial
+          PendingApuCycles = 0
           InterruptEnable = 0uy }
 
     /// Creates reset bus state after the built-in boot sequence has completed.
@@ -231,6 +253,16 @@ module Bus =
                     (fun _ -> powerOnIo ())
             )
 
+    let private synchronizeApu memory =
+        if memory.PendingApuCycles > 0 then
+            if memory.Io[0x26] &&& 0x80uy <> 0uy then
+                memory.Apu <- Apu.tick memory.PendingApuCycles memory.Io memory.Apu
+                memory.Io[0x26] <- Apu.statusRegister memory.Io memory.Apu
+
+            memory.PendingApuCycles <- 0
+
+        memory
+
     module private MemorySnapshot =
         let private validateArray name expected (bytes: byte[]) =
             if isNull bytes then
@@ -241,6 +273,8 @@ module Bus =
                 Ok()
 
         let capture (memory: Memory) : Snapshot =
+            synchronizeApu memory |> ignore
+
             { CartridgeSnapshot = CartridgeMemory.snapshot memory.Cartridge
               ModeSnapshot = memory.Mode
               BootRomEnabledSnapshot = memory.BootRom |> Option.exists (fun bootRom -> bootRom.Enabled)
@@ -265,6 +299,16 @@ module Bus =
               JoypadSnapshot = memory.Joypad
               ApuSnapshot = Apu.snapshot memory.Apu
               InterruptEnableSnapshot = memory.InterruptEnable }
+
+        let private restoreIoSnapshot (snapshot: Snapshot) =
+            let io = Array.copy snapshot.IoSnapshot
+
+            if io[InternalStateSignatureIndex] <> InternalStateSignature then
+                io[OamDmaProgressIndex] <- 0xFFuy
+
+            io[InternalStateSignatureIndex] <- InternalStateSignature
+            io[TimerReloadMarkerIndex] <- 0uy
+            io
 
         let restore (snapshot: Snapshot) (current: Memory) =
             validateArray "VRAM" VramSize snapshot.VramSnapshot
@@ -301,7 +345,7 @@ module Bus =
                   Vram = Array.copy snapshot.VramSnapshot
                   Wram = Array.copy snapshot.WramSnapshot
                   Oam = Array.copy snapshot.OamSnapshot
-                  Io = Array.copy snapshot.IoSnapshot
+                  Io = restoreIoSnapshot snapshot
                   Hram = Array.copy snapshot.HramSnapshot
                   VramBank = snapshot.VramBankSnapshot &&& 0x01
                   WramBank =
@@ -321,6 +365,7 @@ module Bus =
                   Lcd = snapshot.LcdSnapshot
                   Joypad = snapshot.JoypadSnapshot
                   Apu = Apu.restore snapshot.ApuSnapshot
+                  PendingApuCycles = 0
                   InterruptEnable = snapshot.InterruptEnableSnapshot })
 
     let internal snapshot memory = MemorySnapshot.capture memory
@@ -375,12 +420,17 @@ module Bus =
     let internal rawObjPaletteByte index memory = memory.ObjPaletteRam[index &&& 0x3F]
 
     /// Copies all audio samples currently waiting on the bus.
-    let pendingAudioSamples memory = Apu.pendingSamples memory.Apu
+    let pendingAudioSamples memory =
+        synchronizeApu memory |> ignore
+        Apu.pendingSamples memory.Apu
 
     let internal drainAudioSamples memory =
+        synchronizeApu memory |> ignore
+
         Apu.pendingSamples memory.Apu,
         { memory with
-            Apu = Apu.clearPendingSamples memory.Apu }
+            Apu = Apu.clearPendingSamples memory.Apu
+            PendingApuCycles = 0 }
 
     /// Returns bus state with one I/O byte replaced.
     let withIoByte index value memory =
@@ -532,6 +582,9 @@ module Bus =
 
     /// Reads one byte through the CPU-visible memory map.
     let readByte (address: uint16) memory =
+        if address >= 0xFF10us && address <= 0xFF3Fus then
+            synchronizeApu memory |> ignore
+
         let address = int address
 
         match tryReadBootRom address memory with
@@ -555,6 +608,7 @@ module Bus =
             | value when value >= 0xFEA0 && value <= 0xFEFF -> unusableRead
             | 0xFF00 -> Joypad.readP1 memory.Joypad
             | 0xFF04 -> Timer.div memory.Timer
+            | 0xFF0F -> 0xE0uy ||| (memory.Io[0x0F] &&& 0x1Fuy)
             | 0xFF41 -> IoRegisters.lcdStatus memory memory.Lcd
             | 0xFF44 -> memory.Lcd.Line
             | 0xFF4D when CgbMemory.isCgb memory ->
@@ -571,13 +625,29 @@ module Bus =
             | 0xFF6B when CgbMemory.isCgb memory -> CgbMemory.paletteRead memory.Io[0x6A] memory.ObjPaletteRam
             | 0xFF6C when CgbMemory.isCgb memory -> 0xFEuy ||| (memory.Io[0x6C] &&& 0x01uy)
             | 0xFF70 when CgbMemory.isCgb memory -> 0xF8uy ||| byte memory.WramBank
+            | 0xFF7D
+            | 0xFF7E
+            | 0xFF7F -> unusableRead
             | value when value >= 0xFF00 && value <= 0xFF7F -> memory.Io[value - 0xFF00]
             | value when value >= 0xFF80 && value <= 0xFFFE -> memory.Hram[value - 0xFF80]
             | 0xFFFF -> memory.InterruptEnable
             | _ -> unusableRead
 
+    let private oamDmaActive memory =
+        memory.Io[OamDmaProgressIndex] <> 0xFFuy
+
+    /// Reads one byte through the CPU bus, including OAM DMA access restrictions.
+    let internal cpuReadByte address memory =
+        if oamDmaActive memory && address >= 0xFE00us && address <= 0xFE9Fus then
+            unusableRead
+        else
+            readByte address memory
+
     /// Writes one byte through the CPU-visible memory map.
     let writeByte (address: uint16) (value: byte) memory =
+        if address = 0xFF04us || (address >= 0xFF10us && address <= 0xFF3Fus) then
+            synchronizeApu memory |> ignore
+
         let address = int address
 
         match address with
@@ -628,18 +698,25 @@ module Bus =
                 Timer = timerResult.State
                 Apu = apu }
         | 0xFF05 ->
-            let registers: Timer.Registers =
-                { Div = Timer.div memory.Timer
-                  Tima = memory.Io[0x05]
-                  Tma = memory.Io[0x06]
-                  Tac = memory.Io[0x07]
-                  InterruptFlags = memory.Io[0x0F] }
+            if memory.Io[TimerReloadMarkerIndex] <> 0uy then
+                memory
+            else
+                let registers: Timer.Registers =
+                    { Div = Timer.div memory.Timer
+                      Tima = memory.Io[0x05]
+                      Tma = memory.Io[0x06]
+                      Tac = memory.Io[0x07]
+                      InterruptFlags = memory.Io[0x0F] }
 
-            let result = Timer.writeTima value memory.Timer registers
-            memory.Io[0x05] <- result.Registers.Tima
-            { memory with Timer = result.State }
+                let result = Timer.writeTima value memory.Timer registers
+                memory.Io[0x05] <- result.Registers.Tima
+                { memory with Timer = result.State }
         | 0xFF06 ->
             memory.Io[0x06] <- value
+
+            if memory.Io[TimerReloadMarkerIndex] <> 0uy then
+                memory.Io[0x05] <- value
+
             memory
         | 0xFF07 ->
             let registers: Timer.Registers =
@@ -653,6 +730,9 @@ module Bus =
             memory.Io[0x05] <- result.Registers.Tima
             memory.Io[0x07] <- result.Registers.Tac
             { memory with Timer = result.State }
+        | 0xFF0F ->
+            memory.Io[0x0F] <- value &&& 0x1Fuy
+            memory
         | 0xFF41 ->
             memory.Io[0x41] <- value &&& 0xF8uy
             memory
@@ -683,12 +763,8 @@ module Bus =
                             memory.Mode
                     BootRom = memory.BootRom |> Option.map (fun bootRom -> { bootRom with Enabled = false }) }
         | 0xFF46 ->
-            let sourceBase = uint16 value <<< 8
-
-            for offset in 0 .. OamSize - 1 do
-                memory.Oam[offset] <- readByte (sourceBase + uint16 offset) memory
-
             memory.Io[0x46] <- value
+            memory.Io[OamDmaProgressIndex] <- 0xFDuy
             memory
         | 0xFF4D when CgbMemory.isCgb memory ->
             memory.Io[0x4D] <- 0x7Euy ||| (value &&& 0x01uy)
@@ -767,6 +843,9 @@ module Bus =
             let bank = if bank = 0 then 1 else bank
             memory.Io[0x70] <- 0xF8uy ||| byte bank
             { memory with WramBank = bank }
+        | 0xFF7D
+        | 0xFF7E
+        | 0xFF7F -> memory
         | addr when addr >= 0xFF10 && addr <= 0xFF26 -> IoRegisters.writeApu addr value memory
         | addr when addr >= 0xFF00 && addr <= 0xFF7F ->
             memory.Io[addr - 0xFF00] <- value
@@ -777,33 +856,60 @@ module Bus =
         | 0xFFFF -> { memory with InterruptEnable = value }
         | _ -> memory
 
-    /// Advances all bus-owned hardware by the specified CPU cycles.
-    let tick cycles memory =
+    /// Writes one byte through the CPU bus, including OAM DMA access restrictions.
+    let internal cpuWriteByte address value memory =
+        if oamDmaActive memory && address >= 0xFE00us && address <= 0xFE9Fus then
+            memory
+        else
+            writeByte address value memory
+
+    let private advanceCpuClockedDevices cycles memory =
         let hardwareCycles = hardwareCyclesForCpuCycles cycles memory
 
-        let registers: Timer.Registers =
-            { Div = readByte 0xFF04us memory
-              Tima = readByte 0xFF05us memory
-              Tma = readByte 0xFF06us memory
-              Tac = readByte 0xFF07us memory
-              InterruptFlags = readByte 0xFF0Fus memory }
+        if oamDmaActive memory then
+            let transfers = max 1 (hardwareCycles / 4)
+            let sourceBase = uint16 memory.Io[0x46] <<< 8
+            let mutable progress = memory.Io[OamDmaProgressIndex]
 
-        let timerResult = Timer.tick cycles memory.Timer registers
+            for _ in 1..transfers do
+                if progress = 0xFDuy then
+                    progress <- 0xFEuy
+                elif progress = 0xFEuy then
+                    progress <- 0uy
+                elif progress < byte OamSize then
+                    memory.Oam[int progress] <- readByte (sourceBase + uint16 progress) memory
+                    progress <- progress + 1uy
+
+            memory.Io[OamDmaProgressIndex] <- if progress = byte OamSize then 0xFFuy else progress
+
+        let registers: Timer.Registers =
+            { Div = Timer.div memory.Timer
+              Tima = memory.Io[0x05]
+              Tma = memory.Io[0x06]
+              Tac = memory.Io[0x07]
+              InterruptFlags = 0xE0uy ||| memory.Io[0x0F] }
+
+        let struct (timerResult, timerReloaded) =
+            Timer.tickWithReload cycles memory.Timer registers
+
+        memory.Io[TimerReloadMarkerIndex] <- if timerReloaded then 1uy else 0uy
+
+        let isLcdEnabled = lcdEnabled memory
 
         let lcd =
-            if lcdEnabled memory then
+            if isLcdEnabled then
                 Lcd.tick hardwareCycles memory.Lcd
             else
                 Lcd.disabled memory.Lcd
 
         let mutable interruptFlags =
-            if lcdEnabled memory && memory.Lcd.Line <> 144uy && lcd.Line = 144uy then
+            if isLcdEnabled && memory.Lcd.Line <> 144uy && lcd.Line = 144uy then
                 Interrupt.request Interrupt.VBlankBit timerResult.Registers.InterruptFlags
             else
                 timerResult.Registers.InterruptFlags
 
         let statSignal =
-            if lcdEnabled memory then
+            if isLcdEnabled then
                 IoRegisters.lcdStatusInterruptSignal memory lcd
             else
                 false
@@ -819,35 +925,49 @@ module Bus =
         memory.Io[0x41] <- IoRegisters.lcdStatus memory lcd
         memory.Io[0x44] <- lcd.Line
 
-        let apu = Apu.tick hardwareCycles memory.Io memory.Apu
-        memory.Io[0x26] <- Apu.statusRegister memory.Io apu
+        let previousLcdMode = memory.Lcd.Mode
+        memory.Timer <- timerResult.State
+        memory.Lcd <- { lcd with StatSignal = statSignal }
 
-        let next =
-            { memory with
-                Timer = timerResult.State
-                Lcd = { lcd with StatSignal = statSignal }
-                Apu = apu }
-
-        if next.HdmaActive && lcd.Mode = Lcd.HBlank && memory.Lcd.Mode <> Lcd.HBlank then
-            let copied = Hdma.copyBlock next.HdmaSource next.HdmaDestination next
-            let remaining = next.HdmaRemaining - 1
-            let source = next.HdmaSource + 0x10us
+        if memory.HdmaActive && lcd.Mode = Lcd.HBlank && previousLcdMode <> Lcd.HBlank then
+            Hdma.copyBlock memory.HdmaSource memory.HdmaDestination memory |> ignore
+            let remaining = memory.HdmaRemaining - 1
+            let source = memory.HdmaSource + 0x10us
 
             let destination =
-                0x8000us + ((next.HdmaDestination + 0x10us - 0x8000us) &&& 0x1FF0us)
+                0x8000us + ((memory.HdmaDestination + 0x10us - 0x8000us) &&& 0x1FF0us)
 
-            copied.Io[0x55] <- if remaining = 0 then 0xFFuy else byte (remaining - 1)
+            memory.Io[0x55] <- if remaining = 0 then 0xFFuy else byte (remaining - 1)
+            memory.HdmaSource <- source
+            memory.HdmaDestination <- destination
+            memory.HdmaRemaining <- remaining
+            memory.HdmaActive <- remaining > 0
 
-            { copied with
-                HdmaSource = source
-                HdmaDestination = destination
-                HdmaRemaining = remaining
-                HdmaActive = remaining > 0 }
+        memory
+
+    let internal beginCpuStep memory = { memory with Timer = memory.Timer }
+
+    let internal tickCpuMachineCycle memory =
+        advanceCpuClockedDevices 4 memory |> ignore
+
+        if memory.Io[0x26] &&& 0x80uy = 0uy then
+            memory.PendingApuCycles <- 0
         else
-            next
+            memory.PendingApuCycles <- memory.PendingApuCycles + hardwareCyclesForCpuCycles 4 memory
+
+    /// Advances all bus-owned hardware by the specified CPU cycles.
+    let tick cycles memory =
+        let next = { memory with Timer = memory.Timer }
+        synchronizeApu next |> ignore
+        advanceCpuClockedDevices cycles next |> ignore
+
+        next.PendingApuCycles <- hardwareCyclesForCpuCycles cycles next
+        synchronizeApu next
 
     /// Executes the CGB speed-switch behavior associated with the STOP instruction.
     let stop memory =
+        synchronizeApu memory |> ignore
+
         if CgbMemory.isCgb memory && memory.SpeedSwitchPrepared then
             let nextDoubleSpeed = not memory.DoubleSpeed
             memory.Io[0x4D] <- 0x7Euy ||| (if nextDoubleSpeed then 0x80uy else 0uy)

@@ -204,6 +204,52 @@ let ``timer registers are mapped through bus and delayed reload requests interru
     Assert.Equal(Interrupt.TimerBit, Bus.readByte 0xFF0Fus updated &&& Interrupt.TimerBit)
 
 [<Fact>]
+let ``TIMA write on reload cycle is ignored`` () =
+    let overflowed =
+        makeBus ()
+        |> Bus.writeByte 0xFF05us 0xFFuy
+        |> Bus.writeByte 0xFF06us 0x44uy
+        |> Bus.writeByte 0xFF07us 0x05uy
+        |> Bus.tick 16
+
+    let reloaded = Bus.tick 4 overflowed
+    let written = Bus.writeByte 0xFF05us 0x7Fuy reloaded
+
+    Assert.Equal(0x44uy, Bus.readByte 0xFF05us written)
+
+[<Fact>]
+let ``TMA write on reload cycle also replaces TIMA`` () =
+    let overflowed =
+        makeBus ()
+        |> Bus.writeByte 0xFF05us 0xFFuy
+        |> Bus.writeByte 0xFF06us 0x44uy
+        |> Bus.writeByte 0xFF07us 0x05uy
+        |> Bus.tick 16
+
+    let reloaded = Bus.tick 4 overflowed
+    let written = Bus.writeByte 0xFF06us 0x7Fuy reloaded
+
+    Assert.Equal(0x7Fuy, Bus.readByte 0xFF05us written)
+    Assert.Equal(0x7Fuy, Bus.readByte 0xFF06us written)
+
+[<Fact>]
+let ``TIMA writes before and after reload cycle are accepted`` () =
+    let overflowed () =
+        makeBus ()
+        |> Bus.writeByte 0xFF05us 0xFFuy
+        |> Bus.writeByte 0xFF06us 0x44uy
+        |> Bus.writeByte 0xFF07us 0x05uy
+        |> Bus.tick 16
+
+    let beforeReload = overflowed () |> Bus.tick 3 |> Bus.writeByte 0xFF05us 0x31uy
+    Assert.Equal(0x31uy, Bus.readByte 0xFF05us beforeReload)
+
+    let afterReload =
+        overflowed () |> Bus.tick 4 |> Bus.tick 1 |> Bus.writeByte 0xFF05us 0x62uy
+
+    Assert.Equal(0x62uy, Bus.readByte 0xFF05us afterReload)
+
+[<Fact>]
 let ``writing DIV through bus resets divider`` () =
     let advanced = makeBus () |> Bus.tick 512
     let reset = Bus.writeByte 0xFF04us 0xFFuy advanced
@@ -290,14 +336,39 @@ let ``OAM DMA copies one hundred sixty bytes from source page`` () =
     let source =
         [ 0 .. Bus.OamSize - 1 ]
         |> List.fold (fun bus offset -> Bus.writeByte (0xC000us + uint16 offset) (byte offset) bus) (makeBus ())
+        |> Bus.writeByte 0xFF40us 0x00uy
 
     let copied = Bus.writeByte 0xFF46us 0xC0uy source
-    let readable = Bus.tick 252 copied
+    let readable = Bus.tick ((Bus.OamSize + 2) * 4) copied
 
     Assert.Equal(0xC0uy, Bus.readByte 0xFF46us copied)
     Assert.Equal(0x00uy, Bus.readByte 0xFE00us readable)
     Assert.Equal(0x7Fuy, Bus.readByte 0xFE7Fus readable)
     Assert.Equal(0x9Fuy, Bus.readByte 0xFE9Fus readable)
+
+[<Fact>]
+let ``OAM DMA begins transferring after two machine cycles`` () =
+    let started =
+        makeBus ()
+        |> Bus.writeByte 0xFF40us 0x00uy
+        |> Bus.writeByte 0xC000us 0x42uy
+        |> Bus.writeByte 0xFF46us 0xC0uy
+
+    let starting = Bus.tick 8 started
+
+    Assert.Equal(0x00uy, Bus.readByte 0xFE00us starting)
+
+    let transferred = Bus.tick 4 starting
+    Assert.Equal(0x42uy, Bus.readByte 0xFE00us transferred)
+
+[<Fact>]
+let ``IF reads unused bits high and stores only interrupt flags`` () =
+    let bus = makeBus () |> Bus.writeByte 0xFF0Fus 0xFFuy
+
+    Assert.Equal(0xFFuy, Bus.readByte 0xFF0Fus bus)
+
+    let cleared = Bus.writeByte 0xFF0Fus 0x00uy bus
+    Assert.Equal(0xE0uy, Bus.readByte 0xFF0Fus cleared)
 
 [<Fact>]
 let ``VRAM is inaccessible during LCD transfer mode`` () =
