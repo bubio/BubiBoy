@@ -6,6 +6,7 @@
     <RuntimeIdentifiers>osx-arm64;osx-x64;linux-arm64;linux-x64;win-arm64;win-x64</RuntimeIdentifiers>
     <AssemblyName>BubiBoy</AssemblyName>
     <Product>BubiBoy</Product>
+    <Version>1.1.0</Version>
   </PropertyGroup>
 
   <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('Windows')) or ('$(RuntimeIdentifier)' == 'win-x64' or $([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('win-')))">
