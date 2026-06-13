@@ -1,14 +1,14 @@
 # BubiBoy
 
 <p align="center">
-  <img src="assets/AppIcon.png" alt="M88M" width="128" height="128">
+  <img src="assets/AppIcon.png" alt="BubiBoy" width="128" height="128">
 </p>
 
 BubiBoy is a Game Boy and Game Boy Color emulator written in F# on .NET 10.
 
 <p align="center">
   <a href="https://github.com/bubio/BubiBoy/releases/latest">
-    <img src="https://img.shields.io/github/v/release/bubio/BubiBoyM" alt="Latest Release">
+    <img src="https://img.shields.io/github/v/release/bubio/BubiBoy" alt="Latest Release">
   </a>
   <a href="https://github.com/bubio/BubiBoy/blob/main/LICENSE">
     <img src="https://img.shields.io/github/license/bubio/BubiBoy" alt="License">
@@ -18,25 +18,39 @@ BubiBoy is a Game Boy and Game Boy Color emulator written in F# on .NET 10.
   </a>
 </p>
 
-
 This project is strongly experimental and is not recommended as a daily-use emulator. There are many excellent Game Boy Color emulators available today, and those are a better choice if you want reliable compatibility and a polished play experience.
 
-It provides an Avalonia desktop app for macOS, Linux, and Windows. The emulator core is kept separate from UI, audio devices, and platform-specific APIs.
+BubiBoy is a lightweight, cross-platform Game Boy and Game Boy Color emulator with a native desktop
+experience on macOS, Linux, and Windows. It combines accurate hardware timing with practical features for
+playing and testing classic handheld games.
 
 ![Wizardry on BubiBoy running on macOS Tahoe](/docs/Screenshot1.png)
 ![Dragon Quest III on BubiBoy running on Windows 11](/docs/Screenshot2.png)
 ![Prince of Persia on BubiBoy running on Ubuntu 24.04](/docs/Screenshot3.png)
 
-## Current Status
+## Features
 
 - Opens `.gb` and `.gbc` ROM files.
 - Runs DMG and CGB sessions with video, audio, keyboard/controller input, pause/reset, scaling, fullscreen, and floating window mode.
 - Supports ROM-only, MBC1, MBC2, MBC3, and MBC5 cartridges.
 - Loads and saves battery-backed `.sav` data automatically.
 - Supports save states and recent ROMs.
-- Stores app settings such as volume, scale, recent ROMs, and input mappings.
+- Supports configurable keyboard/controller mappings and native controller input on macOS, Linux, and Windows.
+- Provides nearest-neighbor, smooth, and LCD-style image filters.
+- Can use external DMG and CGB boot ROMs when supplied by the user.
+- Stores app settings such as volume, scale, image filter, recent ROMs, boot ROM selection, and input mappings.
 
-Compatibility is still in progress, so some games and cartridge variants may not work correctly yet.
+## Emulation Accuracy
+
+BubiBoy models CPU and memory activity at machine-cycle granularity, including instruction bus access,
+interrupts, DMA, and timer edge behavior. This timing-focused design improves compatibility with games
+that rely on subtle hardware behavior.
+
+The emulator passes 30 hardware-verified
+[Mooneye Test Suite](https://github.com/Gekkio/mooneye-test-suite) acceptance ROMs covering CPU flags,
+instruction timing, interrupts, HALT/IME behavior, DIV, and timer edge cases.
+[Blargg's test ROMs](http://gbdev.gg8.se/files/roms/blargg-gb-tests/) are also used for compatibility
+testing.
 
 ## Run From Source
 
@@ -103,12 +117,10 @@ For packaged audio output, the native wrapper is copied under `runtimes/<rid>/na
 
 This project includes or bundles third-party components used for UI, audio, testing, and tooling. See the listed files and upstream projects for full license text where noted.
 
-- Avalonia (UI): Avalonia.Desktop, Avalonia.Themes.Fluent — MIT License. See https://github.com/AvaloniaUI/Avalonia
+- Avalonia (UI): Avalonia.Desktop, Avalonia.Themes.Fluent - MIT License. See https://github.com/AvaloniaUI/Avalonia
 - miniaudio (native audio wrapper): included under native/miniaudio.h and native/miniaudio-LICENSE. miniaudio is dual-licensed (Public Domain or MIT No Attribution). Full text: native/miniaudio-LICENSE. See https://github.com/mackron/miniaudio
-- BenchmarkDotNet (benchmarks): MIT License.
-- Test-related packages: xUnit.net, coverlet.collector, Microsoft.NET.Test.Sdk — used for tests and coverage. Check each package/NuGet entry for precise license details.
-
-If a consolidated third-party license file is desired, a THIRD_PARTY_LICENSES.md or docs/ file can be added on request.
+- BenchmarkDotNet (benchmarks) - MIT License.
+- Test-related packages: xUnit.net, coverlet.collector, Microsoft.NET.Test.Sdk - used for tests and coverage. Check each package/NuGet entry for precise license details.
 
 ## License
 
