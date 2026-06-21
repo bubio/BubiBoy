@@ -47,6 +47,7 @@
     <Compile Include="EmulationRunner.fs" />
     <Compile Include="DialogLayout.fs" />
     <Compile Include="InputMappingWindow.fs" />
+    <Compile Include="AchievementsWindow.fs" />
     <Compile Include="SettingsWindow.fs" />
     <Compile Include="RomSession.fs" />
     <Compile Include="RomWorkflow.fs" />
@@ -61,6 +62,7 @@
     <Compile Include="WindowLayoutController.fs" />
     <Compile Include="MainWindowMenus.fs" />
     <Compile Include="FrameDisplayTimer.fs" />
+    <Compile Include="RaStateWorkflow.fs" />
     <Compile Include="EmulationSessionController.fs" />
     <Compile Include="MainWindow.fs" />
     <Compile Include="App.fs" />
@@ -71,6 +73,7 @@
     <ProjectReference Include="..\BubiBoy.Core\BubiBoy.Core.fsproj" />
     <ProjectReference Include="..\BubiBoy.IO\BubiBoy.IO.fsproj" />
     <ProjectReference Include="..\BubiBoy.Audio\BubiBoy.Audio.fsproj" />
+    <ProjectReference Include="..\BubiBoy.RetroAchievements\BubiBoy.RetroAchievements.fsproj" />
     <ProjectReference Include="..\ControllerInput\ControllerInput.fsproj" />
   </ItemGroup>
 

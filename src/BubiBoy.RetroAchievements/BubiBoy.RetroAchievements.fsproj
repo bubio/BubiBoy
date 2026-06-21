@@ -1,0 +1,55 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <BubiBoyBuildNativeRetroAchievements Condition="'$(BubiBoyBuildNativeRetroAchievements)' == ''">true</BubiBoyBuildNativeRetroAchievements>
+    <BubiBoyRaNativeRid Condition="'$(RuntimeIdentifier)' != ''">$(RuntimeIdentifier)</BubiBoyRaNativeRid>
+    <BubiBoyRaNativeRid Condition="'$(BubiBoyRaNativeRid)' == ''">$(NETCoreSdkRuntimeIdentifier)</BubiBoyRaNativeRid>
+    <BubiBoyRaNativeLibraryName Condition="$([System.String]::Copy('$(BubiBoyRaNativeRid)').StartsWith('osx-'))">libbubi_rcheevos.dylib</BubiBoyRaNativeLibraryName>
+    <BubiBoyRaNativeRoot>$(MSBuildThisFileDirectory)../../native/bubi_rcheevos</BubiBoyRaNativeRoot>
+    <BubiBoyRaNativeCMakeBuildDir>$(BubiBoyRaNativeRoot)/build/cmake/$(BubiBoyRaNativeRid)</BubiBoyRaNativeCMakeBuildDir>
+    <BubiBoyRaNativeRuntimeDir>$(BubiBoyRaNativeRoot)/build/runtimes/$(BubiBoyRaNativeRid)/native</BubiBoyRaNativeRuntimeDir>
+    <BubiBoyRaNativeRuntimeLibrary>$(BubiBoyRaNativeRuntimeDir)/$(BubiBoyRaNativeLibraryName)</BubiBoyRaNativeRuntimeLibrary>
+    <BubiBoyRaNativeSources>$(BubiBoyRaNativeRoot)/CMakeLists.txt;$(BubiBoyRaNativeRoot)/bubi_rcheevos.c;$(BubiBoyRaNativeRoot)/bubi_rcheevos.h;$(MSBuildThisFileDirectory)../../ThirdParty/versions.json</BubiBoyRaNativeSources>
+    <BubiBoyCanBuildNativeRetroAchievements Condition="$([System.String]::Copy('$(BubiBoyRaNativeRid)').StartsWith('osx-')) and ('$(RuntimeIdentifier)' == '' or '$(RuntimeIdentifier)' == '$(NETCoreSdkRuntimeIdentifier)')">true</BubiBoyCanBuildNativeRetroAchievements>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="RaModels.fs" />
+    <Compile Include="NativeInterop.fs" />
+    <Compile Include="RaCredentialStore.fs" />
+    <Compile Include="RaStateCodec.fs" />
+    <Compile Include="RaClient.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\BubiBoy.Core\BubiBoy.Core.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <NativeLibrary Include="..\..\native\bubi_rcheevos\build\runtimes\**\*.*"
+                   Link="runtimes\%(RecursiveDir)%(Filename)%(Extension)"
+                   CopyToPublishDirectory="PreserveNewest"
+                   Pack="true"
+                   PackagePath="runtimes/%(RecursiveDir)%(Filename)%(Extension)"
+                   Condition="Exists('..\..\native\bubi_rcheevos\build\runtimes')" />
+    <None Include="..\..\native\bubi_rcheevos\build\runtimes\**\*.*"
+          Link="runtimes\%(RecursiveDir)%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="Never"
+          Condition="Exists('..\..\native\bubi_rcheevos\build\runtimes')" />
+    <None Include="$(BubiBoyRaNativeRuntimeLibrary)"
+          Link="$(BubiBoyRaNativeLibraryName)"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest"
+          Condition="'$(BubiBoyBuildNativeRetroAchievements)' == 'true' and '$(BubiBoyCanBuildNativeRetroAchievements)' == 'true' and '$(BubiBoyRaNativeLibraryName)' != ''" />
+  </ItemGroup>
+  <Target Name="BuildBubiBoyNativeRetroAchievements"
+          BeforeTargets="PrepareForBuild"
+          Inputs="$(BubiBoyRaNativeSources)"
+          Outputs="$(BubiBoyRaNativeRuntimeLibrary)"
+          Condition="'$(BubiBoyBuildNativeRetroAchievements)' == 'true' and '$(BubiBoyCanBuildNativeRetroAchievements)' == 'true' and '$(BubiBoyRaNativeLibraryName)' != ''">
+    <MakeDir Directories="$(BubiBoyRaNativeRuntimeDir)" />
+    <Exec Command="cmake -S &quot;$(BubiBoyRaNativeRoot)&quot; -B &quot;$(BubiBoyRaNativeCMakeBuildDir)&quot; -DCMAKE_BUILD_TYPE=$(Configuration)" />
+    <Exec Command="cmake --build &quot;$(BubiBoyRaNativeCMakeBuildDir)&quot; --config $(Configuration)" />
+    <Copy SourceFiles="$(BubiBoyRaNativeCMakeBuildDir)/$(BubiBoyRaNativeLibraryName)"
+          DestinationFiles="$(BubiBoyRaNativeRuntimeLibrary)" />
+  </Target>
+</Project>

@@ -1,6 +1,7 @@
 namespace BubiBoy.App
 
 open System
+open System.Diagnostics
 open System.Runtime.InteropServices
 open Avalonia
 open Avalonia.Controls
@@ -10,6 +11,7 @@ open Avalonia.Platform
 open BubiBoy.Audio
 open BubiBoy.Core
 open BubiBoy.IO
+open BubiBoy.RetroAchievements
 
 type MainWindow(?startupRomPath: string) as this =
     inherit Window()
@@ -62,10 +64,58 @@ type MainWindow(?startupRomPath: string) as this =
         let notifications =
             AppNotificationCenter(toast, fun () -> layoutController.IsFloating)
 
+        let retroAchievements =
+            match RaClient.TryCreate(fun message -> Debug.WriteLine message) with
+            | Ok client -> Some client
+            | Error message ->
+                if settingsStore.Current.RetroAchievementsEnabled then
+                    notifications.Show $"RetroAchievements unavailable: {message}"
+
+                None
+
+        retroAchievements
+        |> Option.iter (fun client ->
+            client.EventRaised.Add(fun event ->
+                let message =
+                    match event.EventType with
+                    | 1u -> Some $"Achievement unlocked: {event.Title}"
+                    | 15u -> Some "All achievements completed."
+                    | 16u -> Some $"RetroAchievements server error: {event.Description}"
+                    | 17u -> Some "RetroAchievements disconnected; unlocks are pending."
+                    | 18u -> Some "RetroAchievements reconnected."
+                    | _ -> None
+
+                message
+                |> Option.iter (fun value ->
+                    Avalonia.Threading.Dispatcher.UIThread.Post(fun () -> notifications.Show value)))
+
+            if settingsStore.Current.RetroAchievementsEnabled then
+                let username = settingsStore.Current.RetroAchievementsUsername
+
+                if
+                    not (client.LoginWithStoredToken username)
+                    && not (String.IsNullOrWhiteSpace username)
+                then
+                    notifications.Show "Open Achievements to log in to RetroAchievements.")
+
         let saveSettings () =
             match settingsStore.Save() with
             | Ok() -> ()
             | Error message -> notifications.Show $"Settings error: {message}"
+
+        retroAchievements
+        |> Option.iter (fun client ->
+            client.Changed.Add(fun snapshot ->
+                snapshot.User
+                |> Option.iter (fun raUser ->
+                    Avalonia.Threading.Dispatcher.UIThread.Post(fun () ->
+                        if
+                            not settingsStore.Current.RetroAchievementsEnabled
+                            || settingsStore.Current.RetroAchievementsUsername <> raUser.Username
+                        then
+                            settingsStore.SetRetroAchievements(true, raUser.Username) |> ignore
+
+                            saveSettings ()))))
 
         loadedSettings.LoadError
         |> Option.iter (fun message -> notifications.Show $"Settings error: {message}")
@@ -107,7 +157,8 @@ type MainWindow(?startupRomPath: string) as this =
                 traceCounters,
                 perfTrace,
                 250_000,
-                audioBufferTargetFrames
+                audioBufferTargetFrames,
+                retroAchievements
             )
 
         let mutable refreshMenus = fun () -> ()
@@ -123,7 +174,8 @@ type MainWindow(?startupRomPath: string) as this =
                   SettingsStore = settingsStore
                   SaveSettings = saveSettings
                   Notifications = notifications
-                  RefreshMenus = fun () -> refreshMenus () }
+                  RefreshMenus = fun () -> refreshMenus ()
+                  RetroAchievements = retroAchievements }
             )
 
         viewModel.PropertyChanged.Add(fun args ->
@@ -197,18 +249,36 @@ type MainWindow(?startupRomPath: string) as this =
 
         let openSettings () =
             async {
-                let! result =
-                    AppDialogs.showSettings this settingsStore.Current.BootRomSelection
-                    |> Async.AwaitTask
+                let! result = AppDialogs.showSettings this settingsStore.Current |> Async.AwaitTask
 
                 match result with
                 | Some selection ->
-                    settingsStore.SetBootRomSelection selection |> ignore
+                    settingsStore.SetBootRomSelection selection.BootRomSelection |> ignore
+
+                    settingsStore.SetRetroAchievements(
+                        selection.RetroAchievementsEnabled,
+                        selection.RetroAchievementsUsername
+                    )
+                    |> ignore
+
                     saveSettings ()
-                    notifications.Show "Boot ROM setting saved. It will apply on the next ROM load or reset."
+
+                    match retroAchievements with
+                    | Some client when not selection.RetroAchievementsEnabled -> client.Logout()
+                    | Some client when client.Snapshot.Status = LoggedOut ->
+                        if not (client.LoginWithStoredToken selection.RetroAchievementsUsername) then
+                            notifications.Show "RetroAchievements enabled. Open Achievements to log in."
+                    | _ -> ()
+
+                    notifications.Show "Settings saved. Boot ROM changes apply on the next ROM load or reset."
                 | None -> ()
             }
             |> Async.StartImmediate
+
+        let openAchievements () =
+            match retroAchievements with
+            | Some client -> AchievementsWindow.Show(this, client)
+            | None -> notifications.Show "RetroAchievements native support is unavailable."
 
         let menuElements =
             MainWindowMenus.create
@@ -217,6 +287,7 @@ type MainWindow(?startupRomPath: string) as this =
                 platformModifier
                 viewModel
                 { OpenSettings = openSettings
+                  OpenAchievements = openAchievements
                   OpenInputMapping = inputHost.OpenMapping
                   SaveState = sessionController.SaveState
                   LoadState = sessionController.LoadState
@@ -248,7 +319,17 @@ type MainWindow(?startupRomPath: string) as this =
                   DequeueFrame = emulationRunner.DequeueFrame
                   UpdateFrame = sessionController.UpdateFrame
                   UpdateDiagnostics = fun () -> viewModel.DebugDetails <- sessionController.FormatRuntimeDiagnostics()
-                  AudioDiagnostics = audioOutput.Diagnostics },
+                  AudioDiagnostics = audioOutput.Diagnostics
+                  PumpServices =
+                    fun () ->
+                        retroAchievements
+                        |> Option.iter (fun client ->
+                            try
+                                client.Pump(not sessionController.IsRunning)
+                            with ex ->
+                                Debug.WriteLine $"RetroAchievements pump failed: {ex}"
+                                client.SetOffline "RetroAchievements service processing failed."
+                                notifications.Show "RetroAchievements went offline; emulation will continue.") },
                 performanceCounters,
                 traceCounters,
                 perfTrace
@@ -321,6 +402,10 @@ type MainWindow(?startupRomPath: string) as this =
             frameDisplayTimer.Stop()
             viewport.StopTimers()
             inputHost.Dispose()
+
+            retroAchievements
+            |> Option.iter (fun client -> (client :> IDisposable).Dispose())
+
             PerfTrace.close perfTrace)
 
         let contentGrid = Grid(RowDefinitions = RowDefinitions("Auto,*,Auto"))

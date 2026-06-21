@@ -25,6 +25,15 @@ let private makeCgbBus () =
     | Ok cartridge -> Bus.create cartridge
     | Error message -> failwith message
 
+let private makeMbc5RamBus () =
+    let rom = makeRom ()
+    rom[0x0147] <- 0x1Buy
+    rom[0x0149] <- 0x04uy
+
+    match rom |> CartridgeMemory.create with
+    | Ok cartridge -> Bus.create cartridge
+    | Error message -> failwith message
+
 let private makeBootBus bootRom =
     match makeRom () |> CartridgeMemory.create with
     | Ok cartridge ->
@@ -178,6 +187,53 @@ let ``writeByte stores HRAM and interrupt enable`` () =
 
     Assert.Equal(0x12uy, Bus.readByte 0xFF80us updated)
     Assert.Equal(0x1Fuy, Bus.readByte 0xFFFFus updated)
+
+[<Fact>]
+let ``inspection memory exposes fixed and extended CGB WRAM banks`` () =
+    let bus =
+        makeCgbBus ()
+        |> Bus.writeByte 0xFF70us 0x01uy
+        |> Bus.writeByte 0xD000us 0x11uy
+        |> Bus.writeByte 0xFF70us 0x02uy
+        |> Bus.writeByte 0xD000us 0x22uy
+
+    let bytes = Array.zeroCreate<byte> 2
+
+    Assert.Equal(1, Bus.readInspectionMemory 0xD000u bytes 0 1 bus)
+    Assert.Equal(0x11uy, bytes[0])
+    Assert.Equal(1, Bus.readInspectionMemory 0x10000u bytes 1 1 bus)
+    Assert.Equal(0x22uy, bytes[1])
+    Assert.Equal(0x22uy, Bus.readByte 0xD000us bus)
+
+[<Fact>]
+let ``inspection memory exposes cartridge RAM banks without changing selection`` () =
+    let bus =
+        makeMbc5RamBus ()
+        |> Bus.writeByte 0x0000us 0x0Auy
+        |> Bus.writeByte 0x4000us 0x00uy
+        |> Bus.writeByte 0xA000us 0x10uy
+        |> Bus.writeByte 0x4000us 0x01uy
+        |> Bus.writeByte 0xA000us 0x20uy
+
+    let bytes = Array.zeroCreate<byte> 2
+
+    Assert.Equal(1, Bus.readInspectionMemory 0xA000u bytes 0 1 bus)
+    Assert.Equal(0x10uy, bytes[0])
+    Assert.Equal(1, Bus.readInspectionMemory 0x16000u bytes 1 1 bus)
+    Assert.Equal(0x20uy, bytes[1])
+    Assert.Equal(0x20uy, Bus.readByte 0xA000us bus)
+
+[<Fact>]
+let ``inspection memory validates buffer and mapped range`` () =
+    let bus = makeBus ()
+    let bytes = Array.zeroCreate<byte> 4
+
+    Assert.Equal(0, Bus.readInspectionMemory 0u null 0 1 bus)
+    Assert.Equal(0, Bus.readInspectionMemory 0u bytes -1 1 bus)
+    Assert.Equal(0, Bus.readInspectionMemory 0x34000u bytes 0 1 bus)
+    Assert.Equal(2, Bus.readInspectionMemory 0x33FFEu bytes 0 4 bus)
+    Assert.Equal(1, Bus.readInspectionMemory 0x10000u bytes 0 1 bus)
+    Assert.Equal(0xFFuy, bytes[0])
 
 [<Fact>]
 let ``unusable memory reads as FF and ignores writes`` () =

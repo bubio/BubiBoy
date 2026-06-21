@@ -54,6 +54,10 @@ type AppSettingsStore(settingsPath: string, initialSettings: AppSettings.Setting
         let next = this.Replace(AppSettings.withBootRomSelection selection current)
         next.BootRomSelection
 
+    /// Updates the opt-in state and last successful RetroAchievements username.
+    member this.SetRetroAchievements(enabled: bool, username: string) =
+        this.Replace(AppSettings.withRetroAchievements enabled username current)
+
     /// Updates keyboard and controller mappings atomically.
     member this.SetInputMappings(keyboardMapping: Map<string, string>, controllerMapping: Map<string, string>) =
         this.Replace(

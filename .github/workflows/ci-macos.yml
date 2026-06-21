@@ -56,7 +56,7 @@ jobs:
         with:
           dotnet-version: 10.0.107
 
-      - name: Build native audio
+      - name: Build native libraries
         shell: bash
         run: |
           set -euo pipefail
@@ -68,6 +68,15 @@ jobs:
           destination="native/build/runtimes/${{ matrix.rid }}/native"
           mkdir -p "${destination}"
           cp "native/build/cmake/${library}" "${destination}/${library}"
+
+          ra_library="libbubi_rcheevos.dylib"
+          ra_build="native/bubi_rcheevos/build/cmake/${{ matrix.rid }}"
+          ra_destination="native/bubi_rcheevos/build/runtimes/${{ matrix.rid }}/native"
+          cmake -S native/bubi_rcheevos -B "${ra_build}" -DCMAKE_BUILD_TYPE=Release
+          cmake --build "${ra_build}" --config Release
+          ctest --test-dir "${ra_build}" --output-on-failure
+          mkdir -p "${ra_destination}"
+          cp "${ra_build}/${ra_library}" "${ra_destination}/${ra_library}"
 
       - name: Restore
         run: dotnet restore BubiBoy.slnx
@@ -83,7 +92,7 @@ jobs:
       - name: Publish app
         run: dotnet publish src/BubiBoy.App/BubiBoy.App.fsproj -c Release -r ${{ matrix.rid }} --no-restore --self-contained true
 
-      - name: Copy native audio into published app
+      - name: Copy native libraries into published app
         shell: bash
         run: |
           set -euo pipefail
@@ -92,6 +101,12 @@ jobs:
           destination="${publish_path}/Contents/MacOS/runtimes/${{ matrix.rid }}/native"
           mkdir -p "${destination}"
           cp native/build/runtimes/${{ matrix.rid }}/native/* "${destination}/"
+          cp native/bubi_rcheevos/build/runtimes/${{ matrix.rid }}/native/* "${destination}/"
+
+          test -f "${publish_path}/Contents/MacOS/libbubi_rcheevos.dylib"
+          test -f "${destination}/libbubi_miniaudio.dylib"
+          test -f "${destination}/libbubi_rcheevos.dylib"
+          codesign --force --deep --sign - "${publish_path}"
 
       - name: Prepare app artifact
         shell: bash

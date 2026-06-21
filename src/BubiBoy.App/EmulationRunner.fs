@@ -1,5 +1,6 @@
 namespace BubiBoy.App
 
+open System
 open System.Collections.Generic
 open System.Diagnostics
 open System.Threading
@@ -7,6 +8,7 @@ open System.Threading.Tasks
 open Avalonia.Threading
 open BubiBoy.Audio
 open BubiBoy.Core
+open BubiBoy.RetroAchievements
 
 type DequeuedFrame =
     { QueueBefore: int
@@ -22,11 +24,13 @@ type EmulationRunner
         traceCounters: RuntimeTraceCounters,
         perfTrace: PerfTrace.Trace option,
         maxStepsPerFrame: int,
-        audioBufferTargetFrames: int
+        audioBufferTargetFrames: int,
+        retroAchievements: RaClient option
     ) =
     let gate = obj ()
     let pendingFrames = Queue<Emulator.FrameResult>()
     let mutable emulationLoop: CancellationTokenSource option = None
+    let mutable emulationTask: Task option = None
 
     member _.ClearFrames() =
         lock gate (fun () -> pendingFrames.Clear())
@@ -39,7 +43,20 @@ type EmulationRunner
             with :? System.ObjectDisposedException ->
                 ()
 
+            emulationTask
+            |> Option.iter (fun task ->
+                try
+                    task.Wait()
+                with
+                | :? AggregateException as ex ->
+                    ex.Flatten().InnerExceptions
+                    |> Seq.filter (fun inner ->
+                        not (inner :? OperationCanceledException || inner :? TaskCanceledException))
+                    |> Seq.iter (fun inner -> Debug.WriteLine $"Emulation loop failed: {inner}")
+                | :? OperationCanceledException -> ())
+
             emulationLoop <- None
+            emulationTask <- None
         | None -> ()
 
     member _.EnqueueFrameAudio(session: Emulator.Session) =
@@ -48,6 +65,15 @@ type EmulationRunner
         let beforeCycles = session.TotalCycles
         let stopwatch = Stopwatch.StartNew()
         let result = Emulator.runFrame maxStepsPerFrame session
+
+        retroAchievements
+        |> Option.iter (fun client ->
+            try
+                client.ProcessFrame result.Session
+            with ex ->
+                Debug.WriteLine $"RetroAchievements frame processing failed: {ex}"
+                client.SetOffline "RetroAchievements frame processing failed.")
+
         stopwatch.Stop()
         performanceCounters.RecordEmulatedFrame()
         let writeResult = audioOutput.Enqueue(applyVolume result.AudioSamples)
@@ -111,6 +137,8 @@ type EmulationRunner
                                 token.ThrowIfCancellationRequested()),
                 token
             )
+
+        emulationTask <- Some task
 
         task.ContinueWith(fun (_: Task) -> cts.Dispose()) |> ignore
 

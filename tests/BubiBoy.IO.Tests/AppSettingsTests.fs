@@ -22,6 +22,8 @@ let ``saveToPath writes versioned settings and creates directories`` () =
           ShowFullScreenInfo = false
           VideoFilter = AppSettings.Smooth
           BootRomSelection = AppSettings.Cgb
+          RetroAchievementsEnabled = true
+          RetroAchievementsUsername = "player"
           KeyboardMapping = AppSettings.defaultKeyboardMapping |> Map.add "A" "C" |> Map.add "B" "V"
           ControllerMapping =
             AppSettings.defaultControllerMapping
@@ -33,9 +35,10 @@ let ``saveToPath writes versioned settings and creates directories`` () =
     | Ok() ->
         Assert.True(File.Exists path)
         let savedJson = File.ReadAllText path
-        Assert.Contains("\"Version\": 7", savedJson)
+        Assert.Contains("\"Version\": 8", savedJson)
         Assert.Contains("\"VideoFilter\": \"Smooth\"", savedJson)
         Assert.DoesNotContain("IsFloating", savedJson)
+        Assert.DoesNotContain("Token", savedJson)
 
         match AppSettings.loadFromPath path with
         | Error message -> Assert.Fail message
@@ -46,6 +49,8 @@ let ``saveToPath writes versioned settings and creates directories`` () =
             Assert.False(loaded.ShowFullScreenInfo)
             Assert.Equal(AppSettings.Smooth, loaded.VideoFilter)
             Assert.Equal(AppSettings.Cgb, loaded.BootRomSelection)
+            Assert.True(loaded.RetroAchievementsEnabled)
+            Assert.Equal("player", loaded.RetroAchievementsUsername)
             Assert.Equal("C", loaded.KeyboardMapping["A"])
             Assert.Equal("V", loaded.KeyboardMapping["B"])
             Assert.Equal("West", loaded.ControllerMapping["A"])
@@ -68,6 +73,8 @@ let ``normalize clamps volume and limits deduplicated recent ROMs`` () =
           ShowFullScreenInfo = false
           VideoFilter = AppSettings.Lcd
           BootRomSelection = AppSettings.Automatic
+          RetroAchievementsEnabled = false
+          RetroAchievementsUsername = ""
           KeyboardMapping =
             AppSettings.defaultKeyboardMapping
             |> Map.add "A" "Q"
@@ -111,6 +118,8 @@ let ``rememberRom moves existing ROM to front`` () =
           ShowFullScreenInfo = true
           VideoFilter = AppSettings.Off
           BootRomSelection = AppSettings.Disabled
+          RetroAchievementsEnabled = false
+          RetroAchievementsUsername = ""
           KeyboardMapping = AppSettings.defaultKeyboardMapping
           ControllerMapping = AppSettings.defaultControllerMapping }
 

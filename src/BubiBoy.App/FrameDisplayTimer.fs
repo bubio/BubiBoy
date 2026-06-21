@@ -12,7 +12,8 @@ type FrameDisplayDependencies =
       DequeueFrame: unit -> DequeuedFrame
       UpdateFrame: Emulator.FrameResult -> unit
       UpdateDiagnostics: unit -> unit
-      AudioDiagnostics: unit -> AudioHost.AudioDiagnostics }
+      AudioDiagnostics: unit -> AudioHost.AudioDiagnostics
+      PumpServices: unit -> unit }
 
 /// Drives UI frame presentation and display-side performance tracing.
 type FrameDisplayTimer
@@ -29,6 +30,8 @@ type FrameDisplayTimer
 
     do
         timer.Tick.Add(fun _ ->
+            dependencies.PumpServices()
+
             if dependencies.IsRunning() then
                 let tick, tickDelta = traceCounters.NextDisplayTick(perfTrace)
                 let stopwatch = Stopwatch.StartNew()
