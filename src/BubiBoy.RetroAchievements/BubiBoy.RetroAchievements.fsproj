@@ -14,6 +14,11 @@
     <BubiBoyCanBuildNativeRetroAchievements Condition="$([System.String]::Copy('$(BubiBoyRaNativeRid)').StartsWith('osx-')) and ('$(RuntimeIdentifier)' == '' or '$(RuntimeIdentifier)' == '$(NETCoreSdkRuntimeIdentifier)')">true</BubiBoyCanBuildNativeRetroAchievements>
   </PropertyGroup>
   <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>BubiBoy.RetroAchievements.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+  <ItemGroup>
     <Compile Include="RaModels.fs" />
     <Compile Include="NativeInterop.fs" />
     <Compile Include="RaCredentialStore.fs" />

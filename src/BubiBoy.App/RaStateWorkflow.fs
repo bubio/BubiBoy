@@ -10,6 +10,16 @@ module RaStateWorkflow =
         { Session: Emulator.Session
           ProgressRestored: bool }
 
+    let internal validateMetadata (game: RaGame) rcheevosVersion (decoded: RaStateCodec.Decoded) =
+        if decoded.GameId <> game.Id then
+            Error "RetroAchievements state belongs to another game."
+        elif not (String.Equals(decoded.RomHash, game.Hash, StringComparison.OrdinalIgnoreCase)) then
+            Error "RetroAchievements state belongs to another ROM."
+        elif decoded.RcheevosVersion <> rcheevosVersion then
+            Error "RetroAchievements state was created by another rcheevos version."
+        else
+            Ok()
+
     let private statePath (settingsPath: string) (game: RaGame) =
         let root =
             Path.Combine(
@@ -65,17 +75,12 @@ module RaStateWorkflow =
                     File.ReadAllBytes path
                     |> RaStateCodec.decode
                     |> Result.bind (fun decoded ->
-                        if decoded.GameId <> game.Id then
-                            Error "RetroAchievements state belongs to another game."
-                        elif not (String.Equals(decoded.RomHash, game.Hash, StringComparison.OrdinalIgnoreCase)) then
-                            Error "RetroAchievements state belongs to another ROM."
-                        elif decoded.RcheevosVersion <> client.Version then
-                            Error "RetroAchievements state was created by another rcheevos version."
-                        else
+                        validateMetadata game client.Version decoded
+                        |> Result.bind (fun () ->
                             SaveState.restoreBytes decoded.CoreState session
                             |> Result.map (fun restored ->
                                 { Session = restored
-                                  ProgressRestored = client.DeserializeProgress decoded.Progress }))
+                                  ProgressRestored = client.DeserializeProgress decoded.Progress })))
                 with
                 | :? IOException as ex -> Error $"Could not read RetroAchievements state: {ex.Message}"
                 | :? UnauthorizedAccessException as ex -> Error $"Could not read RetroAchievements state: {ex.Message}"

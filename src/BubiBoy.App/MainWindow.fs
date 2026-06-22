@@ -76,16 +76,7 @@ type MainWindow(?startupRomPath: string) as this =
         retroAchievements
         |> Option.iter (fun client ->
             client.EventRaised.Add(fun event ->
-                let message =
-                    match event.EventType with
-                    | 1u -> Some $"Achievement unlocked: {event.Title}"
-                    | 15u -> Some "All achievements completed."
-                    | 16u -> Some $"RetroAchievements server error: {event.Description}"
-                    | 17u -> Some "RetroAchievements disconnected; unlocks are pending."
-                    | 18u -> Some "RetroAchievements reconnected."
-                    | _ -> None
-
-                message
+                RetroAchievementsPresentation.notificationMessage event
                 |> Option.iter (fun value ->
                     Avalonia.Threading.Dispatcher.UIThread.Post(fun () -> notifications.Show value)))
 

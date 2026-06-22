@@ -42,6 +42,42 @@ module internal NativeInterop =
             string ->
                 unit
 
+    type UserData =
+        { Username: string
+          DisplayName: string
+          Token: string
+          Score: uint32
+          SoftcoreScore: uint32 }
+
+    type GameData =
+        { Id: uint32
+          Title: string
+          Hash: string
+          ImageUrl: string }
+
+    type Api =
+        { Create: ReadMemoryCallback * ServerRequestCallback * EventCallback * LogCallback * nativeint -> nativeint
+          Destroy: nativeint -> unit
+          Version: unit -> uint32
+          UserAgent: nativeint * StringBuilder * unativeint -> unativeint
+          CompleteServerRequest: nativeint * unativeint * int * byte[] * unativeint -> unit
+          AbortServerRequests: nativeint -> unit
+          CancelOperation: nativeint -> unit
+          LoginPassword: nativeint * string * string * OperationCallback -> unit
+          LoginToken: nativeint * string * string * OperationCallback -> unit
+          Logout: nativeint -> unit
+          GetUser: nativeint -> UserData option
+          LoadGame: nativeint * uint32 * byte[] * unativeint * OperationCallback -> unit
+          UnloadGame: nativeint -> unit
+          GetGame: nativeint -> GameData option
+          EnumerateAchievements: nativeint * AchievementCallback -> unit
+          DoFrame: nativeint -> unit
+          Idle: nativeint -> unit
+          Reset: nativeint -> unit
+          ProgressSize: nativeint -> unativeint
+          SerializeProgress: nativeint * byte[] * unativeint -> int
+          DeserializeProgress: nativeint * byte[] * unativeint -> int }
+
     module Native =
         [<DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)>]
         extern nativeint bubi_ra_create(
@@ -159,6 +195,93 @@ module internal NativeInterop =
 
         [<DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)>]
         extern int bubi_ra_keychain_delete(string service, string account)
+
+    let api =
+        { Create =
+            fun (readMemory, serverRequest, eventCallback, logCallback, userdata) ->
+                Native.bubi_ra_create (readMemory, serverRequest, eventCallback, logCallback, userdata)
+          Destroy = Native.bubi_ra_destroy
+          Version = Native.bubi_ra_version
+          UserAgent = fun (client, buffer, size) -> Native.bubi_ra_user_agent (client, buffer, size)
+          CompleteServerRequest =
+            fun (client, requestId, status, body, size) ->
+                Native.bubi_ra_complete_server_request (client, requestId, status, body, size)
+          AbortServerRequests = Native.bubi_ra_abort_server_requests
+          CancelOperation = Native.bubi_ra_cancel_operation
+          LoginPassword =
+            fun (client, username, password, callback) ->
+                Native.bubi_ra_login_password (client, username, password, callback)
+          LoginToken =
+            fun (client, username, token, callback) -> Native.bubi_ra_login_token (client, username, token, callback)
+          Logout = Native.bubi_ra_logout
+          GetUser =
+            fun client ->
+                let username = StringBuilder(256)
+                let displayName = StringBuilder(256)
+                let token = StringBuilder(512)
+                let mutable score = 0u
+                let mutable softcoreScore = 0u
+
+                if
+                    Native.bubi_ra_get_user (
+                        client,
+                        username,
+                        unativeint username.Capacity,
+                        displayName,
+                        unativeint displayName.Capacity,
+                        token,
+                        unativeint token.Capacity,
+                        &score,
+                        &softcoreScore
+                    )
+                    <> 0
+                then
+                    Some
+                        { Username = username.ToString()
+                          DisplayName = displayName.ToString()
+                          Token = token.ToString()
+                          Score = score
+                          SoftcoreScore = softcoreScore }
+                else
+                    None
+          LoadGame =
+            fun (client, consoleId, rom, romSize, callback) ->
+                Native.bubi_ra_load_game (client, consoleId, rom, romSize, callback)
+          UnloadGame = Native.bubi_ra_unload_game
+          GetGame =
+            fun client ->
+                let mutable gameId = 0u
+                let title = StringBuilder(512)
+                let hash = StringBuilder(64)
+                let imageUrl = StringBuilder(2048)
+
+                if
+                    Native.bubi_ra_get_game (
+                        client,
+                        &gameId,
+                        title,
+                        unativeint title.Capacity,
+                        hash,
+                        unativeint hash.Capacity,
+                        imageUrl,
+                        unativeint imageUrl.Capacity
+                    )
+                    <> 0
+                then
+                    Some
+                        { Id = gameId
+                          Title = title.ToString()
+                          Hash = hash.ToString()
+                          ImageUrl = imageUrl.ToString() }
+                else
+                    None
+          EnumerateAchievements = fun (client, callback) -> Native.bubi_ra_enumerate_achievements (client, callback)
+          DoFrame = Native.bubi_ra_do_frame
+          Idle = Native.bubi_ra_idle
+          Reset = Native.bubi_ra_reset
+          ProgressSize = Native.bubi_ra_progress_size
+          SerializeProgress = fun (client, buffer, size) -> Native.bubi_ra_serialize_progress (client, buffer, size)
+          DeserializeProgress = fun (client, buffer, size) -> Native.bubi_ra_deserialize_progress (client, buffer, size) }
 
     let private tryLoad () =
         let assembly = Assembly.GetExecutingAssembly()

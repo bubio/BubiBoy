@@ -8,6 +8,11 @@
     <Product>BubiBoy</Product>
     <Version>1.1.0</Version>
   </PropertyGroup>
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>BubiBoy.App.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
 
   <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('Windows')) or ('$(RuntimeIdentifier)' == 'win-x64' or $([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('win-')))">
     <OutputType>WinExe</OutputType>
@@ -46,6 +51,7 @@
     <Compile Include="InputStateController.fs" />
     <Compile Include="EmulationRunner.fs" />
     <Compile Include="DialogLayout.fs" />
+    <Compile Include="RetroAchievementsPresentation.fs" />
     <Compile Include="InputMappingWindow.fs" />
     <Compile Include="AchievementsWindow.fs" />
     <Compile Include="SettingsWindow.fs" />

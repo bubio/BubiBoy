@@ -2,7 +2,6 @@ namespace BubiBoy.App
 
 open System
 open System.Collections.Generic
-open System.IO
 open System.Net.Http
 open Avalonia
 open Avalonia.Controls
@@ -15,6 +14,7 @@ type AchievementsWindow(client: RaClient) as this =
     inherit Window()
 
     let http = new HttpClient(MaxResponseContentBufferSize = 1024L * 1024L)
+    let imageLoader = RaImageLoader(http, fun () -> client.Snapshot)
     let imageCache = Dictionary<string, Bitmap>()
     let imageCacheOrder = Queue<string>()
     let root = StackPanel(Spacing = 12.0, Margin = Thickness(18.0))
@@ -30,42 +30,36 @@ type AchievementsWindow(client: RaClient) as this =
         | Active -> "Active (Softcore)"
         | OfflineSession reason -> $"Offline session: {reason}"
 
-    let loadImage generation url (image: Image) =
+    let loadImage generation gameId url (image: Image) =
         if not (String.IsNullOrWhiteSpace url) then
             match imageCache.TryGetValue url with
             | true, bitmap -> image.Source <- bitmap
             | _ ->
                 task {
-                    try
-                        let uri = Uri url
+                    let! result = imageLoader.Load(generation, gameId, url)
 
-                        if uri.Scheme = Uri.UriSchemeHttps then
-                            let! bytes = http.GetByteArrayAsync uri
+                    result
+                    |> Option.iter (fun bitmap ->
+                        Dispatcher.UIThread.Post(fun () ->
+                            if
+                                not closed
+                                && RetroAchievementsPresentation.isCurrentImage generation gameId client.Snapshot
+                            then
+                                if imageCache.Count >= 128 then
+                                    let expired = imageCacheOrder.Dequeue()
+                                    imageCache.Remove expired |> ignore
 
-                            if bytes.Length <= 1024 * 1024 then
-                                use stream = new MemoryStream(bytes)
-                                let bitmap = new Bitmap(stream)
-
-                                if bitmap.PixelSize.Width <= 2048 && bitmap.PixelSize.Height <= 2048 then
-                                    Dispatcher.UIThread.Post(fun () ->
-                                        if not closed && client.Snapshot.Generation = generation then
-                                            if imageCache.Count >= 128 then
-                                                let expired = imageCacheOrder.Dequeue()
-                                                imageCache.Remove expired |> ignore
-
-                                            imageCache[url] <- bitmap
-                                            imageCacheOrder.Enqueue url
-                                            image.Source <- bitmap)
-                                else
-                                    bitmap.Dispose()
-                    with _ ->
-                        ()
+                                imageCache[url] <- bitmap
+                                imageCacheOrder.Enqueue url
+                                image.Source <- bitmap
+                            else
+                                bitmap.Dispose()))
                 }
                 |> ignore
 
-    let achievementRow generation (achievement: RaAchievement) =
+    let achievementRow generation gameId (achievement: RaAchievement) =
         let image = Image(Width = 48.0, Height = 48.0)
-        loadImage generation achievement.ImageUrl image
+        loadImage generation gameId achievement.ImageUrl image
 
         let title =
             TextBlock(
@@ -142,7 +136,7 @@ type AchievementsWindow(client: RaClient) as this =
         match snapshot.Game with
         | Some game ->
             let gameImage = Image(Width = 64.0, Height = 64.0)
-            loadImage snapshot.Generation game.ImageUrl gameImage
+            loadImage snapshot.Generation game.Id game.ImageUrl gameImage
             let gameTitle = DialogLayout.title game.Title
             let gameHeader = Grid(ColumnDefinitions = ColumnDefinitions("72,*"))
             Grid.SetColumn(gameTitle, 1)
@@ -150,13 +144,11 @@ type AchievementsWindow(client: RaClient) as this =
             gameHeader.Children.Add gameTitle |> ignore
             scrollContent.Children.Add gameHeader |> ignore
 
-            snapshot.Achievements
-            |> List.groupBy (fun achievement -> achievement.Bucket, achievement.BucketLabel)
-            |> List.iter (fun ((_, label), items) ->
-                scrollContent.Children.Add(DialogLayout.title label) |> ignore
-
-                items
-                |> List.iter (achievementRow snapshot.Generation >> scrollContent.Children.Add >> ignore))
+            RetroAchievementsPresentation.populateAchievementGroups
+                scrollContent
+                (DialogLayout.title >> fun value -> value :> Control)
+                (achievementRow snapshot.Generation game.Id >> fun value -> value :> Control)
+                snapshot.Achievements
         | None -> ()
 
         if scrollContent.Children.Count > 0 then

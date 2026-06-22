@@ -5,6 +5,11 @@ open System.Runtime.InteropServices
 open System.Text
 
 module RaCredentialStore =
+    type Store =
+        { SaveToken: string -> string -> Result<unit, string>
+          TryLoadToken: string -> string option
+          DeleteToken: string -> unit }
+
     [<Literal>]
     let private Service = "org.bubiboy.RetroAchievements"
 
@@ -43,3 +48,8 @@ module RaCredentialStore =
             ()
         else
             NativeInterop.Native.bubi_ra_keychain_delete (Service, username) |> ignore
+
+    let store =
+        { SaveToken = saveToken
+          TryLoadToken = tryLoadToken
+          DeleteToken = deleteToken }

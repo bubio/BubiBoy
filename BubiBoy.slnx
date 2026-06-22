@@ -9,6 +9,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/BubiBoy.Audio.Tests/BubiBoy.Audio.Tests.fsproj" />
+    <Project Path="tests/BubiBoy.App.Tests/BubiBoy.App.Tests.fsproj" />
     <Project Path="tests/BubiBoy.Benchmarks/BubiBoy.Benchmarks.fsproj" />
     <Project Path="tests/BubiBoy.Core.Tests/BubiBoy.Core.Tests.fsproj" />
     <Project Path="tests/BubiBoy.IO.Tests/BubiBoy.IO.Tests.fsproj" />

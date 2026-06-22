@@ -15,7 +15,16 @@ type private PendingOperation =
     | Login of username: string
     | LoadGame
 
-type RaClient private (httpClient: HttpClient, log: string -> unit) =
+type RaClient
+    internal
+    (
+        nativeApi: NativeInterop.Api,
+        credentialStore: RaCredentialStore.Store,
+        httpClient: HttpClient,
+        timeProvider: TimeProvider,
+        requestTimeout: TimeSpan,
+        log: string -> unit
+    ) =
     let gate = obj ()
     let completions = ConcurrentQueue<unit -> unit>()
 
@@ -33,7 +42,7 @@ type RaClient private (httpClient: HttpClient, log: string -> unit) =
     let mutable currentSession: Emulator.Session option = None
     let mutable generation = 0L
     let mutable pendingOperation = NoOperation
-    let mutable lastIdle = Stopwatch.GetTimestamp()
+    let mutable lastIdle = timeProvider.GetTimestamp()
     let mutable achievementsDirty = false
 
     let snapshot () =
@@ -45,70 +54,32 @@ type RaClient private (httpClient: HttpClient, log: string -> unit) =
 
     let publish () = changed.Trigger(snapshot ())
 
-    let stringBuffer (capacity: int) = StringBuilder(capacity)
-
     let refreshUser () =
-        let username = stringBuffer 256
-        let displayName = stringBuffer 256
-        let token = stringBuffer 512
-        let mutable score = 0u
-        let mutable softcoreScore = 0u
-
-        if
-            NativeInterop.Native.bubi_ra_get_user (
-                handle,
-                username,
-                unativeint username.Capacity,
-                displayName,
-                unativeint displayName.Capacity,
-                token,
-                unativeint token.Capacity,
-                &score,
-                &softcoreScore
-            )
-            <> 0
-        then
+        match nativeApi.GetUser handle with
+        | Some nativeUser ->
             let next =
-                { Username = username.ToString()
-                  DisplayName = displayName.ToString()
-                  Score = score
-                  SoftcoreScore = softcoreScore }
+                { Username = nativeUser.Username
+                  DisplayName = nativeUser.DisplayName
+                  Score = nativeUser.Score
+                  SoftcoreScore = nativeUser.SoftcoreScore }
 
             user <- Some next
 
-            match RaCredentialStore.saveToken next.Username (token.ToString()) with
+            match credentialStore.SaveToken next.Username nativeUser.Token with
             | Ok() -> ()
             | Error message -> log $"RetroAchievements token was not saved: {message}"
-        else
-            user <- None
+        | None -> user <- None
 
     let refreshGame () =
-        let mutable gameId = 0u
-        let title = stringBuffer 512
-        let hash = stringBuffer 64
-        let imageUrl = stringBuffer 2048
-
-        if
-            NativeInterop.Native.bubi_ra_get_game (
-                handle,
-                &gameId,
-                title,
-                unativeint title.Capacity,
-                hash,
-                unativeint hash.Capacity,
-                imageUrl,
-                unativeint imageUrl.Capacity
-            )
-            <> 0
-        then
+        match nativeApi.GetGame handle with
+        | Some nativeGame ->
             game <-
                 Some
-                    { Id = gameId
-                      Title = title.ToString()
-                      Hash = hash.ToString()
-                      ImageUrl = imageUrl.ToString() }
-        else
-            game <- None
+                    { Id = nativeGame.Id
+                      Title = nativeGame.Title
+                      Hash = nativeGame.Hash
+                      ImageUrl = nativeGame.ImageUrl }
+        | None -> game <- None
 
     let mutable achievementBuffer = ResizeArray<RaAchievement>()
 
@@ -144,7 +115,7 @@ type RaClient private (httpClient: HttpClient, log: string -> unit) =
 
     let refreshAchievements () =
         achievementBuffer <- ResizeArray()
-        NativeInterop.Native.bubi_ra_enumerate_achievements (handle, achievementCallback)
+        nativeApi.EnumerateAchievements(handle, achievementCallback)
         achievements <- achievementBuffer |> Seq.toList
 
     let operationCallback =
@@ -162,7 +133,7 @@ type RaClient private (httpClient: HttpClient, log: string -> unit) =
                     status <- Ready
                     log $"RetroAchievements login succeeded for {username}."
                 else
-                    RaCredentialStore.deleteToken username
+                    credentialStore.DeleteToken username
                     user <- None
                     status <- LoggedOut
                     log $"RetroAchievements login failed: {errorMessage}"
@@ -201,13 +172,7 @@ type RaClient private (httpClient: HttpClient, log: string -> unit) =
     let completeHttp requestId statusCode (body: byte[]) =
         lock gate (fun () ->
             if not disposed then
-                NativeInterop.Native.bubi_ra_complete_server_request (
-                    handle,
-                    requestId,
-                    statusCode,
-                    body,
-                    unativeint body.Length
-                ))
+                nativeApi.CompleteServerRequest(handle, requestId, statusCode, body, unativeint body.Length))
 
     let cancelHttpRequests () =
         for request in requests.Values do
@@ -217,7 +182,7 @@ type RaClient private (httpClient: HttpClient, log: string -> unit) =
         NativeInterop.ServerRequestCallback(fun _ requestId url postData contentType ->
             let requestGeneration = generation
             let requestKey = struct (requestId, requestGeneration)
-            let cts = new CancellationTokenSource(TimeSpan.FromSeconds 30.0)
+            let cts = new CancellationTokenSource(requestTimeout)
             requests[requestKey] <- cts
 
             let runRequest () =
@@ -298,22 +263,17 @@ type RaClient private (httpClient: HttpClient, log: string -> unit) =
             action ()
 
     do
-        handle <-
-            NativeInterop.Native.bubi_ra_create (
-                readMemoryCallback,
-                serverRequestCallback,
-                eventCallback,
-                logCallback,
-                nativeint 0
-            )
+        if not (httpClient.DefaultRequestHeaders.UserAgent.ToString().Contains("BubiBoy/")) then
+            httpClient.DefaultRequestHeaders.UserAgent.ParseAdd "BubiBoy/1.1"
+
+        handle <- nativeApi.Create(readMemoryCallback, serverRequestCallback, eventCallback, logCallback, nativeint 0)
 
         if handle = nativeint 0 then
             invalidOp "Could not create the RetroAchievements client."
 
         let clause = StringBuilder(128)
 
-        NativeInterop.Native.bubi_ra_user_agent (handle, clause, unativeint clause.Capacity)
-        |> ignore
+        nativeApi.UserAgent(handle, clause, unativeint clause.Capacity) |> ignore
 
         if clause.Length > 0 then
             httpClient.DefaultRequestHeaders.UserAgent.ParseAdd(clause.ToString())
@@ -321,7 +281,7 @@ type RaClient private (httpClient: HttpClient, log: string -> unit) =
     member _.Snapshot = lock gate snapshot
     member _.Changed = changed.Publish
     member _.EventRaised = eventRaised.Publish
-    member _.Version = NativeInterop.Native.bubi_ra_version ()
+    member _.Version = nativeApi.Version()
 
     member _.LoginWithPassword(username: string, password: string) =
         lock gate (fun () ->
@@ -333,29 +293,29 @@ type RaClient private (httpClient: HttpClient, log: string -> unit) =
                 status <- Authenticating
                 pendingOperation <- Login username
                 publish ()
-                NativeInterop.Native.bubi_ra_login_password (handle, username, password, operationCallback))
+                nativeApi.LoginPassword(handle, username, password, operationCallback))
 
     member _.LoginWithStoredToken(username: string) =
-        match RaCredentialStore.tryLoadToken username with
+        match credentialStore.TryLoadToken username with
         | None -> false
         | Some token ->
             lock gate (fun () ->
                 status <- Authenticating
                 pendingOperation <- Login username
                 publish ()
-                NativeInterop.Native.bubi_ra_login_token (handle, username, token, operationCallback))
+                nativeApi.LoginToken(handle, username, token, operationCallback))
 
             true
 
     member _.Logout() =
         lock gate (fun () ->
-            user |> Option.iter (fun value -> RaCredentialStore.deleteToken value.Username)
+            user |> Option.iter (fun value -> credentialStore.DeleteToken value.Username)
             generation <- generation + 1L
             cancelHttpRequests ()
-            NativeInterop.Native.bubi_ra_cancel_operation handle
-            NativeInterop.Native.bubi_ra_abort_server_requests handle
+            nativeApi.CancelOperation handle
+            nativeApi.AbortServerRequests handle
             pendingOperation <- NoOperation
-            NativeInterop.Native.bubi_ra_logout handle
+            nativeApi.Logout handle
             currentSession <- None
             user <- None
             game <- None
@@ -373,16 +333,16 @@ type RaClient private (httpClient: HttpClient, log: string -> unit) =
             pendingOperation <- LoadGame
             currentSession <- Some session
             publish ()
-            NativeInterop.Native.bubi_ra_load_game (handle, consoleId, rom, unativeint rom.Length, operationCallback))
+            nativeApi.LoadGame(handle, consoleId, rom, unativeint rom.Length, operationCallback))
 
     member _.UnloadGame() =
         lock gate (fun () ->
             generation <- generation + 1L
             cancelHttpRequests ()
-            NativeInterop.Native.bubi_ra_cancel_operation handle
-            NativeInterop.Native.bubi_ra_abort_server_requests handle
+            nativeApi.CancelOperation handle
+            nativeApi.AbortServerRequests handle
             pendingOperation <- NoOperation
-            NativeInterop.Native.bubi_ra_unload_game handle
+            nativeApi.UnloadGame handle
             currentSession <- None
             game <- None
             achievements <- []
@@ -405,7 +365,7 @@ type RaClient private (httpClient: HttpClient, log: string -> unit) =
                 currentSession <- Some session
 
                 try
-                    NativeInterop.Native.bubi_ra_do_frame handle
+                    nativeApi.DoFrame handle
                 finally
                     currentSession <- None
 
@@ -419,10 +379,10 @@ type RaClient private (httpClient: HttpClient, log: string -> unit) =
             drainCompletions ()
 
             if isPaused && status = Active then
-                let now = Stopwatch.GetTimestamp()
+                let now = timeProvider.GetTimestamp()
 
-                if Stopwatch.GetElapsedTime(lastIdle, now) >= TimeSpan.FromSeconds 1.0 then
-                    NativeInterop.Native.bubi_ra_idle handle
+                if timeProvider.GetElapsedTime(lastIdle, now) >= TimeSpan.FromSeconds 1.0 then
+                    nativeApi.Idle handle
                     lastIdle <- now)
 
     member _.SerializeProgress() =
@@ -430,26 +390,23 @@ type RaClient private (httpClient: HttpClient, log: string -> unit) =
             if status <> Active then
                 Error "RetroAchievements is not active."
             else
-                let size = NativeInterop.Native.bubi_ra_progress_size handle |> uint64
+                let size = nativeApi.ProgressSize handle |> uint64
 
                 if size > uint64 RaStateCodec.MaxProgressSize then
                     Error $"RetroAchievements progress exceeds {RaStateCodec.MaxProgressSize} bytes."
                 else
                     let bytes = Array.zeroCreate<byte> (int size)
 
-                    if
-                        NativeInterop.Native.bubi_ra_serialize_progress (handle, bytes, unativeint bytes.Length) = 0
-                    then
+                    if nativeApi.SerializeProgress(handle, bytes, unativeint bytes.Length) = 0 then
                         Ok bytes
                     else
                         Error "Could not serialize RetroAchievements progress.")
 
     member _.DeserializeProgress(progress: byte[]) =
-        lock gate (fun () ->
-            NativeInterop.Native.bubi_ra_deserialize_progress (handle, progress, unativeint progress.Length) = 0)
+        lock gate (fun () -> nativeApi.DeserializeProgress(handle, progress, unativeint progress.Length) = 0)
 
     member _.Reset() =
-        lock gate (fun () -> NativeInterop.Native.bubi_ra_reset handle)
+        lock gate (fun () -> nativeApi.Reset handle)
 
     interface IDisposable with
         member _.Dispose() =
@@ -459,9 +416,9 @@ type RaClient private (httpClient: HttpClient, log: string -> unit) =
                     generation <- generation + 1L
                     cancelHttpRequests ()
 
-                    NativeInterop.Native.bubi_ra_cancel_operation handle
-                    NativeInterop.Native.bubi_ra_abort_server_requests handle
-                    NativeInterop.Native.bubi_ra_destroy handle
+                    nativeApi.CancelOperation handle
+                    nativeApi.AbortServerRequests handle
+                    nativeApi.Destroy handle
                     handle <- nativeint 0
                     requests.Clear()
                     httpClient.Dispose()
@@ -475,8 +432,17 @@ type RaClient private (httpClient: HttpClient, log: string -> unit) =
                 let httpClient = new HttpClient()
                 httpClient.Timeout <- Timeout.InfiniteTimeSpan
                 httpClient.MaxResponseContentBufferSize <- 8L * 1024L * 1024L
-                httpClient.DefaultRequestHeaders.UserAgent.ParseAdd "BubiBoy/1.1"
-                Ok(new RaClient(httpClient, log))
+
+                Ok(
+                    new RaClient(
+                        NativeInterop.api,
+                        RaCredentialStore.store,
+                        httpClient,
+                        TimeProvider.System,
+                        TimeSpan.FromSeconds 30.0,
+                        log
+                    )
+                )
         with
         | :? DllNotFoundException as ex -> Error ex.Message
         | :? EntryPointNotFoundException as ex -> Error ex.Message
