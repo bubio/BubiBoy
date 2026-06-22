@@ -34,6 +34,18 @@ Game ID, ROM hash, rcheevos version, core state, sized `rc_client` progress, and
 CRC32. All metadata is validated before the core state is restored. Normal state
 files remain unchanged.
 
+## Controlled Operations
+
+Pause, Save State, Load State, Reset, and game changes pass through the shared
+RetroAchievements operation policy before mutating the emulator session. Softcore
+currently permits state, reset, and game-change operations. Pause attempts during
+an active RA session call `rc_client_can_pause()` and report the remaining delay
+when denied. An `RC_CLIENT_EVENT_RESET` request resets the emulator without
+echoing a second reset back to `rc_client`.
+
+Hardcore support must extend this policy instead of adding checks to individual
+menus or keyboard shortcuts.
+
 ## Dependency Update
 
 The pinned version and commit are recorded in `ThirdParty/versions.json`. To update:
@@ -42,4 +54,3 @@ The pinned version and commit are recorded in `ThirdParty/versions.json`. To upd
 2. Replace only the explicitly compiled source inventory in `native/bubi_rcheevos/CMakeLists.txt`.
 3. Update the license and version manifest.
 4. Run memory-map, state-codec, native build, and full solution tests.
-

@@ -34,6 +34,7 @@ type MainWindow(?startupRomPath: string) as this =
         let mutable openRomHandler = fun () -> ()
         let mutable toggleRunPauseHandler = fun () -> ()
         let mutable resetHandler = fun () -> ()
+        let mutable retroAchievementsResetHandler = fun () -> ()
         let mutable clearRecentHandler = fun () -> ()
 
         let viewModel =
@@ -76,9 +77,12 @@ type MainWindow(?startupRomPath: string) as this =
         retroAchievements
         |> Option.iter (fun client ->
             client.EventRaised.Add(fun event ->
-                RetroAchievementsPresentation.notificationMessage event
-                |> Option.iter (fun value ->
-                    Avalonia.Threading.Dispatcher.UIThread.Post(fun () -> notifications.Show value)))
+                match RetroAchievementsPresentation.hostAction event with
+                | RetroAchievementsPresentation.Notify message ->
+                    Avalonia.Threading.Dispatcher.UIThread.Post(fun () -> notifications.Show message)
+                | RetroAchievementsPresentation.ResetRequested ->
+                    Avalonia.Threading.Dispatcher.UIThread.Post retroAchievementsResetHandler
+                | RetroAchievementsPresentation.Ignore -> ())
 
             if settingsStore.Current.RetroAchievementsEnabled then
                 let username = settingsStore.Current.RetroAchievementsUsername
@@ -197,6 +201,7 @@ type MainWindow(?startupRomPath: string) as this =
         openRomHandler <- openRomPicker
         toggleRunPauseHandler <- sessionController.ToggleRunPause
         resetHandler <- sessionController.ResetCurrentRom
+        retroAchievementsResetHandler <- sessionController.HandleRetroAchievementsReset
         clearRecentHandler <- clearRecentRoms
 
         let setScale scale =

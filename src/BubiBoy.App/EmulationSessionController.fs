@@ -116,6 +116,13 @@ type EmulationSessionController(dependencies: EmulationSessionDependencies) =
         dependencies.RefreshMenus()
         dependencies.Owner.Focus() |> ignore
 
+    let authorize operation =
+        match RetroAchievementsOperations.evaluate dependencies.RetroAchievements operation with
+        | OperationAllowed -> true
+        | OperationDenied message ->
+            dependencies.Notifications.Show message
+            false
+
     do
         dependencies.RetroAchievements
         |> Option.iter (fun client ->
@@ -172,6 +179,8 @@ type EmulationSessionController(dependencies: EmulationSessionDependencies) =
     member _.LoadRomPath(path: string, rememberRecent: bool) =
         if String.IsNullOrWhiteSpace path then
             dependencies.Notifications.Show "Could not open the selected ROM path."
+        elif not (authorize ChangeGame) then
+            ()
         else
             saveCurrentRam ()
             stopRunning ()
@@ -236,103 +245,119 @@ type EmulationSessionController(dependencies: EmulationSessionDependencies) =
                 dependencies.RefreshMenus()
 
     /// Resets the currently loaded ROM.
-    member _.ResetCurrentRom() =
-        match loadedRom with
-        | None -> dependencies.Notifications.Show "Load a ROM before resetting."
-        | Some rom ->
-            let wasRunning = isRunning
-            saveCurrentRam ()
-            stopRunning ()
+    member private _.ResetCurrentRomCore(notifyRuntime: bool) =
+        if notifyRuntime && not (authorize Reset) then
+            ()
+        else
+            match loadedRom with
+            | None -> dependencies.Notifications.Show "Load a ROM before resetting."
+            | Some rom ->
+                let wasRunning = isRunning
+                saveCurrentRam ()
+                stopRunning ()
 
-            let outcome =
-                RomWorkflow.reset dependencies.SettingsStore.Current.BootRomSelection rom
+                let outcome =
+                    RomWorkflow.reset dependencies.SettingsStore.Current.BootRomSelection rom
 
-            setCurrentSession outcome.Session
-            dependencies.Runner.ClearFrames()
-            updateSessionState ()
-            dependencies.PerformanceCounters.Reset()
-            dependencies.PresentFrame(Video.blankFrame ())
-            dependencies.Notifications.Show outcome.ToastMessage
-            dependencies.ViewModel.DebugDetails <- outcome.DebugDetails
+                setCurrentSession outcome.Session
+                dependencies.Runner.ClearFrames()
+                updateSessionState ()
+                dependencies.PerformanceCounters.Reset()
+                dependencies.PresentFrame(Video.blankFrame ())
+                dependencies.Notifications.Show outcome.ToastMessage
+                dependencies.ViewModel.DebugDetails <- outcome.DebugDetails
 
-            if wasRunning && outcome.Session.IsSome then
-                dependencies.RetroAchievements
-                |> Option.iter (fun client ->
-                    if client.Snapshot.Status = Active then
-                        client.Reset())
+                if notifyRuntime && outcome.Session.IsSome then
+                    dependencies.RetroAchievements
+                    |> Option.iter (fun client ->
+                        if client.Snapshot.Status = Active then
+                            client.Reset())
 
-                startRunning ()
-            else
-                dependencies.ViewModel.IsRunning <- false
+                if wasRunning && outcome.Session.IsSome then
+                    startRunning ()
+                else
+                    dependencies.ViewModel.IsRunning <- false
 
-            dependencies.RefreshMenus()
-            dependencies.Owner.Focus() |> ignore
+                dependencies.RefreshMenus()
+                dependencies.Owner.Focus() |> ignore
+
+    /// Resets the currently loaded ROM after checking the active RA policy.
+    member this.ResetCurrentRom() = this.ResetCurrentRomCore(true)
+
+    /// Applies a reset requested by RetroAchievements without notifying the runtime again.
+    member this.HandleRetroAchievementsReset() = this.ResetCurrentRomCore(false)
 
     /// Saves state for the current ROM.
     member _.SaveState() =
-        let wasRunning = isRunning
-        stopRunning ()
+        if not (authorize SaveState) then
+            ()
+        else
+            let wasRunning = isRunning
+            stopRunning ()
 
-        let outcome: RomWorkflow.SaveStateOutcome =
-            match dependencies.RetroAchievements, getCurrentSession () with
-            | Some client, Some session when client.Snapshot.Status = Active ->
-                match RaStateWorkflow.save dependencies.SettingsStore.Path client session with
-                | Ok() ->
-                    { ToastMessage = "RetroAchievements state written."
-                      DebugDetails = "RetroAchievements state written." }
-                | Error message ->
-                    { ToastMessage = $"Save state error: {message}"
-                      DebugDetails = message }
-            | _ -> RomWorkflow.saveState loadedRom (getCurrentSession ())
+            let outcome: RomWorkflow.SaveStateOutcome =
+                match dependencies.RetroAchievements, getCurrentSession () with
+                | Some client, Some session when client.Snapshot.Status = Active ->
+                    match RaStateWorkflow.save dependencies.SettingsStore.Path client session with
+                    | Ok() ->
+                        { ToastMessage = "RetroAchievements state written."
+                          DebugDetails = "RetroAchievements state written." }
+                    | Error message ->
+                        { ToastMessage = $"Save state error: {message}"
+                          DebugDetails = message }
+                | _ -> RomWorkflow.saveState loadedRom (getCurrentSession ())
 
-        dependencies.Notifications.Show outcome.ToastMessage
+            dependencies.Notifications.Show outcome.ToastMessage
 
-        if not (String.IsNullOrWhiteSpace outcome.DebugDetails) then
-            dependencies.ViewModel.DebugDetails <- outcome.DebugDetails
+            if not (String.IsNullOrWhiteSpace outcome.DebugDetails) then
+                dependencies.ViewModel.DebugDetails <- outcome.DebugDetails
 
-        resumeAfterStateOperation wasRunning
+            resumeAfterStateOperation wasRunning
 
     /// Loads state for the current ROM.
     member _.LoadState() =
-        let wasRunning = isRunning
-        stopRunning ()
+        if not (authorize LoadState) then
+            ()
+        else
+            let wasRunning = isRunning
+            stopRunning ()
 
-        let outcome: RomWorkflow.LoadStateOutcome =
-            match dependencies.RetroAchievements, getCurrentSession () with
-            | Some client, Some session when client.Snapshot.Status = Active ->
-                match RaStateWorkflow.load dependencies.SettingsStore.Path client session with
-                | Ok loaded ->
-                    if not loaded.ProgressRestored then
-                        client.Reset()
+            let outcome: RomWorkflow.LoadStateOutcome =
+                match dependencies.RetroAchievements, getCurrentSession () with
+                | Some client, Some session when client.Snapshot.Status = Active ->
+                    match RaStateWorkflow.load dependencies.SettingsStore.Path client session with
+                    | Ok loaded ->
+                        if not loaded.ProgressRestored then
+                            client.Reset()
 
-                    { RestoredSession = Some loaded.Session
-                      ToastMessage =
-                        if loaded.ProgressRestored then
-                            "RetroAchievements state loaded."
-                        else
-                            "State loaded; RetroAchievements progress was reset."
-                      DebugDetails = "RetroAchievements state loaded." }
-                | Error message ->
-                    { RestoredSession = None
-                      ToastMessage = $"Save state error: {message}"
-                      DebugDetails = message }
-            | _ -> RomWorkflow.loadState loadedRom (getCurrentSession ())
+                        { RestoredSession = Some loaded.Session
+                          ToastMessage =
+                            if loaded.ProgressRestored then
+                                "RetroAchievements state loaded."
+                            else
+                                "State loaded; RetroAchievements progress was reset."
+                          DebugDetails = "RetroAchievements state loaded." }
+                    | Error message ->
+                        { RestoredSession = None
+                          ToastMessage = $"Save state error: {message}"
+                          DebugDetails = message }
+                | _ -> RomWorkflow.loadState loadedRom (getCurrentSession ())
 
-        match outcome.RestoredSession with
-        | Some restored ->
-            setCurrentSession (Some restored)
-            dependencies.Runner.ClearFrames()
-            dependencies.PerformanceCounters.Reset()
-            dependencies.PresentFrame restored.Framebuffer
-            updateSessionState ()
-        | None -> ()
+            match outcome.RestoredSession with
+            | Some restored ->
+                setCurrentSession (Some restored)
+                dependencies.Runner.ClearFrames()
+                dependencies.PerformanceCounters.Reset()
+                dependencies.PresentFrame restored.Framebuffer
+                updateSessionState ()
+            | None -> ()
 
-        dependencies.Notifications.Show outcome.ToastMessage
+            dependencies.Notifications.Show outcome.ToastMessage
 
-        if not (String.IsNullOrWhiteSpace outcome.DebugDetails) then
-            dependencies.ViewModel.DebugDetails <- outcome.DebugDetails
+            if not (String.IsNullOrWhiteSpace outcome.DebugDetails) then
+                dependencies.ViewModel.DebugDetails <- outcome.DebugDetails
 
-        resumeAfterStateOperation wasRunning
+            resumeAfterStateOperation wasRunning
 
     /// Toggles emulation between running and paused.
     member _.ToggleRunPause() =
@@ -340,8 +365,9 @@ type EmulationSessionController(dependencies: EmulationSessionDependencies) =
         | None -> dependencies.Notifications.Show "Load a ROM before running."
         | Some _ ->
             if isRunning then
-                saveCurrentRam ()
-                stopRunning ()
+                if authorize Pause then
+                    saveCurrentRam ()
+                    stopRunning ()
             else
                 startRunning ()
 

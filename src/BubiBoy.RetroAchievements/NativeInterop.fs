@@ -73,6 +73,7 @@ module internal NativeInterop =
           EnumerateAchievements: nativeint * AchievementCallback -> unit
           DoFrame: nativeint -> unit
           Idle: nativeint -> unit
+          CanPause: nativeint -> bool * uint32
           Reset: nativeint -> unit
           ProgressSize: nativeint -> unativeint
           SerializeProgress: nativeint * byte[] * unativeint -> int
@@ -174,6 +175,9 @@ module internal NativeInterop =
 
         [<DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)>]
         extern void bubi_ra_idle(nativeint client)
+
+        [<DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)>]
+        extern int bubi_ra_can_pause(nativeint client, uint32& framesRemaining)
 
         [<DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)>]
         extern void bubi_ra_reset(nativeint client)
@@ -278,6 +282,11 @@ module internal NativeInterop =
           EnumerateAchievements = fun (client, callback) -> Native.bubi_ra_enumerate_achievements (client, callback)
           DoFrame = Native.bubi_ra_do_frame
           Idle = Native.bubi_ra_idle
+          CanPause =
+            fun client ->
+                let mutable framesRemaining = 0u
+                let allowed = Native.bubi_ra_can_pause (client, &framesRemaining) <> 0
+                allowed, framesRemaining
           Reset = Native.bubi_ra_reset
           ProgressSize = Native.bubi_ra_progress_size
           SerializeProgress = fun (client, buffer, size) -> Native.bubi_ra_serialize_progress (client, buffer, size)

@@ -385,6 +385,15 @@ type RaClient
                     nativeApi.Idle handle
                     lastIdle <- now)
 
+    member _.CanPause() =
+        lock gate (fun () ->
+            if status <> Active then
+                PauseAllowed
+            else
+                match nativeApi.CanPause handle with
+                | true, _ -> PauseAllowed
+                | false, framesRemaining -> PauseDenied framesRemaining)
+
     member _.SerializeProgress() =
         lock gate (fun () ->
             if status <> Active then

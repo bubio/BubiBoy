@@ -48,3 +48,7 @@ type RaSnapshot =
       Game: RaGame option
       Achievements: RaAchievement list
       Generation: int64 }
+
+type RaPauseDecision =
+    | PauseAllowed
+    | PauseDenied of framesRemaining: uint32

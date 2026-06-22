@@ -319,6 +319,14 @@ void bubi_ra_enumerate_achievements(bubi_ra_client* client,
 
 void bubi_ra_do_frame(bubi_ra_client* client) { if (client) rc_client_do_frame(client->native); }
 void bubi_ra_idle(bubi_ra_client* client) { if (client) rc_client_idle(client->native); }
+int bubi_ra_can_pause(bubi_ra_client* client, uint32_t* frames_remaining) {
+  if (!client) {
+    if (frames_remaining)
+      *frames_remaining = 0;
+    return 1;
+  }
+  return rc_client_can_pause(client->native, frames_remaining);
+}
 void bubi_ra_reset(bubi_ra_client* client) { if (client) rc_client_reset(client->native); }
 size_t bubi_ra_progress_size(bubi_ra_client* client) { return client ? rc_client_progress_size(client->native) : 0; }
 int bubi_ra_serialize_progress(bubi_ra_client* client, uint8_t* buffer, size_t size) {

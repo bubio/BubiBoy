@@ -35,6 +35,7 @@ type internal FakeNativeBackend() =
     let mutable achievements: RaAchievement list = []
     let mutable doFrameCount = 0
     let mutable idleCount = 0
+    let mutable canPause = true, 0u
     let mutable abortCount = 0
 
     let api: NativeInterop.Api =
@@ -84,6 +85,7 @@ type internal FakeNativeBackend() =
                 doFrameCount <- doFrameCount + 1
                 doFrameAction ()
           Idle = fun _ -> idleCount <- idleCount + 1
+          CanPause = fun _ -> canPause
           Reset = ignore
           ProgressSize = fun _ -> unativeint 0
           SerializeProgress = fun (_, _, _) -> 0
@@ -109,6 +111,11 @@ type internal FakeNativeBackend() =
 
     member _.DoFrameCount = doFrameCount
     member _.IdleCount = idleCount
+
+    member _.CanPauseResult
+        with get () = canPause
+        and set value = canPause <- value
+
     member _.AbortCount = abortCount
     member _.Completions = completions |> Seq.toList
 

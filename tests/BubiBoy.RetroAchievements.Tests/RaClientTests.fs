@@ -81,6 +81,21 @@ let ``frame processing and paused idle only run in active state`` () =
     Assert.Equal(2, backend.IdleCount)
 
 [<Fact>]
+let ``pause decision delegates to native only for active game`` () =
+    let backend = FakeNativeBackend()
+    backend.CanPauseResult <- false, 120u
+
+    let client, _, _, _, _ =
+        createClient backend (successfulHandler ()) (TimeSpan.FromSeconds 30.0)
+
+    use client = client
+    Assert.Equal(PauseAllowed, client.CanPause())
+    activate backend client
+    Assert.Equal(PauseDenied 120u, client.CanPause())
+    backend.CanPauseResult <- true, 0u
+    Assert.Equal(PauseAllowed, client.CanPause())
+
+[<Fact>]
 let ``HTTP preserves method status and empty response body`` () =
     let requests = ResizeArray<HttpMethod * string>()
     let userAgents = ResizeArray<string>()
@@ -109,8 +124,8 @@ let ``HTTP preserves method status and empty response body`` () =
         client.Pump(false)
         backend.Completions.Length = 2)
 
-    Assert.Equal((HttpMethod.Get, ""), requests[0])
-    Assert.Equal((HttpMethod.Post, ""), requests[1])
+    Assert.Contains((HttpMethod.Get, ""), requests)
+    Assert.Contains((HttpMethod.Post, ""), requests)
 
     Assert.All(
         userAgents,

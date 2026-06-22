@@ -50,6 +50,28 @@ module RetroAchievementsPresentationTests =
             RetroAchievementsPresentation.notificationMessage (event 15u "")
         )
 
+        Assert.Equal(
+            RetroAchievementsPresentation.ResetRequested,
+            RetroAchievementsPresentation.hostAction (event 14u "")
+        )
+
+    [<Fact>]
+    let ``operation policy checks pause only for active RA session`` () =
+        let mutable calls = 0
+
+        let denied () =
+            calls <- calls + 1
+            PauseDenied 120u
+
+        match RetroAchievementsOperations.evaluateStatus Active denied Pause with
+        | OperationDenied message -> Assert.Contains("3 more second", message)
+        | OperationAllowed -> Assert.Fail "Pause was unexpectedly allowed."
+
+        Assert.Equal(1, calls)
+        Assert.Equal(OperationAllowed, RetroAchievementsOperations.evaluateStatus Ready denied Pause)
+        Assert.Equal(OperationAllowed, RetroAchievementsOperations.evaluateStatus Active denied SaveState)
+        Assert.Equal(1, calls)
+
     [<Fact>]
     let ``achievement buckets use the documented display order`` () =
         let input =

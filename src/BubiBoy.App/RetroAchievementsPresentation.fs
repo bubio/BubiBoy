@@ -8,14 +8,26 @@ open Avalonia.Media.Imaging
 open BubiBoy.RetroAchievements
 
 module internal RetroAchievementsPresentation =
-    let notificationMessage (event: RaEvent) =
+    type HostAction =
+        | Ignore
+        | Notify of message: string
+        | ResetRequested
+
+    let hostAction (event: RaEvent) =
         match event.EventType with
-        | 1u -> Some $"Achievement unlocked: {event.Title}"
-        | 15u -> Some "All achievements completed."
-        | 16u -> Some $"RetroAchievements server error: {event.Description}"
-        | 17u -> Some "RetroAchievements disconnected; unlocks are pending."
-        | 18u -> Some "RetroAchievements reconnected."
-        | _ -> None
+        | 1u -> Notify $"Achievement unlocked: {event.Title}"
+        | 14u -> ResetRequested
+        | 15u -> Notify "All achievements completed."
+        | 16u -> Notify $"RetroAchievements server error: {event.Description}"
+        | 17u -> Notify "RetroAchievements disconnected; unlocks are pending."
+        | 18u -> Notify "RetroAchievements reconnected."
+        | _ -> Ignore
+
+    let notificationMessage (event: RaEvent) =
+        match hostAction event with
+        | Notify message -> Some message
+        | Ignore
+        | ResetRequested -> None
 
     let private bucketOrder bucket =
         match bucket with
