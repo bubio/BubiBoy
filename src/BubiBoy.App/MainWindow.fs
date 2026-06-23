@@ -93,6 +93,11 @@ type MainWindow(?startupRomPath: string) as this =
                 then
                     notifications.Show "Open Achievements to log in to RetroAchievements.")
 
+        let retroAchievementsOverlay =
+            retroAchievements
+            |> Option.map (fun client ->
+                new RetroAchievementsOverlayController(viewport.RetroAchievementsOverlayHost, client))
+
         let saveSettings () =
             match settingsStore.Save() with
             | Ok() -> ()
@@ -398,6 +403,9 @@ type MainWindow(?startupRomPath: string) as this =
             frameDisplayTimer.Stop()
             viewport.StopTimers()
             inputHost.Dispose()
+
+            retroAchievementsOverlay
+            |> Option.iter (fun overlay -> (overlay :> IDisposable).Dispose())
 
             retroAchievements
             |> Option.iter (fun client -> (client :> IDisposable).Dispose())

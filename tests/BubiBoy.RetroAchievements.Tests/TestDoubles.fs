@@ -124,7 +124,28 @@ type internal FakeNativeBackend() =
         operationCallback <- None
 
     member _.RaiseEvent(eventType: uint32, id: uint32, title: string, description: string) =
-        eventCallback.Value.Invoke(nativeint 0, eventType, id, title, description, "")
+        eventCallback.Value.Invoke(nativeint 0, eventType, id, title, description, "", "", 0.0f)
+
+    member _.RaiseIndicatorEvent
+        (
+            eventType: uint32,
+            id: uint32,
+            title: string,
+            description: string,
+            imageUrl: string,
+            measuredProgress: string,
+            measuredPercent: float32
+        ) =
+        eventCallback.Value.Invoke(
+            nativeint 0,
+            eventType,
+            id,
+            title,
+            description,
+            imageUrl,
+            measuredProgress,
+            measuredPercent
+        )
 
     member _.Request(requestId: unativeint, url: string, postData: string, contentType: string) =
         serverCallback.Value.Invoke(nativeint 0, requestId, url, postData, contentType)

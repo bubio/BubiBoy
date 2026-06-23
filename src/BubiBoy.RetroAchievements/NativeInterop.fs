@@ -16,7 +16,7 @@ module internal NativeInterop =
     type ServerRequestCallback = delegate of nativeint * unativeint * string * string * string -> unit
 
     [<UnmanagedFunctionPointer(CallingConvention.Cdecl, CharSet = CharSet.Ansi)>]
-    type EventCallback = delegate of nativeint * uint32 * uint32 * string * string * string -> unit
+    type EventCallback = delegate of nativeint * uint32 * uint32 * string * string * string * string * float32 -> unit
 
     [<UnmanagedFunctionPointer(CallingConvention.Cdecl, CharSet = CharSet.Ansi)>]
     type LogCallback = delegate of nativeint * int * string -> unit

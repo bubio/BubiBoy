@@ -40,7 +40,11 @@ type RaEvent =
       RelatedId: uint32
       Title: string
       Description: string
-      ImageUrl: string }
+      ImageUrl: string
+      MeasuredProgress: string
+      MeasuredPercent: float32
+      Generation: int64
+      GameId: uint32 }
 
 type RaSnapshot =
     { Status: RaStatus

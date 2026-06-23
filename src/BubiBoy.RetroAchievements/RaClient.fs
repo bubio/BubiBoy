@@ -230,18 +230,26 @@ type RaClient
             Task.Run(Func<Task>(fun () -> runRequest () :> Task)) |> ignore)
 
     let eventCallback =
-        NativeInterop.EventCallback(fun _ eventType relatedId title description imageUrl ->
-            let event =
-                { EventType = eventType
-                  RelatedId = relatedId
-                  Title = Option.ofObj title |> Option.defaultValue ""
-                  Description = Option.ofObj description |> Option.defaultValue ""
-                  ImageUrl = Option.ofObj imageUrl |> Option.defaultValue "" }
+        NativeInterop.EventCallback
+            (fun _ eventType relatedId title description imageUrl measuredProgress measuredPercent ->
+                let eventGameId =
+                    game |> Option.map (fun value -> value.Id) |> Option.defaultValue 0u
 
-            if eventType = 1u then
-                achievementsDirty <- true
+                let event =
+                    { EventType = eventType
+                      RelatedId = relatedId
+                      Title = Option.ofObj title |> Option.defaultValue ""
+                      Description = Option.ofObj description |> Option.defaultValue ""
+                      ImageUrl = Option.ofObj imageUrl |> Option.defaultValue ""
+                      MeasuredProgress = Option.ofObj measuredProgress |> Option.defaultValue ""
+                      MeasuredPercent = measuredPercent
+                      Generation = generation
+                      GameId = eventGameId }
 
-            eventRaised.Trigger event)
+                if eventType = 1u || eventType = 5u || eventType = 6u then
+                    achievementsDirty <- true
+
+                eventRaised.Trigger event)
 
     let logCallback =
         NativeInterop.LogCallback(fun _ _ message ->

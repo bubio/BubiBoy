@@ -34,6 +34,7 @@ module GameViewport =
     type Elements =
         { Host: Grid
           Framebuffer: Border
+          RetroAchievementsOverlayHost: Grid
           PresentFrame: uint32[] -> unit
           SetVideoFilter: AppSettings.VideoFilter -> unit
           ApplyScale: int -> WindowState -> unit
@@ -357,12 +358,17 @@ module GameViewport =
 
             updateSideLayout ()
 
+        let retroAchievementsOverlayHost =
+            Grid(IsHitTestVisible = false, ClipToBounds = true)
+
         host.Children.Add framebuffer |> ignore
         host.Children.Add sideOverlay |> ignore
+        host.Children.Add retroAchievementsOverlayHost |> ignore
         updateSessionInfo None false
 
         { Host = host
           Framebuffer = framebuffer
+          RetroAchievementsOverlayHost = retroAchievementsOverlayHost
           PresentFrame = presentFrame
           SetVideoFilter = videoDisplay.SetVideoFilter
           ApplyScale = applyScale

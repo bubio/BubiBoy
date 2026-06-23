@@ -23,7 +23,8 @@ typedef void (*bubi_ra_server_request_callback)(void* userdata, uintptr_t reques
                                                 const char* content_type);
 typedef void (*bubi_ra_event_callback)(void* userdata, uint32_t event_type, uint32_t related_id,
                                       const char* title, const char* description,
-                                      const char* image_url);
+                                      const char* image_url, const char* measured_progress,
+                                      float measured_percent);
 typedef void (*bubi_ra_log_callback)(void* userdata, int level, const char* message);
 typedef void (*bubi_ra_operation_callback)(void* userdata, int result, const char* error_message);
 typedef void (*bubi_ra_achievement_callback)(

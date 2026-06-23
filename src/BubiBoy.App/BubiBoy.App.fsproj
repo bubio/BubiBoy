@@ -53,6 +53,7 @@
     <Compile Include="DialogLayout.fs" />
     <Compile Include="RetroAchievementsOperations.fs" />
     <Compile Include="RetroAchievementsPresentation.fs" />
+    <Compile Include="RetroAchievementsOverlay.fs" />
     <Compile Include="InputMappingWindow.fs" />
     <Compile Include="AchievementsWindow.fs" />
     <Compile Include="SettingsWindow.fs" />

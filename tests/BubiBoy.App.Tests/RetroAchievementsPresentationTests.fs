@@ -38,7 +38,11 @@ module RetroAchievementsPresentationTests =
               RelatedId = 1u
               Title = title
               Description = "failure"
-              ImageUrl = "" }
+              ImageUrl = ""
+              MeasuredProgress = ""
+              MeasuredPercent = 0.0f
+              Generation = 1L
+              GameId = 1u }
 
         Assert.Equal(
             Some "Achievement unlocked: First Clear",
@@ -107,6 +111,129 @@ module RetroAchievementsPresentationTests =
                   ImageUrl = "" }
           Achievements = []
           Generation = generation }
+
+    let private indicatorEvent eventType id generation gameId progress percent =
+        { EventType = eventType
+          RelatedId = id
+          Title = $"Achievement {id}"
+          Description = "Description"
+          ImageUrl = $"https://example.test/{id}.png"
+          MeasuredProgress = progress
+          MeasuredPercent = percent
+          Generation = generation
+          GameId = gameId }
+
+    [<Fact>]
+    let ``challenge reducer supports multiple updates hides and unlocks`` () =
+        let current = snapshot 8L 42u
+        let first = indicatorEvent 5u 1u 8L 42u "" 0.0f
+        let second = indicatorEvent 5u 2u 8L 42u "" 0.0f
+
+        let shown =
+            RetroAchievementsPresentation.emptyOverlayState
+            |> RetroAchievementsPresentation.reduceOverlay current first
+            |> RetroAchievementsPresentation.reduceOverlay current second
+
+        Assert.Equal<uint32 list>([ 1u; 2u ], shown.Challenges |> List.map _.AchievementId)
+
+        let reshown =
+            RetroAchievementsPresentation.reduceOverlay current { first with Title = "Updated" } shown
+
+        Assert.Equal(2, reshown.Challenges.Length)
+        Assert.Equal("Updated", reshown.Challenges.Head.Title)
+        Assert.NotEqual(shown.Challenges.Head.Revision, reshown.Challenges.Head.Revision)
+        Assert.False(RetroAchievementsPresentation.containsIndicator shown.Challenges.Head reshown)
+        Assert.True(RetroAchievementsPresentation.containsIndicator reshown.Challenges.Head reshown)
+
+        let hidden =
+            RetroAchievementsPresentation.reduceOverlay current (indicatorEvent 6u 2u 8L 42u "" 0.0f) reshown
+
+        Assert.Single hidden.Challenges |> ignore
+        Assert.False(RetroAchievementsPresentation.containsIndicator shown.Challenges[1] hidden)
+
+        let unlocked =
+            RetroAchievementsPresentation.reduceOverlay current (indicatorEvent 1u 1u 8L 42u "" 100.0f) hidden
+
+        Assert.Empty unlocked.Challenges
+
+    [<Fact>]
+    let ``progress reducer preserves request identity across updates and handles hide`` () =
+        let current = snapshot 8L 42u
+
+        let shown =
+            RetroAchievementsPresentation.reduceOverlay
+                current
+                (indicatorEvent 7u 3u 8L 42u "1/10" 10.0f)
+                RetroAchievementsPresentation.emptyOverlayState
+
+        let initial = shown.Progress.Value
+
+        let updated =
+            RetroAchievementsPresentation.reduceOverlay current (indicatorEvent 9u 3u 8L 42u "2/10" 20.0f) shown
+
+        Assert.Equal("2/10", updated.Progress.Value.MeasuredProgress)
+        Assert.Equal(initial.Revision, updated.Progress.Value.Revision)
+        Assert.Equal(Some 20.0, RetroAchievementsPresentation.measuredPercent updated.Progress.Value)
+
+        let textOnly =
+            { updated.Progress.Value with
+                MeasuredPercent = Single.NaN }
+
+        Assert.True(RetroAchievementsPresentation.measuredPercent textOnly |> Option.isNone)
+
+        let hidden =
+            RetroAchievementsPresentation.reduceOverlay current (indicatorEvent 8u 3u 8L 42u "" 0.0f) updated
+
+        Assert.True(hidden.Progress.IsNone)
+
+    [<Fact>]
+    let ``overlay ignores stale events and clears outside active session`` () =
+        let current = snapshot 8L 42u
+
+        let shown =
+            RetroAchievementsPresentation.reduceOverlay
+                current
+                (indicatorEvent 5u 1u 8L 42u "" 0.0f)
+                RetroAchievementsPresentation.emptyOverlayState
+
+        let stale =
+            RetroAchievementsPresentation.reduceOverlay current (indicatorEvent 5u 2u 7L 42u "" 0.0f) shown
+
+        Assert.Single stale.Challenges |> ignore
+
+        let loggedOut =
+            RetroAchievementsPresentation.synchronizeOverlay
+                { current with
+                    Status = LoggedOut
+                    Game = None
+                    Generation = 9L }
+                stale
+
+        Assert.Empty loggedOut.Challenges
+        Assert.True(loggedOut.Progress.IsNone)
+
+    [<Fact>]
+    let ``overlay view creates independent challenge and progress controls`` () =
+        let current = snapshot 8L 42u
+
+        let state =
+            RetroAchievementsPresentation.emptyOverlayState
+            |> RetroAchievementsPresentation.reduceOverlay current (indicatorEvent 5u 1u 8L 42u "" 0.0f)
+            |> RetroAchievementsPresentation.reduceOverlay current (indicatorEvent 5u 2u 8L 42u "" 0.0f)
+            |> RetroAchievementsPresentation.reduceOverlay current (indicatorEvent 7u 3u 8L 42u "3/10" 30.0f)
+
+        let build () =
+            RetroAchievementsOverlay.buildView state (fun _ -> None) ignore
+
+        let first = build ()
+        let second = build ()
+        let firstHost = Grid()
+        let secondHost = Grid()
+        firstHost.Children.Add first |> ignore
+        secondHost.Children.Add second |> ignore
+        Assert.Equal(2, first.Children.Count)
+        Assert.Equal(2, second.Children.Count)
+        Assert.NotSame(first, second)
 
     [<Fact>]
     let ``image response requires HTTPS matching generation and game`` () =

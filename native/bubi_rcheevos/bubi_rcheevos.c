@@ -92,6 +92,8 @@ static void bubi_event(const rc_client_event_t* event, rc_client_t* client) {
   uint32_t related_id = 0;
   const char* title = "";
   const char* description = "";
+  const char* measured_progress = "";
+  float measured_percent = 0.0f;
   char image_url[1024] = {0};
 
   if (!context || !context->event_callback)
@@ -101,8 +103,12 @@ static void bubi_event(const rc_client_event_t* event, rc_client_t* client) {
     related_id = event->achievement->id;
     title = event->achievement->title;
     description = event->achievement->description;
+    measured_progress = event->achievement->measured_progress;
+    measured_percent = event->achievement->measured_percent;
     rc_client_achievement_get_image_url(event->achievement,
-                                        RC_CLIENT_ACHIEVEMENT_STATE_UNLOCKED,
+                                        event->type == RC_CLIENT_EVENT_ACHIEVEMENT_TRIGGERED
+                                            ? RC_CLIENT_ACHIEVEMENT_STATE_UNLOCKED
+                                            : RC_CLIENT_ACHIEVEMENT_STATE_ACTIVE,
                                         image_url, sizeof(image_url));
   } else if (event->leaderboard) {
     related_id = event->leaderboard->id;
@@ -119,7 +125,8 @@ static void bubi_event(const rc_client_event_t* event, rc_client_t* client) {
 
   context->event_callback(context->userdata, event->type, related_id,
                           title ? title : "", description ? description : "",
-                          image_url);
+                          image_url, measured_progress ? measured_progress : "",
+                          measured_percent);
 }
 
 static void bubi_operation_complete(int result, const char* error_message,

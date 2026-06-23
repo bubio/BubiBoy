@@ -55,6 +55,72 @@ let ``achievement event refreshes snapshot and moves unlocked achievement bucket
     Assert.DoesNotContain(logs, fun line -> line.Contains("secret-password") || line.Contains("secret-token"))
 
 [<Fact>]
+let ``indicator events preserve progress and active game identity`` () =
+    let backend = FakeNativeBackend()
+
+    let client, _, _, _, _ =
+        createClient backend (successfulHandler ()) (TimeSpan.FromSeconds 30.0)
+
+    use client = client
+    activate backend client
+    let events = ResizeArray<RaEvent>()
+    client.EventRaised.Add events.Add
+
+    backend.DoFrameAction <-
+        fun () ->
+            backend.RaiseIndicatorEvent(
+                7u,
+                9u,
+                "Collector",
+                "Collect ten items",
+                "https://example.test/badge.png",
+                "4/10",
+                40.0f
+            )
+
+    client.ProcessFrame(session ())
+    let event = Assert.Single events
+    Assert.Equal(7u, event.EventType)
+    Assert.Equal("4/10", event.MeasuredProgress)
+    Assert.Equal(40.0f, event.MeasuredPercent)
+    Assert.Equal(client.Snapshot.Generation, event.Generation)
+    Assert.Equal(123u, event.GameId)
+
+[<Fact>]
+let ``challenge show and hide refresh achievement buckets but progress update does not`` () =
+    let backend = FakeNativeBackend()
+    let mutable enumerations = 0
+
+    let api =
+        { backend.Api with
+            EnumerateAchievements =
+                fun args ->
+                    enumerations <- enumerations + 1
+                    backend.Api.EnumerateAchievements args }
+
+    let credentials, _, _, _ = credentials ()
+    let logs = ResizeArray<string>()
+    use http = new HttpClient(successfulHandler ())
+
+    use client =
+        new RaClient(api, credentials, http, FakeTimeProvider(), TimeSpan.FromSeconds 30.0, logs.Add)
+
+    activate backend client
+    let baseline = enumerations
+
+    backend.DoFrameAction <- fun () -> backend.RaiseEvent(5u, 7u, "Challenge", "")
+    client.ProcessFrame(session ())
+    Assert.Equal(baseline + 1, enumerations)
+
+    backend.DoFrameAction <- fun () -> backend.RaiseEvent(9u, 7u, "Progress", "")
+    client.ProcessFrame(session ())
+    Assert.Equal(baseline + 1, enumerations)
+
+    backend.DoFrameAction <- fun () -> backend.RaiseEvent(6u, 7u, "Challenge", "")
+    client.ProcessFrame(session ())
+    Assert.Equal(baseline + 2, enumerations)
+
+[<Fact>]
 let ``frame processing and paused idle only run in active state`` () =
     let backend = FakeNativeBackend()
 
