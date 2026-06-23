@@ -177,4 +177,5 @@ type AchievementsWindow(client: RaClient) as this =
 
         rebuild ()
 
-    static member Show(owner: Window, client: RaClient) = AchievementsWindow(client).Show(owner)
+    static member Show(owner: Window, client: RaClient) =
+        AchievementsWindow(client).ShowDialog(owner) |> ignore
