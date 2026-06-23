@@ -44,6 +44,7 @@ type RaClient
     let mutable pendingOperation = NoOperation
     let mutable lastIdle = timeProvider.GetTimestamp()
     let mutable achievementsDirty = false
+    let mutable userDirty = false
 
     let snapshot () =
         { Status = status
@@ -246,6 +247,9 @@ type RaClient
                       Generation = generation
                       GameId = eventGameId }
 
+                if eventType = 1u then
+                    userDirty <- true
+
                 if eventType = 1u || eventType = 5u || eventType = 6u then
                     achievementsDirty <- true
 
@@ -377,9 +381,18 @@ type RaClient
                 finally
                     currentSession <- None
 
-                if achievementsDirty then
+                if achievementsDirty || userDirty then
+                    let shouldRefreshUser = userDirty
+                    let shouldRefreshAchievements = achievementsDirty
+                    userDirty <- false
                     achievementsDirty <- false
-                    refreshAchievements ()
+
+                    if shouldRefreshUser then
+                        refreshUser ()
+
+                    if shouldRefreshAchievements then
+                        refreshAchievements ()
+
                     publish ())
 
     member _.Pump(isPaused: bool) =

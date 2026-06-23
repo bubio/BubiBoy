@@ -55,6 +55,34 @@ let ``achievement event refreshes snapshot and moves unlocked achievement bucket
     Assert.DoesNotContain(logs, fun line -> line.Contains("secret-password") || line.Contains("secret-token"))
 
 [<Fact>]
+let ``achievement event refreshes user softcore score`` () =
+    let backend = FakeNativeBackend()
+    backend.Achievements <- [ achievement 1uy "Locked" 0uy ]
+
+    let client, _, _, _, _ =
+        createClient backend (successfulHandler ()) (TimeSpan.FromSeconds 30.0)
+
+    use client = client
+    activate backend client
+
+    backend.DoFrameAction <-
+        fun () ->
+            backend.User <-
+                Some
+                    { Username = "player"
+                      DisplayName = "Player"
+                      Token = "secret-token"
+                      Score = 0u
+                      SoftcoreScore = 1u }
+
+            backend.Achievements <- [ achievement 3uy "Recently Unlocked" 1uy ]
+            backend.RaiseEvent(1u, 7u, "Happy Birthday", "Complete the Personality Test.")
+
+    client.ProcessFrame(session ())
+
+    Assert.Equal(1u, client.Snapshot.User.Value.SoftcoreScore)
+
+[<Fact>]
 let ``indicator events preserve progress and active game identity`` () =
     let backend = FakeNativeBackend()
 
