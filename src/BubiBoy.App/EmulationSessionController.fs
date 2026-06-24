@@ -46,6 +46,7 @@ type EmulationSessionController(dependencies: EmulationSessionDependencies) =
         isRunning <- false
         dependencies.ViewModel.IsRunning <- false
         dependencies.Runner.StopLoop()
+        dependencies.Runner.ClearFrames()
         dependencies.AudioOutput.Stop()
 
     let startRunning () =

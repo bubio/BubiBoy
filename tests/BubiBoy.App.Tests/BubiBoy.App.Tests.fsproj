@@ -4,6 +4,7 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="RuntimePacingTests.fs" />
     <Compile Include="RetroAchievementsPresentationTests.fs" />
   </ItemGroup>
   <ItemGroup>

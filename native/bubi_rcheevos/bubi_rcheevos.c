@@ -8,6 +8,11 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define BUBI_RA_MEMORY_SIZE 0x34000U
+#define BUBI_RA_MEMORY_PAGE_SIZE 64U
+#define BUBI_RA_MEMORY_PAGE_COUNT \
+  (BUBI_RA_MEMORY_SIZE / BUBI_RA_MEMORY_PAGE_SIZE)
+
 #if defined(__APPLE__)
 #include <Security/Security.h>
 #endif
@@ -28,6 +33,8 @@ struct bubi_ra_client {
   rc_client_async_handle_t* operation_handle;
   void* userdata;
   bubi_ra_pending_request* requests;
+  uint8_t memory_cache[BUBI_RA_MEMORY_SIZE];
+  uint8_t memory_cache_valid[BUBI_RA_MEMORY_PAGE_COUNT];
 };
 
 static void bubi_copy_string(char* destination, size_t size, const char* source) {
@@ -47,9 +54,38 @@ static bubi_ra_client* bubi_context(rc_client_t* client) {
 static uint32_t bubi_read_memory(uint32_t address, uint8_t* buffer, uint32_t count,
                                  rc_client_t* client) {
   bubi_ra_client* context = bubi_context(client);
-  return context && context->read_memory
-             ? context->read_memory(context->userdata, address, buffer, count)
-             : 0;
+  uint32_t copied = 0;
+
+  if (!context || !context->read_memory || !buffer ||
+      address >= BUBI_RA_MEMORY_SIZE)
+    return 0;
+
+  if (count > BUBI_RA_MEMORY_SIZE - address)
+    count = BUBI_RA_MEMORY_SIZE - address;
+
+  while (copied < count) {
+    const uint32_t current_address = address + copied;
+    const uint32_t page = current_address / BUBI_RA_MEMORY_PAGE_SIZE;
+    const uint32_t page_start = page * BUBI_RA_MEMORY_PAGE_SIZE;
+    const uint32_t page_offset = current_address - page_start;
+    uint32_t chunk = BUBI_RA_MEMORY_PAGE_SIZE - page_offset;
+
+    if (!context->memory_cache_valid[page]) {
+      const uint32_t fetched = context->read_memory(
+          context->userdata, page_start, &context->memory_cache[page_start],
+          BUBI_RA_MEMORY_PAGE_SIZE);
+      if (fetched != BUBI_RA_MEMORY_PAGE_SIZE)
+        return copied;
+      context->memory_cache_valid[page] = 1;
+    }
+
+    if (chunk > count - copied)
+      chunk = count - copied;
+    memcpy(buffer + copied, &context->memory_cache[current_address], chunk);
+    copied += chunk;
+  }
+
+  return copied;
 }
 
 static void bubi_server_request(const rc_api_request_t* request,
@@ -324,7 +360,12 @@ void bubi_ra_enumerate_achievements(bubi_ra_client* client,
   rc_client_destroy_achievement_list(list);
 }
 
-void bubi_ra_do_frame(bubi_ra_client* client) { if (client) rc_client_do_frame(client->native); }
+void bubi_ra_do_frame(bubi_ra_client* client) {
+  if (client) {
+    memset(client->memory_cache_valid, 0, sizeof(client->memory_cache_valid));
+    rc_client_do_frame(client->native);
+  }
+}
 void bubi_ra_idle(bubi_ra_client* client) { if (client) rc_client_idle(client->native); }
 int bubi_ra_can_pause(bubi_ra_client* client, uint32_t* frames_remaining) {
   if (!client) {

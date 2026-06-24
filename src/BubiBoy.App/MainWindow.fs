@@ -136,13 +136,15 @@ type MainWindow(?startupRomPath: string) as this =
                 )
             )
 
-        let audioBufferTargetFrames = audioFramesPerVideoFrame * 16
+        let audioBufferCapacityFrames = audioFramesPerVideoFrame * 8
+        let audioBufferTargetFrames = audioFramesPerVideoFrame * 4
+        let audioBufferFallbackTargetFrames = audioFramesPerVideoFrame * 6
 
         let audioOutput, audioFallbackError =
-            match Miniaudio.tryCreateDevice AudioHost.defaultFormat AudioHost.defaultFormat.SampleRate with
+            match Miniaudio.tryCreateDevice AudioHost.defaultFormat audioBufferCapacityFrames with
             | Ok device -> device :> AudioHost.AudioDevice, None
             | Error message ->
-                AudioHost.createBufferedDevice AudioHost.defaultFormat.SampleRate :> AudioHost.AudioDevice, Some message
+                AudioHost.createBufferedDevice audioBufferCapacityFrames :> AudioHost.AudioDevice, Some message
 
         audioFallbackError
         |> Option.iter (fun message ->
@@ -158,6 +160,8 @@ type MainWindow(?startupRomPath: string) as this =
                 perfTrace,
                 250_000,
                 audioBufferTargetFrames,
+                audioBufferFallbackTargetFrames,
+                TimeProvider.System,
                 retroAchievements
             )
 
@@ -333,7 +337,8 @@ type MainWindow(?startupRomPath: string) as this =
                                 notifications.Show "RetroAchievements went offline; emulation will continue.") },
                 performanceCounters,
                 traceCounters,
-                perfTrace
+                perfTrace,
+                TopLevelAnimationFrameScheduler(this)
             )
 
         let executeCommand (command: System.Windows.Input.ICommand) =
@@ -438,7 +443,7 @@ type MainWindow(?startupRomPath: string) as this =
         refreshMenus ()
         layoutController.ApplyInitialLayout()
         inputHost.Start()
-        frameDisplayTimer.Start()
+        this.Opened.Add(fun _ -> frameDisplayTimer.Start())
 
         startupRomPath
         |> Option.filter (String.IsNullOrWhiteSpace >> not)

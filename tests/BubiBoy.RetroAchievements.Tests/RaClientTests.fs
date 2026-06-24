@@ -175,6 +175,27 @@ let ``frame processing and paused idle only run in active state`` () =
     Assert.Equal(2, backend.IdleCount)
 
 [<Fact>]
+let ``memory callback supports repeated reads and stops at the mapped range`` () =
+    let backend = FakeNativeBackend()
+
+    let client, _, _, _, _ =
+        createClient backend (successfulHandler ()) (TimeSpan.FromSeconds 30.0)
+
+    use client = client
+    activate backend client
+
+    backend.DoFrameAction <-
+        fun () ->
+            Assert.Equal<byte array>([| 0uy; 0uy; 0uy; 0uy |], backend.ReadMemory(0xC000u, 4))
+            Assert.Equal<byte array>([| 0xFFuy; 0xFFuy |], backend.ReadMemory(0x33FFEu, 4))
+
+            for _ = 1 to 100 do
+                Assert.Single(backend.ReadMemory(0xC000u, 1)) |> ignore
+
+    client.ProcessFrame(session ())
+    Assert.Equal(1, backend.DoFrameCount)
+
+[<Fact>]
 let ``pause decision delegates to native only for active game`` () =
     let backend = FakeNativeBackend()
     backend.CanPauseResult <- false, 120u

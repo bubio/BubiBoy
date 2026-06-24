@@ -49,6 +49,7 @@
     <Compile Include="InputMapping.fs" />
     <Compile Include="ControllerInputAdapter.fs" />
     <Compile Include="InputStateController.fs" />
+    <Compile Include="RuntimePacing.fs" />
     <Compile Include="EmulationRunner.fs" />
     <Compile Include="DialogLayout.fs" />
     <Compile Include="RetroAchievementsOperations.fs" />

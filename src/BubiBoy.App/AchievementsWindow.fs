@@ -13,7 +13,11 @@ open BubiBoy.RetroAchievements
 type AchievementsWindow(client: RaClient) as this =
     inherit Window()
 
-    let http = new HttpClient(MaxResponseContentBufferSize = 1024L * 1024L)
+    let httpHandler = new SocketsHttpHandler(MaxConnectionsPerServer = 4)
+
+    let http =
+        new HttpClient(httpHandler, true, MaxResponseContentBufferSize = 1024L * 1024L)
+
     let imageLoader = RaImageLoader(http, fun () -> client.Snapshot)
     let imageCache = Dictionary<string, Bitmap>()
     let imageCacheOrder = Queue<string>()
@@ -47,7 +51,12 @@ type AchievementsWindow(client: RaClient) as this =
                             then
                                 if imageCache.Count >= 128 then
                                     let expired = imageCacheOrder.Dequeue()
-                                    imageCache.Remove expired |> ignore
+
+                                    match imageCache.TryGetValue expired with
+                                    | true, expiredBitmap ->
+                                        imageCache.Remove expired |> ignore
+                                        expiredBitmap.Dispose()
+                                    | _ -> ()
 
                                 imageCache[url] <- bitmap
                                 imageCacheOrder.Enqueue url
@@ -173,6 +182,12 @@ type AchievementsWindow(client: RaClient) as this =
 
         this.Closed.Add(fun _ ->
             closed <- true
+
+            for bitmap in imageCache.Values do
+                bitmap.Dispose()
+
+            imageCache.Clear()
+            imageCacheOrder.Clear()
             http.Dispose())
 
         rebuild ()

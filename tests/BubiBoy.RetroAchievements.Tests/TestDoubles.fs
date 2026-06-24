@@ -4,6 +4,7 @@ open System
 open System.Collections.Generic
 open System.Net
 open System.Net.Http
+open System.Runtime.InteropServices
 open System.Threading
 open System.Threading.Tasks
 open BubiBoy.RetroAchievements
@@ -27,6 +28,7 @@ type internal StubHttpHandler(send: HttpRequestMessage * CancellationToken -> Ta
 type internal FakeNativeBackend() =
     let completions = ResizeArray<unativeint * int * byte[]>()
     let mutable operationCallback: NativeInterop.OperationCallback option = None
+    let mutable readMemoryCallback: NativeInterop.ReadMemoryCallback option = None
     let mutable serverCallback: NativeInterop.ServerRequestCallback option = None
     let mutable eventCallback: NativeInterop.EventCallback option = None
     let mutable doFrameAction: unit -> unit = fun () -> ()
@@ -40,7 +42,8 @@ type internal FakeNativeBackend() =
 
     let api: NativeInterop.Api =
         { Create =
-            fun (_, server, event, _, _) ->
+            fun (readMemory, server, event, _, _) ->
+                readMemoryCallback <- Some readMemory
                 serverCallback <- Some server
                 eventCallback <- Some event
                 nativeint 1
@@ -149,6 +152,22 @@ type internal FakeNativeBackend() =
 
     member _.Request(requestId: unativeint, url: string, postData: string, contentType: string) =
         serverCallback.Value.Invoke(nativeint 0, requestId, url, postData, contentType)
+
+    member _.ReadMemory(address: uint32, count: int) =
+        let destination = Marshal.AllocHGlobal count
+
+        try
+            let copied =
+                readMemoryCallback.Value.Invoke(nativeint 0, address, destination, uint32 count)
+
+            let bytes = Array.zeroCreate<byte> (int copied)
+
+            if copied > 0u then
+                Marshal.Copy(destination, bytes, 0, int copied)
+
+            bytes
+        finally
+            Marshal.FreeHGlobal destination
 
 module internal TestHelpers =
     let credentials () =

@@ -45,6 +45,7 @@ type RaClient
     let mutable lastIdle = timeProvider.GetTimestamp()
     let mutable achievementsDirty = false
     let mutable userDirty = false
+    let mutable memoryBuffer = Array.zeroCreate<byte> 256
 
     let snapshot () =
         { Status = status
@@ -159,16 +160,24 @@ type RaClient
 
     let readMemoryCallback =
         NativeInterop.ReadMemoryCallback(fun _ address destination count ->
-            match currentSession with
-            | None -> 0u
-            | Some session ->
-                let buffer = Array.zeroCreate<byte> (int count)
-                let copied = Emulator.readInspectionMemory address buffer 0 buffer.Length session
+            if destination = nativeint 0 || count = 0u || address > 0x33FFFu then
+                0u
+            else
+                match currentSession with
+                | None -> 0u
+                | Some session ->
+                    let available = 0x34000u - address
+                    let requested = int (min count available)
 
-                if copied > 0 then
-                    Marshal.Copy(buffer, 0, destination, copied)
+                    if memoryBuffer.Length < requested then
+                        memoryBuffer <- Array.zeroCreate<byte> (max requested (memoryBuffer.Length * 2))
 
-                uint32 copied)
+                    let copied = Emulator.readInspectionMemory address memoryBuffer 0 requested session
+
+                    if copied > 0 then
+                        Marshal.Copy(memoryBuffer, 0, destination, copied)
+
+                    uint32 copied)
 
     let completeHttp requestId statusCode (body: byte[]) =
         lock gate (fun () ->
@@ -371,8 +380,6 @@ type RaClient
 
     member _.ProcessFrame(session: Emulator.Session) =
         lock gate (fun () ->
-            drainCompletions ()
-
             if status = Active then
                 currentSession <- Some session
 
@@ -396,15 +403,16 @@ type RaClient
                     publish ())
 
     member _.Pump(isPaused: bool) =
-        lock gate (fun () ->
-            drainCompletions ()
+        if isPaused || not completions.IsEmpty then
+            lock gate (fun () ->
+                drainCompletions ()
 
-            if isPaused && status = Active then
-                let now = timeProvider.GetTimestamp()
+                if isPaused && status = Active then
+                    let now = timeProvider.GetTimestamp()
 
-                if timeProvider.GetElapsedTime(lastIdle, now) >= TimeSpan.FromSeconds 1.0 then
-                    nativeApi.Idle handle
-                    lastIdle <- now)
+                    if timeProvider.GetElapsedTime(lastIdle, now) >= TimeSpan.FromSeconds 1.0 then
+                        nativeApi.Idle handle
+                        lastIdle <- now)
 
     member _.CanPause() =
         lock gate (fun () ->
