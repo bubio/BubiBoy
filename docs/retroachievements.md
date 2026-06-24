@@ -14,6 +14,9 @@ Softcore sessions.
   is stored in macOS Keychain under `org.bubiboy.RetroAchievements`.
 - A failed login or game identification never prevents the ROM from running. That
   ROM remains an offline session until it is reloaded.
+- Rich Presence is sampled from the active emulation session once per second and
+  shown in the Achievements window. It is cleared immediately when the game or
+  authenticated session ends.
 
 ## Memory Map
 

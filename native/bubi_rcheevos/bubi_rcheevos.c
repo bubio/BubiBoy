@@ -330,6 +330,18 @@ int bubi_ra_get_game(bubi_ra_client* client, uint32_t* game_id, char* title,
   return 1;
 }
 
+int bubi_ra_get_rich_presence(bubi_ra_client* client, char* message,
+                              size_t message_size) {
+  if (message && message_size)
+    message[0] = '\0';
+  if (!client || !message || message_size == 0 ||
+      !rc_client_has_rich_presence(client->native))
+    return 0;
+  memset(client->memory_cache_valid, 0, sizeof(client->memory_cache_valid));
+  rc_client_get_rich_presence_message(client->native, message, message_size);
+  return message[0] != '\0';
+}
+
 void bubi_ra_enumerate_achievements(bubi_ra_client* client,
                                     bubi_ra_achievement_callback callback) {
   rc_client_achievement_list_t* list;

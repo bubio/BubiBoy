@@ -72,6 +72,9 @@ BUBI_RA_EXPORT int bubi_ra_get_game(bubi_ra_client* client, uint32_t* game_id,
                                     char* title, size_t title_size, char* hash,
                                     size_t hash_size, char* image_url,
                                     size_t image_url_size);
+BUBI_RA_EXPORT int bubi_ra_get_rich_presence(bubi_ra_client* client,
+                                             char* message,
+                                             size_t message_size);
 BUBI_RA_EXPORT void bubi_ra_enumerate_achievements(bubi_ra_client* client,
                                                    bubi_ra_achievement_callback callback);
 

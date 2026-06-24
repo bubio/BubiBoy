@@ -51,6 +51,7 @@ type RaSnapshot =
       User: RaUser option
       Game: RaGame option
       Achievements: RaAchievement list
+      RichPresence: string option
       Generation: int64 }
 
 type RaPauseDecision =

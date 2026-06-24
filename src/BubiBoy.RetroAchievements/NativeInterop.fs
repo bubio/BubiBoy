@@ -70,6 +70,7 @@ module internal NativeInterop =
           LoadGame: nativeint * uint32 * byte[] * unativeint * OperationCallback -> unit
           UnloadGame: nativeint -> unit
           GetGame: nativeint -> GameData option
+          GetRichPresence: nativeint -> string option
           EnumerateAchievements: nativeint * AchievementCallback -> unit
           DoFrame: nativeint -> unit
           Idle: nativeint -> unit
@@ -166,6 +167,9 @@ module internal NativeInterop =
             StringBuilder imageUrl,
             unativeint imageUrlSize
         )
+
+        [<DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)>]
+        extern int bubi_ra_get_rich_presence(nativeint client, StringBuilder message, unativeint messageSize)
 
         [<DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)>]
         extern void bubi_ra_enumerate_achievements(nativeint client, AchievementCallback callback)
@@ -277,6 +281,17 @@ module internal NativeInterop =
                           Title = title.ToString()
                           Hash = hash.ToString()
                           ImageUrl = imageUrl.ToString() }
+                else
+                    None
+          GetRichPresence =
+            fun client ->
+                let message = StringBuilder(1024)
+
+                if
+                    Native.bubi_ra_get_rich_presence (client, message, unativeint message.Capacity)
+                    <> 0
+                then
+                    Some(message.ToString())
                 else
                     None
           EnumerateAchievements = fun (client, callback) -> Native.bubi_ra_enumerate_achievements (client, callback)

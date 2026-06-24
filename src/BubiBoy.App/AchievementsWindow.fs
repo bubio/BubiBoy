@@ -6,6 +6,7 @@ open System.Net.Http
 open Avalonia
 open Avalonia.Controls
 open Avalonia.Layout
+open Avalonia.Media
 open Avalonia.Media.Imaging
 open Avalonia.Threading
 open BubiBoy.RetroAchievements
@@ -153,6 +154,19 @@ type AchievementsWindow(client: RaClient) as this =
             gameHeader.Children.Add gameTitle |> ignore
             scrollContent.Children.Add gameHeader |> ignore
 
+            snapshot.RichPresence
+            |> Option.iter (fun message ->
+                let presence = StackPanel(Spacing = 4.0)
+                presence.Children.Add(DialogLayout.bodyText "Rich Presence") |> ignore
+
+                presence.Children.Add(
+                    TextBlock(Text = message, FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap)
+                )
+                |> ignore
+
+                scrollContent.Children.Add(DialogLayout.surface presence (Thickness(10.0)))
+                |> ignore)
+
             RetroAchievementsPresentation.populateAchievementGroups
                 scrollContent
                 (DialogLayout.title >> fun value -> value :> Control)
@@ -163,6 +177,12 @@ type AchievementsWindow(client: RaClient) as this =
         if scrollContent.Children.Count > 0 then
             root.Children.Add(ScrollViewer(Content = scrollContent, MaxHeight = 500.0))
             |> ignore
+
+    let changedSubscription =
+        client.Changed.Subscribe(fun _ ->
+            Dispatcher.UIThread.Post(fun () ->
+                if not closed then
+                    rebuild ()))
 
     do
         this.Title <- "RetroAchievements"
@@ -175,13 +195,9 @@ type AchievementsWindow(client: RaClient) as this =
         AppTheme.bindBrush this Window.BackgroundProperty AppTheme.WindowBackground
         this.Content <- ScrollViewer(Content = root)
 
-        client.Changed.Add(fun _ ->
-            Dispatcher.UIThread.Post(fun () ->
-                if not closed then
-                    rebuild ()))
-
         this.Closed.Add(fun _ ->
             closed <- true
+            changedSubscription.Dispose()
 
             for bitmap in imageCache.Values do
                 bitmap.Dispose()
@@ -191,6 +207,3 @@ type AchievementsWindow(client: RaClient) as this =
             http.Dispose())
 
         rebuild ()
-
-    static member Show(owner: Window, client: RaClient) =
-        AchievementsWindow(client).ShowDialog(owner) |> ignore

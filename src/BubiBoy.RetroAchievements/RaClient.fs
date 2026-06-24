@@ -39,10 +39,12 @@ type RaClient
     let mutable user: RaUser option = None
     let mutable game: RaGame option = None
     let mutable achievements: RaAchievement list = []
+    let mutable richPresence: string option = None
     let mutable currentSession: Emulator.Session option = None
     let mutable generation = 0L
     let mutable pendingOperation = NoOperation
     let mutable lastIdle = timeProvider.GetTimestamp()
+    let mutable lastRichPresence = timeProvider.GetTimestamp()
     let mutable achievementsDirty = false
     let mutable userDirty = false
     let mutable memoryBuffer = Array.zeroCreate<byte> 256
@@ -52,6 +54,7 @@ type RaClient
           User = user
           Game = game
           Achievements = achievements
+          RichPresence = richPresence
           Generation = generation }
 
     let publish () = changed.Trigger(snapshot ())
@@ -120,6 +123,21 @@ type RaClient
         nativeApi.EnumerateAchievements(handle, achievementCallback)
         achievements <- achievementBuffer |> Seq.toList
 
+    let refreshRichPresence () =
+        let next =
+            nativeApi.GetRichPresence handle
+            |> Option.bind (fun value ->
+                let trimmed = value.Trim()
+
+                if String.IsNullOrWhiteSpace trimmed then
+                    None
+                else
+                    Some trimmed)
+
+        let changed = next <> richPresence
+        richPresence <- next
+        changed
+
     let operationCallback =
         NativeInterop.OperationCallback(fun _ result errorMessage ->
             let errorMessage =
@@ -147,10 +165,13 @@ type RaClient
                 if result = 0 then
                     refreshGame ()
                     refreshAchievements ()
+                    refreshRichPresence () |> ignore
+                    lastRichPresence <- timeProvider.GetTimestamp()
                     status <- Active
                 else
                     game <- None
                     achievements <- []
+                    richPresence <- None
                     status <- OfflineSession errorMessage
                     log $"RetroAchievements game load failed: {errorMessage}"
 
@@ -341,6 +362,7 @@ type RaClient
             user <- None
             game <- None
             achievements <- []
+            richPresence <- None
             status <- LoggedOut
             publish ())
 
@@ -367,6 +389,7 @@ type RaClient
             currentSession <- None
             game <- None
             achievements <- []
+            richPresence <- None
             status <- if user.IsSome then Ready else LoggedOut
             publish ())
 
@@ -375,6 +398,7 @@ type RaClient
             currentSession <- None
             game <- None
             achievements <- []
+            richPresence <- None
             status <- OfflineSession reason
             publish ())
 
@@ -385,22 +409,30 @@ type RaClient
 
                 try
                     nativeApi.DoFrame handle
+
+                    if achievementsDirty || userDirty then
+                        let shouldRefreshUser = userDirty
+                        let shouldRefreshAchievements = achievementsDirty
+                        userDirty <- false
+                        achievementsDirty <- false
+
+                        if shouldRefreshUser then
+                            refreshUser ()
+
+                        if shouldRefreshAchievements then
+                            refreshAchievements ()
+
+                        publish ()
+
+                    let now = timeProvider.GetTimestamp()
+
+                    if timeProvider.GetElapsedTime(lastRichPresence, now) >= TimeSpan.FromSeconds 1.0 then
+                        lastRichPresence <- now
+
+                        if refreshRichPresence () then
+                            publish ()
                 finally
-                    currentSession <- None
-
-                if achievementsDirty || userDirty then
-                    let shouldRefreshUser = userDirty
-                    let shouldRefreshAchievements = achievementsDirty
-                    userDirty <- false
-                    achievementsDirty <- false
-
-                    if shouldRefreshUser then
-                        refreshUser ()
-
-                    if shouldRefreshAchievements then
-                        refreshAchievements ()
-
-                    publish ())
+                    currentSession <- None)
 
     member _.Pump(isPaused: bool) =
         if isPaused || not completions.IsEmpty then

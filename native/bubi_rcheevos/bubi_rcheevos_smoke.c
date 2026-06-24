@@ -18,6 +18,7 @@ static void event_callback(void* userdata, uint32_t event_type,
 int main(void) {
   bubi_ra_client* client;
   uint32_t frames_remaining = 0;
+  char rich_presence[256];
 
   if (bubi_ra_version() != 12003000U)
     return 1;
@@ -27,6 +28,8 @@ int main(void) {
     return 2;
 
   (void)bubi_ra_can_pause(client, &frames_remaining);
+  (void)bubi_ra_get_rich_presence(client, rich_presence,
+                                  sizeof(rich_presence));
 
   bubi_ra_destroy(client);
   return 0;

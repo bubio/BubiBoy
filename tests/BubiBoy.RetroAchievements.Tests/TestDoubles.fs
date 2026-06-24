@@ -35,6 +35,8 @@ type internal FakeNativeBackend() =
     let mutable user: NativeInterop.UserData option = None
     let mutable game: NativeInterop.GameData option = None
     let mutable achievements: RaAchievement list = []
+    let mutable richPresence: string option = None
+    let mutable richPresenceReadCount = 0
     let mutable doFrameCount = 0
     let mutable idleCount = 0
     let mutable canPause = true, 0u
@@ -64,6 +66,10 @@ type internal FakeNativeBackend() =
           LoadGame = fun (_, _, _, _, callback) -> operationCallback <- Some callback
           UnloadGame = ignore
           GetGame = fun _ -> game
+          GetRichPresence =
+            fun _ ->
+                richPresenceReadCount <- richPresenceReadCount + 1
+                richPresence
           EnumerateAchievements =
             fun (_, callback) ->
                 achievements
@@ -107,6 +113,12 @@ type internal FakeNativeBackend() =
     member _.Achievements
         with get () = achievements
         and set value = achievements <- value
+
+    member _.RichPresence
+        with get () = richPresence
+        and set value = richPresence <- value
+
+    member _.RichPresenceReadCount = richPresenceReadCount
 
     member _.DoFrameAction
         with get () = doFrameAction

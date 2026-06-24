@@ -175,6 +175,60 @@ let ``frame processing and paused idle only run in active state`` () =
     Assert.Equal(2, backend.IdleCount)
 
 [<Fact>]
+let ``rich presence loads and refreshes once per second only when changed`` () =
+    let backend = FakeNativeBackend()
+    backend.RichPresence <- Some "Exploring Reeve"
+
+    let client, clock, _, _, _ =
+        createClient backend (successfulHandler ()) (TimeSpan.FromSeconds 30.0)
+
+    use client = client
+    let snapshots = ResizeArray<RaSnapshot>()
+    client.Changed.Add snapshots.Add
+    activate backend client
+    Assert.Equal(Some "Exploring Reeve", client.Snapshot.RichPresence)
+    let initialReads = backend.RichPresenceReadCount
+    let initialSnapshots = snapshots.Count
+
+    clock.Advance(TimeSpan.FromMilliseconds 999.0)
+    client.ProcessFrame(session ())
+    Assert.Equal(initialReads, backend.RichPresenceReadCount)
+
+    clock.Advance(TimeSpan.FromMilliseconds 1.0)
+    client.ProcessFrame(session ())
+    Assert.Equal(initialReads + 1, backend.RichPresenceReadCount)
+    Assert.Equal(initialSnapshots, snapshots.Count)
+
+    backend.RichPresence <- Some "Level 3"
+    clock.Advance(TimeSpan.FromSeconds 1.0)
+    client.ProcessFrame(session ())
+    Assert.Equal(Some "Level 3", client.Snapshot.RichPresence)
+    Assert.Equal(initialSnapshots + 1, snapshots.Count)
+
+[<Fact>]
+let ``rich presence clears when active session ends`` () =
+    let backend = FakeNativeBackend()
+    backend.RichPresence <- Some "Playing"
+
+    let client, _, _, _, _ =
+        createClient backend (successfulHandler ()) (TimeSpan.FromSeconds 30.0)
+
+    use client = client
+    activate backend client
+    Assert.Equal(Some "Playing", client.Snapshot.RichPresence)
+    client.UnloadGame()
+    Assert.Equal(None, client.Snapshot.RichPresence)
+
+    activate backend client
+    client.SetOffline("Disconnected")
+    Assert.Equal(None, client.Snapshot.RichPresence)
+
+    client.UnloadGame()
+    activate backend client
+    client.Logout()
+    Assert.Equal(None, client.Snapshot.RichPresence)
+
+[<Fact>]
 let ``memory callback supports repeated reads and stops at the mapped range`` () =
     let backend = FakeNativeBackend()
 

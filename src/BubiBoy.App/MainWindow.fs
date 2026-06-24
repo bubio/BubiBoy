@@ -74,6 +74,8 @@ type MainWindow(?startupRomPath: string) as this =
 
                 None
 
+        let mutable achievementsWindow: AchievementsWindow option = None
+
         retroAchievements
         |> Option.iter (fun client ->
             client.EventRaised.Add(fun event ->
@@ -283,7 +285,25 @@ type MainWindow(?startupRomPath: string) as this =
 
         let openAchievements () =
             match retroAchievements with
-            | Some client -> AchievementsWindow.Show(this, client)
+            | Some client ->
+                match achievementsWindow with
+                | Some window ->
+                    if window.WindowState = WindowState.Minimized then
+                        window.WindowState <- WindowState.Normal
+
+                    window.Activate()
+                | None ->
+                    let window = AchievementsWindow(client)
+                    achievementsWindow <- Some window
+
+                    window.Closed.Add(fun _ ->
+                        if
+                            achievementsWindow
+                            |> Option.exists (fun current -> Object.ReferenceEquals(current, window))
+                        then
+                            achievementsWindow <- None)
+
+                    window.Show(this)
             | None -> notifications.Show "RetroAchievements native support is unavailable."
 
         let menuElements =

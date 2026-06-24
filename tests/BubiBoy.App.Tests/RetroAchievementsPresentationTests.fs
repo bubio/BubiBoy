@@ -110,6 +110,7 @@ module RetroAchievementsPresentationTests =
                   Hash = "hash"
                   ImageUrl = "" }
           Achievements = []
+          RichPresence = None
           Generation = generation }
 
     let private indicatorEvent eventType id generation gameId progress percent =
