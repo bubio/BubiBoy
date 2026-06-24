@@ -39,6 +39,7 @@ type internal FakeNativeBackend() =
     let mutable richPresenceReadCount = 0
     let mutable doFrameCount = 0
     let mutable idleCount = 0
+    let mutable hardcoreEnabled = false
     let mutable canPause = true, 0u
     let mutable abortCount = 0
 
@@ -94,6 +95,8 @@ type internal FakeNativeBackend() =
                 doFrameCount <- doFrameCount + 1
                 doFrameAction ()
           Idle = fun _ -> idleCount <- idleCount + 1
+          SetHardcoreEnabled = fun (_, enabled) -> hardcoreEnabled <- enabled
+          GetHardcoreEnabled = fun _ -> hardcoreEnabled
           CanPause = fun _ -> canPause
           Reset = ignore
           ProgressSize = fun _ -> unativeint 0
@@ -126,6 +129,8 @@ type internal FakeNativeBackend() =
 
     member _.DoFrameCount = doFrameCount
     member _.IdleCount = idleCount
+    member _.HardcoreEnabled = hardcoreEnabled
+    member _.SetHardcoreEnabledForTest value = hardcoreEnabled <- value
 
     member _.CanPauseResult
         with get () = canPause

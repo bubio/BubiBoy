@@ -8,6 +8,7 @@ open BubiBoy.IO
 type SettingsResult =
     { BootRomSelection: AppSettings.BootRomSelection
       RetroAchievementsEnabled: bool
+      RetroAchievementsHardcore: bool
       RetroAchievementsUsername: string }
 
 type SettingsWindow(initialSettings: AppSettings.Settings) as this =
@@ -63,9 +64,13 @@ type SettingsWindow(initialSettings: AppSettings.Settings) as this =
         let raTitle = DialogLayout.title "RetroAchievements"
 
         let enabled =
+            CheckBox(Content = "Enable RetroAchievements", IsChecked = initialSettings.RetroAchievementsEnabled)
+
+        let hardcore =
             CheckBox(
-                Content = "Enable RetroAchievements (Softcore)",
-                IsChecked = initialSettings.RetroAchievementsEnabled
+                Content = "Hardcore Mode (prevents loading save states)",
+                IsChecked = initialSettings.RetroAchievementsHardcore,
+                IsEnabled = initialSettings.RetroAchievementsEnabled
             )
 
         let username =
@@ -75,10 +80,14 @@ type SettingsWindow(initialSettings: AppSettings.Settings) as this =
                 IsEnabled = initialSettings.RetroAchievementsEnabled
             )
 
-        enabled.IsCheckedChanged.Add(fun _ -> username.IsEnabled <- enabled.IsChecked.GetValueOrDefault())
+        enabled.IsCheckedChanged.Add(fun _ ->
+            let isEnabled = enabled.IsChecked.GetValueOrDefault()
+            hardcore.IsEnabled <- isEnabled
+            username.IsEnabled <- isEnabled)
 
         let raPanel = StackPanel(Spacing = 8.0)
         raPanel.Children.Add enabled |> ignore
+        raPanel.Children.Add hardcore |> ignore
         raPanel.Children.Add username |> ignore
 
         let cancelButton = DialogLayout.actionButton "Cancel" 80.0
@@ -116,6 +125,8 @@ type SettingsWindow(initialSettings: AppSettings.Settings) as this =
                 Some
                     { BootRomSelection = selection
                       RetroAchievementsEnabled = enabled.IsChecked.GetValueOrDefault()
+                      RetroAchievementsHardcore =
+                        enabled.IsChecked.GetValueOrDefault() && hardcore.IsChecked.GetValueOrDefault()
                       RetroAchievementsUsername = username.Text }
             ))
 

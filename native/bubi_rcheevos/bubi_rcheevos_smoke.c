@@ -27,6 +27,10 @@ int main(void) {
   if (!client)
     return 2;
 
+  bubi_ra_set_hardcore_enabled(client, 1);
+  if (!bubi_ra_get_hardcore_enabled(client))
+    return 3;
+  bubi_ra_set_hardcore_enabled(client, 0);
   (void)bubi_ra_can_pause(client, &frames_remaining);
   (void)bubi_ra_get_rich_presence(client, rich_presence,
                                   sizeof(rich_presence));

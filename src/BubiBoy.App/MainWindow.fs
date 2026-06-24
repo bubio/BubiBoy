@@ -78,6 +78,8 @@ type MainWindow(?startupRomPath: string) as this =
 
         retroAchievements
         |> Option.iter (fun client ->
+            client.SetHardcoreEnabled settingsStore.Current.RetroAchievementsHardcore
+
             client.EventRaised.Add(fun event ->
                 match RetroAchievementsPresentation.hostAction event with
                 | RetroAchievementsPresentation.Notify message ->
@@ -116,7 +118,12 @@ type MainWindow(?startupRomPath: string) as this =
                             not settingsStore.Current.RetroAchievementsEnabled
                             || settingsStore.Current.RetroAchievementsUsername <> raUser.Username
                         then
-                            settingsStore.SetRetroAchievements(true, raUser.Username) |> ignore
+                            settingsStore.SetRetroAchievements(
+                                true,
+                                settingsStore.Current.RetroAchievementsHardcore,
+                                raUser.Username
+                            )
+                            |> ignore
 
                             saveSettings ()))))
 
@@ -265,6 +272,7 @@ type MainWindow(?startupRomPath: string) as this =
 
                     settingsStore.SetRetroAchievements(
                         selection.RetroAchievementsEnabled,
+                        selection.RetroAchievementsHardcore,
                         selection.RetroAchievementsUsername
                     )
                     |> ignore
@@ -272,11 +280,16 @@ type MainWindow(?startupRomPath: string) as this =
                     saveSettings ()
 
                     match retroAchievements with
-                    | Some client when not selection.RetroAchievementsEnabled -> client.Logout()
-                    | Some client when client.Snapshot.Status = LoggedOut ->
-                        if not (client.LoginWithStoredToken selection.RetroAchievementsUsername) then
-                            notifications.Show "RetroAchievements enabled. Open Achievements to log in."
-                    | _ -> ()
+                    | Some client when not selection.RetroAchievementsEnabled ->
+                        client.SetHardcoreEnabled false
+                        client.Logout()
+                    | Some client ->
+                        client.SetHardcoreEnabled selection.RetroAchievementsHardcore
+
+                        if client.Snapshot.Status = LoggedOut then
+                            if not (client.LoginWithStoredToken selection.RetroAchievementsUsername) then
+                                notifications.Show "RetroAchievements enabled. Open Achievements to log in."
+                    | None -> ()
 
                     notifications.Show "Settings saved. Boot ROM changes apply on the next ROM load or reset."
                 | None -> ()
@@ -337,6 +350,11 @@ type MainWindow(?startupRomPath: string) as this =
                       IsAlwaysOnTop = layoutController.IsAlwaysOnTop
                       IsFullScreen = this.WindowState = WindowState.FullScreen
                       ShowFullScreenInfo = settingsStore.Current.ShowFullScreenInfo
+                      CanLoadState =
+                        retroAchievements
+                        |> Option.forall (fun client ->
+                            let snapshot = client.Snapshot
+                            snapshot.Status <> Active || not snapshot.HardcoreEnabled)
                       VideoFilter = settingsStore.Current.VideoFilter }
 
         let frameDisplayTimer =

@@ -265,6 +265,45 @@ let ``pause decision delegates to native only for active game`` () =
     Assert.Equal(PauseAllowed, client.CanPause())
 
 [<Fact>]
+let ``hardcore preference is exposed and reapplied before loading a game`` () =
+    let backend = FakeNativeBackend()
+
+    let client, _, _, _, _ =
+        createClient backend (successfulHandler ()) (TimeSpan.FromSeconds 30.0)
+
+    use client = client
+    Assert.True(client.Snapshot.HardcoreEnabled)
+    client.SetHardcoreEnabled false
+    Assert.False(backend.HardcoreEnabled)
+    client.SetHardcoreEnabled true
+    Assert.True(backend.HardcoreEnabled)
+    Assert.True(client.Snapshot.HardcoreEnabled)
+
+    backend.User <-
+        Some
+            { Username = "player"
+              DisplayName = "Player"
+              Token = "token"
+              Score = 10u
+              SoftcoreScore = 2u }
+
+    client.LoginWithPassword("player", "password")
+    backend.CompleteOperation(0, "")
+    backend.SetHardcoreEnabledForTest false
+
+    backend.Game <-
+        Some
+            { Id = 1u
+              Title = "Game"
+              Hash = "hash"
+              ImageUrl = "" }
+
+    client.LoadGame(4u, [| 0uy |], session ())
+    Assert.True(backend.HardcoreEnabled)
+    backend.CompleteOperation(0, "")
+    Assert.True(client.Snapshot.HardcoreEnabled)
+
+[<Fact>]
 let ``HTTP preserves method status and empty response body`` () =
     let requests = ResizeArray<HttpMethod * string>()
     let userAgents = ResizeArray<string>()

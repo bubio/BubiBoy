@@ -35,7 +35,17 @@ module internal RetroAchievementsOperations =
             | PauseDenied framesRemaining -> OperationDenied(pauseDelayMessage framesRemaining)
         | _ -> OperationAllowed
 
+    let evaluateSnapshot snapshot canPause operation =
+        match snapshot.Status, snapshot.HardcoreEnabled, operation with
+        | Active, true, LoadState ->
+            OperationDenied "Loading save states is unavailable while RetroAchievements Hardcore Mode is active."
+        | Active, _, Pause ->
+            match canPause () with
+            | PauseAllowed -> OperationAllowed
+            | PauseDenied framesRemaining -> OperationDenied(pauseDelayMessage framesRemaining)
+        | _ -> OperationAllowed
+
     let evaluate (client: RaClient option) operation =
         match client with
-        | Some activeClient -> evaluateStatus activeClient.Snapshot.Status activeClient.CanPause operation
+        | Some activeClient -> evaluateSnapshot activeClient.Snapshot activeClient.CanPause operation
         | None -> OperationAllowed

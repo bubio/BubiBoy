@@ -50,6 +50,7 @@ type AchievementsWindow(client: RaClient) as this =
         | Authenticating -> "Logging in..."
         | Ready -> "Logged in; no achievement game loaded"
         | LoadingGame -> "Identifying game..."
+        | Active when client.Snapshot.HardcoreEnabled -> "Active (Hardcore)"
         | Active -> "Active (Softcore)"
         | OfflineSession reason -> $"Offline session: {reason}"
 
@@ -174,7 +175,13 @@ type AchievementsWindow(client: RaClient) as this =
             let logout = DialogLayout.actionButton "Log Out" 100.0
             logout.Click.Add(fun _ -> client.Logout())
 
-            root.Children.Add(DialogLayout.bodyText ($"{user.DisplayName}  |  Softcore score: {user.SoftcoreScore}"))
+            let scoreLabel, score =
+                if snapshot.HardcoreEnabled then
+                    "Hardcore score", user.Score
+                else
+                    "Softcore score", user.SoftcoreScore
+
+            root.Children.Add(DialogLayout.bodyText ($"{user.DisplayName}  |  {scoreLabel}: {score}"))
             |> ignore
 
             root.Children.Add logout |> ignore

@@ -102,6 +102,7 @@ module RetroAchievementsPresentationTests =
 
     let private snapshot generation gameId =
         { Status = Active
+          HardcoreEnabled = false
           User = None
           Game =
             Some
@@ -112,6 +113,23 @@ module RetroAchievementsPresentationTests =
           Achievements = []
           RichPresence = None
           Generation = generation }
+
+    [<Fact>]
+    let ``hardcore mode blocks loading states but permits saving reset and game changes`` () =
+        let current =
+            { snapshot 1L 1u with
+                HardcoreEnabled = true }
+
+        let allowed () = PauseAllowed
+
+        Assert.Equal(OperationAllowed, RetroAchievementsOperations.evaluateSnapshot current allowed SaveState)
+
+        match RetroAchievementsOperations.evaluateSnapshot current allowed LoadState with
+        | OperationDenied message -> Assert.Contains("Hardcore Mode", message)
+        | OperationAllowed -> Assert.Fail "Hardcore load state was unexpectedly allowed."
+
+        Assert.Equal(OperationAllowed, RetroAchievementsOperations.evaluateSnapshot current allowed Reset)
+        Assert.Equal(OperationAllowed, RetroAchievementsOperations.evaluateSnapshot current allowed ChangeGame)
 
     let private indicatorEvent eventType id generation gameId progress percent =
         { EventType = eventType

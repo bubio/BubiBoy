@@ -35,7 +35,7 @@ playing and testing classic handheld games.
 - Supports ROM-only, MBC1, MBC2, MBC3, and MBC5 cartridges.
 - Loads and saves battery-backed `.sav` data automatically.
 - Supports save states and recent ROMs.
-- Supports opt-in RetroAchievements Softcore login, game identification, achievement lists, badges, unlock notifications, and RA-aware save states on macOS.
+- Supports opt-in RetroAchievements Softcore/Hardcore login, game identification, achievement lists, badges, unlock notifications, and Softcore RA-aware save states on macOS.
 - Supports configurable keyboard/controller mappings and native controller input on macOS, Linux, and Windows.
 - Provides nearest-neighbor, smooth, and LCD-style image filters.
 - Can use external DMG and CGB boot ROMs when supplied by the user.

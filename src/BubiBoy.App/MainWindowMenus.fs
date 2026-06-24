@@ -29,6 +29,7 @@ module MainWindowMenus =
           IsAlwaysOnTop: bool
           IsFullScreen: bool
           ShowFullScreenInfo: bool
+          CanLoadState: bool
           VideoFilter: AppSettings.VideoFilter }
 
     type Elements =
@@ -242,8 +243,8 @@ module MainWindowMenus =
             resetMenuItem.IsEnabled <- viewModel.HasLoadedRom
             nativeSaveStateItem.IsEnabled <- viewModel.HasSession
             saveStateItem.IsEnabled <- viewModel.HasSession
-            nativeLoadStateItem.IsEnabled <- viewModel.HasSession
-            loadStateItem.IsEnabled <- viewModel.HasSession
+            nativeLoadStateItem.IsEnabled <- viewModel.HasSession && state.CanLoadState
+            loadStateItem.IsEnabled <- viewModel.HasSession && state.CanLoadState
             nativeFullscreenItem.IsChecked <- state.IsFullScreen
             fullscreenItem.IsChecked <- state.IsFullScreen
             nativeFullScreenInfoItem.IsChecked <- state.ShowFullScreenInfo

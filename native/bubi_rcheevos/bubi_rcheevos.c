@@ -197,7 +197,6 @@ bubi_ra_client* bubi_ra_create(bubi_ra_read_memory_callback read_memory,
 
   rc_client_set_userdata(context->native, context);
   rc_client_set_event_handler(context->native, bubi_event);
-  rc_client_set_hardcore_enabled(context->native, 0);
   rc_client_enable_logging(context->native, RC_CLIENT_LOG_LEVEL_WARN,
                            bubi_log_message);
   return context;
@@ -304,7 +303,6 @@ void bubi_ra_load_game(bubi_ra_client* client, uint32_t console_id,
                        bubi_ra_operation_callback callback) {
   if (!client || client->operation_callback)
     return;
-  rc_client_set_hardcore_enabled(client->native, 0);
   client->operation_callback = callback;
   client->operation_handle = rc_client_begin_identify_and_load_game(
       client->native, console_id, NULL, rom, rom_size, bubi_operation_complete,
@@ -365,7 +363,10 @@ void bubi_ra_enumerate_achievements(bubi_ra_client* client,
       callback(client->userdata, bucket->bucket_type, bucket->label,
                achievement->id, achievement->title, achievement->description,
                achievement->points, achievement->measured_progress,
-               achievement->measured_percent, achievement->rarity,
+               achievement->measured_percent,
+               rc_client_get_hardcore_enabled(client->native)
+                   ? achievement->rarity_hardcore
+                   : achievement->rarity,
                achievement->state, achievement->unlocked, image_url);
     }
   }
@@ -379,6 +380,13 @@ void bubi_ra_do_frame(bubi_ra_client* client) {
   }
 }
 void bubi_ra_idle(bubi_ra_client* client) { if (client) rc_client_idle(client->native); }
+void bubi_ra_set_hardcore_enabled(bubi_ra_client* client, int enabled) {
+  if (client)
+    rc_client_set_hardcore_enabled(client->native, enabled);
+}
+int bubi_ra_get_hardcore_enabled(bubi_ra_client* client) {
+  return client ? rc_client_get_hardcore_enabled(client->native) : 0;
+}
 int bubi_ra_can_pause(bubi_ra_client* client, uint32_t* frames_remaining) {
   if (!client) {
     if (frames_remaining)

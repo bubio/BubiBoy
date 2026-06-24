@@ -74,6 +74,8 @@ module internal NativeInterop =
           EnumerateAchievements: nativeint * AchievementCallback -> unit
           DoFrame: nativeint -> unit
           Idle: nativeint -> unit
+          SetHardcoreEnabled: nativeint * bool -> unit
+          GetHardcoreEnabled: nativeint -> bool
           CanPause: nativeint -> bool * uint32
           Reset: nativeint -> unit
           ProgressSize: nativeint -> unativeint
@@ -179,6 +181,12 @@ module internal NativeInterop =
 
         [<DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)>]
         extern void bubi_ra_idle(nativeint client)
+
+        [<DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)>]
+        extern void bubi_ra_set_hardcore_enabled(nativeint client, int enabled)
+
+        [<DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)>]
+        extern int bubi_ra_get_hardcore_enabled(nativeint client)
 
         [<DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)>]
         extern int bubi_ra_can_pause(nativeint client, uint32& framesRemaining)
@@ -297,6 +305,9 @@ module internal NativeInterop =
           EnumerateAchievements = fun (client, callback) -> Native.bubi_ra_enumerate_achievements (client, callback)
           DoFrame = Native.bubi_ra_do_frame
           Idle = Native.bubi_ra_idle
+          SetHardcoreEnabled =
+            fun (client, enabled) -> Native.bubi_ra_set_hardcore_enabled (client, if enabled then 1 else 0)
+          GetHardcoreEnabled = fun client -> Native.bubi_ra_get_hardcore_enabled client <> 0
           CanPause =
             fun client ->
                 let mutable framesRemaining = 0u

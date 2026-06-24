@@ -48,6 +48,7 @@ type RaEvent =
 
 type RaSnapshot =
     { Status: RaStatus
+      HardcoreEnabled: bool
       User: RaUser option
       Game: RaGame option
       Achievements: RaAchievement list

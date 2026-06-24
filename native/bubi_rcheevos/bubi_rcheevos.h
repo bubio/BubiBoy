@@ -80,6 +80,9 @@ BUBI_RA_EXPORT void bubi_ra_enumerate_achievements(bubi_ra_client* client,
 
 BUBI_RA_EXPORT void bubi_ra_do_frame(bubi_ra_client* client);
 BUBI_RA_EXPORT void bubi_ra_idle(bubi_ra_client* client);
+BUBI_RA_EXPORT void bubi_ra_set_hardcore_enabled(bubi_ra_client* client,
+                                                 int enabled);
+BUBI_RA_EXPORT int bubi_ra_get_hardcore_enabled(bubi_ra_client* client);
 BUBI_RA_EXPORT int bubi_ra_can_pause(bubi_ra_client* client,
                                      uint32_t* frames_remaining);
 BUBI_RA_EXPORT void bubi_ra_reset(bubi_ra_client* client);

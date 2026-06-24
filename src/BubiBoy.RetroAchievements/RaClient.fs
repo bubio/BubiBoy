@@ -36,6 +36,8 @@ type RaClient
     let mutable handle = nativeint 0
     let mutable disposed = false
     let mutable status = LoggedOut
+    let mutable desiredHardcore = true
+    let mutable hardcoreEnabled = true
     let mutable user: RaUser option = None
     let mutable game: RaGame option = None
     let mutable achievements: RaAchievement list = []
@@ -51,6 +53,7 @@ type RaClient
 
     let snapshot () =
         { Status = status
+          HardcoreEnabled = hardcoreEnabled
           User = user
           Game = game
           Achievements = achievements
@@ -85,6 +88,9 @@ type RaClient
                       Hash = nativeGame.Hash
                       ImageUrl = nativeGame.ImageUrl }
         | None -> game <- None
+
+    let refreshHardcore () =
+        hardcoreEnabled <- nativeApi.GetHardcoreEnabled handle
 
     let mutable achievementBuffer = ResizeArray<RaAchievement>()
 
@@ -163,6 +169,7 @@ type RaClient
                 pendingOperation <- NoOperation
 
                 if result = 0 then
+                    refreshHardcore ()
                     refreshGame ()
                     refreshAchievements ()
                     refreshRichPresence () |> ignore
@@ -313,6 +320,9 @@ type RaClient
         if handle = nativeint 0 then
             invalidOp "Could not create the RetroAchievements client."
 
+        nativeApi.SetHardcoreEnabled(handle, true)
+        refreshHardcore ()
+
         let clause = StringBuilder(128)
 
         nativeApi.UserAgent(handle, clause, unativeint clause.Capacity) |> ignore
@@ -324,6 +334,20 @@ type RaClient
     member _.Changed = changed.Publish
     member _.EventRaised = eventRaised.Publish
     member _.Version = nativeApi.Version()
+
+    member _.SetHardcoreEnabled(enabled: bool) =
+        lock gate (fun () ->
+            if disposed then
+                invalidOp "RetroAchievements client is disposed."
+
+            desiredHardcore <- enabled
+            nativeApi.SetHardcoreEnabled(handle, enabled)
+            refreshHardcore ()
+
+            if status = Active then
+                refreshAchievements ()
+
+            publish ())
 
     member _.LoginWithPassword(username: string, password: string) =
         lock gate (fun () ->
@@ -375,6 +399,8 @@ type RaClient
             status <- LoadingGame
             pendingOperation <- LoadGame
             currentSession <- Some session
+            nativeApi.SetHardcoreEnabled(handle, desiredHardcore)
+            refreshHardcore ()
             publish ()
             nativeApi.LoadGame(handle, consoleId, rom, unativeint rom.Length, operationCallback))
 

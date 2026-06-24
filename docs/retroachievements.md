@@ -2,7 +2,7 @@
 
 BubiBoy uses the `rc_client` API from rcheevos 12.3.0 for its initial
 RetroAchievements integration. The feature is opt-in and currently targets macOS
-Softcore sessions.
+Softcore and Hardcore sessions.
 
 ## Boundaries
 
@@ -31,23 +31,25 @@ console map. Cartridge RAM at `0xA000-0xBFFF` always maps to physical bank 0.
 
 ## State Files
 
-Active RA sessions store state under the application data directory at
+Active Softcore RA sessions store state under the application data directory at
 `retroachievements/states/<game-id>/<rom-hash>.state`. The envelope contains the
 Game ID, ROM hash, rcheevos version, core state, sized `rc_client` progress, and a
 CRC32. All metadata is validated before the core state is restored. Normal state
-files remain unchanged.
+files remain unchanged. Save State creation remains available in Hardcore Mode,
+but loading a state is unavailable. Battery-backed in-game saves use the normal
+`.sav` file and are not separated by achievement mode.
 
 ## Controlled Operations
 
 Pause, Save State, Load State, Reset, and game changes pass through the shared
 RetroAchievements operation policy before mutating the emulator session. Softcore
-currently permits state, reset, and game-change operations. Pause attempts during
-an active RA session call `rc_client_can_pause()` and report the remaining delay
-when denied. An `RC_CLIENT_EVENT_RESET` request resets the emulator without
-echoing a second reset back to `rc_client`.
-
-Hardcore support must extend this policy instead of adding checks to individual
-menus or keyboard shortcuts.
+permits state, reset, and game-change operations. Hardcore rejects Load State at
+the shared operation boundary, and the corresponding menu item is disabled. Save
+State creation is allowed. Pause attempts during an active RA session call
+`rc_client_can_pause()` and report the remaining delay when denied. Enabling
+Hardcore for a loaded game handles `RC_CLIENT_EVENT_RESET` by resetting the
+emulator and acknowledging the reset with `rc_client_reset()`. The persisted
+Hardcore preference defaults to enabled and is applied before loading a game.
 
 ## Dependency Update
 

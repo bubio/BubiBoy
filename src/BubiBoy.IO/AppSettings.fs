@@ -8,7 +8,7 @@ open System.Text.Json
 
 module AppSettings =
     [<Literal>]
-    let CurrentVersion = 8
+    let CurrentVersion = 9
 
     [<Literal>]
     let MaxRecentRoms = 10
@@ -79,6 +79,7 @@ module AppSettings =
           VideoFilter: string
           BootRomSelection: string
           RetroAchievementsEnabled: bool
+          RetroAchievementsHardcore: bool
           RetroAchievementsUsername: string
           KeyboardMapping: Dictionary<string, string>
           ControllerMapping: Dictionary<string, string> }
@@ -91,6 +92,7 @@ module AppSettings =
           VideoFilter: VideoFilter
           BootRomSelection: BootRomSelection
           RetroAchievementsEnabled: bool
+          RetroAchievementsHardcore: bool
           RetroAchievementsUsername: string
           KeyboardMapping: Map<string, string>
           ControllerMapping: Map<string, string> }
@@ -103,6 +105,7 @@ module AppSettings =
           VideoFilter = Off
           BootRomSelection = Disabled
           RetroAchievementsEnabled = false
+          RetroAchievementsHardcore = true
           RetroAchievementsUsername = ""
           KeyboardMapping = defaultKeyboardMapping
           ControllerMapping = defaultControllerMapping }
@@ -231,6 +234,7 @@ module AppSettings =
           VideoFilter = settings.VideoFilter
           BootRomSelection = settings.BootRomSelection
           RetroAchievementsEnabled = settings.RetroAchievementsEnabled
+          RetroAchievementsHardcore = settings.RetroAchievementsHardcore
           RetroAchievementsUsername =
             if String.IsNullOrWhiteSpace settings.RetroAchievementsUsername then
                 ""
@@ -289,6 +293,7 @@ module AppSettings =
                     raise (InvalidDataException "Settings file is empty.")
                 elif
                     file.Version <> CurrentVersion
+                    && file.Version <> 8
                     && file.Version <> 7
                     && file.Version <> 6
                     && file.Version <> 5
@@ -348,6 +353,11 @@ module AppSettings =
                           VideoFilter = videoFilter
                           BootRomSelection = bootRomSelection
                           RetroAchievementsEnabled = file.Version >= 8 && file.RetroAchievementsEnabled
+                          RetroAchievementsHardcore =
+                            if file.Version >= 9 then
+                                file.RetroAchievementsHardcore
+                            else
+                                true
                           RetroAchievementsUsername =
                             if file.Version < 8 || String.IsNullOrWhiteSpace file.RetroAchievementsUsername then
                                 ""
@@ -380,6 +390,7 @@ module AppSettings =
                     | Cgb -> "Cgb"
                     | Dmg -> "Dmg"
                   RetroAchievementsEnabled = normalized.RetroAchievementsEnabled
+                  RetroAchievementsHardcore = normalized.RetroAchievementsHardcore
                   RetroAchievementsUsername = normalized.RetroAchievementsUsername
                   KeyboardMapping = Dictionary<string, string>(normalized.KeyboardMapping)
                   ControllerMapping = Dictionary<string, string>(normalized.ControllerMapping) }
@@ -426,10 +437,11 @@ module AppSettings =
             { settings with
                 BootRomSelection = selection }
 
-    let withRetroAchievements enabled username settings =
+    let withRetroAchievements enabled hardcore username settings =
         normalize
             { settings with
                 RetroAchievementsEnabled = enabled
+                RetroAchievementsHardcore = hardcore
                 RetroAchievementsUsername = username }
 
     let withKeyboardMapping mapping settings =

@@ -147,7 +147,9 @@ type EmulationSessionController(dependencies: EmulationSessionDependencies) =
 
                             if getCurrentSession().IsSome && not isRunning then
                                 startRunning ()
-                        | _ -> ())))
+                        | _ -> ()
+
+                    dependencies.RefreshMenus())))
 
     /// Gets whether emulation is currently running.
     member _.IsRunning = isRunning
@@ -268,7 +270,7 @@ type EmulationSessionController(dependencies: EmulationSessionDependencies) =
                 dependencies.Notifications.Show outcome.ToastMessage
                 dependencies.ViewModel.DebugDetails <- outcome.DebugDetails
 
-                if notifyRuntime && outcome.Session.IsSome then
+                if outcome.Session.IsSome then
                     dependencies.RetroAchievements
                     |> Option.iter (fun client ->
                         if client.Snapshot.Status = Active then
@@ -285,7 +287,7 @@ type EmulationSessionController(dependencies: EmulationSessionDependencies) =
     /// Resets the currently loaded ROM after checking the active RA policy.
     member this.ResetCurrentRom() = this.ResetCurrentRomCore(true)
 
-    /// Applies a reset requested by RetroAchievements without notifying the runtime again.
+    /// Applies a reset requested by RetroAchievements and acknowledges the reset to the runtime.
     member this.HandleRetroAchievementsReset() = this.ResetCurrentRomCore(false)
 
     /// Saves state for the current ROM.
