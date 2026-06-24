@@ -79,7 +79,8 @@ type MainWindow(?startupRomPath: string) as this =
             client.EventRaised.Add(fun event ->
                 match RetroAchievementsPresentation.hostAction event with
                 | RetroAchievementsPresentation.Notify message ->
-                    Avalonia.Threading.Dispatcher.UIThread.Post(fun () -> notifications.Show message)
+                    Avalonia.Threading.Dispatcher.UIThread.Post(fun () ->
+                        notifications.Show(message, TimeSpan.FromSeconds 5.0))
                 | RetroAchievementsPresentation.ResetRequested ->
                     Avalonia.Threading.Dispatcher.UIThread.Post retroAchievementsResetHandler
                 | RetroAchievementsPresentation.Ignore -> ())
