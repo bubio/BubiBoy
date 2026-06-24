@@ -21,9 +21,27 @@ type AchievementsWindow(client: RaClient) as this =
 
     let imageLoader = RaImageLoader(http, fun () -> client.Snapshot)
     let imageCache = Dictionary<string, Bitmap>()
-    let imageCacheOrder = Queue<string>()
+
+    let pendingImages =
+        Dictionary<struct (int64 * uint32 * string), ResizeArray<WeakReference<Image>>>()
+
     let root = StackPanel(Spacing = 12.0, Margin = Thickness(18.0))
     let mutable closed = false
+    let mutable imageCacheSession: struct (int64 * uint32) option = None
+
+    let clearImageCache () =
+        for bitmap in imageCache.Values do
+            bitmap.Dispose()
+
+        imageCache.Clear()
+
+    let updateImageCacheSession snapshot =
+        let session =
+            snapshot.Game |> Option.map (fun game -> struct (snapshot.Generation, game.Id))
+
+        if session <> imageCacheSession then
+            clearImageCache ()
+            imageCacheSession <- session
 
     let statusText status =
         match status with
@@ -40,32 +58,49 @@ type AchievementsWindow(client: RaClient) as this =
             match imageCache.TryGetValue url with
             | true, bitmap -> image.Source <- bitmap
             | _ ->
-                task {
-                    let! result = imageLoader.Load(generation, gameId, url)
+                let key = struct (generation, gameId, url)
 
-                    result
-                    |> Option.iter (fun bitmap ->
+                match pendingImages.TryGetValue key with
+                | true, waiters -> waiters.Add(WeakReference<Image>(image))
+                | _ ->
+                    pendingImages[key] <- ResizeArray([ WeakReference<Image>(image) ])
+
+                    task {
+                        let! result = imageLoader.Load(generation, gameId, url)
+
                         Dispatcher.UIThread.Post(fun () ->
-                            if
-                                not closed
-                                && RetroAchievementsPresentation.isCurrentImage generation gameId client.Snapshot
-                            then
-                                if imageCache.Count >= 128 then
-                                    let expired = imageCacheOrder.Dequeue()
+                            let waiters =
+                                match pendingImages.TryGetValue key with
+                                | true, value -> value
+                                | _ -> ResizeArray()
 
-                                    match imageCache.TryGetValue expired with
-                                    | true, expiredBitmap ->
-                                        imageCache.Remove expired |> ignore
-                                        expiredBitmap.Dispose()
-                                    | _ -> ()
+                            pendingImages.Remove key |> ignore
 
-                                imageCache[url] <- bitmap
-                                imageCacheOrder.Enqueue url
-                                image.Source <- bitmap
-                            else
-                                bitmap.Dispose()))
-                }
-                |> ignore
+                            result
+                            |> Option.iter (fun bitmap ->
+                                if
+                                    not closed
+                                    && RetroAchievementsPresentation.isCurrentImage generation gameId client.Snapshot
+                                then
+                                    match imageCache.TryGetValue url with
+                                    | true, cached ->
+                                        bitmap.Dispose()
+
+                                        for waiter in waiters do
+                                            match waiter.TryGetTarget() with
+                                            | true, target -> target.Source <- cached
+                                            | _ -> ()
+                                    | _ ->
+                                        imageCache[url] <- bitmap
+
+                                        for waiter in waiters do
+                                            match waiter.TryGetTarget() with
+                                            | true, target -> target.Source <- bitmap
+                                            | _ -> ()
+                                else
+                                    bitmap.Dispose()))
+                    }
+                    |> ignore
 
     let achievementRow generation gameId (achievement: RaAchievement) =
         let image = Image(Width = 48.0, Height = 48.0)
@@ -107,6 +142,7 @@ type AchievementsWindow(client: RaClient) as this =
         let snapshot = client.Snapshot
         let scrollContent = StackPanel(Spacing = 10.0)
         root.Children.Clear()
+        updateImageCacheSession snapshot
 
         let header = DialogLayout.title "RetroAchievements"
         root.Children.Add header |> ignore
@@ -198,12 +234,8 @@ type AchievementsWindow(client: RaClient) as this =
         this.Closed.Add(fun _ ->
             closed <- true
             changedSubscription.Dispose()
-
-            for bitmap in imageCache.Values do
-                bitmap.Dispose()
-
-            imageCache.Clear()
-            imageCacheOrder.Clear()
+            clearImageCache ()
+            pendingImages.Clear()
             http.Dispose())
 
         rebuild ()
