@@ -5,6 +5,7 @@ open System.Collections.Generic
 open System.Net.Http
 open Avalonia
 open Avalonia.Controls
+open Avalonia.Controls.Primitives
 open Avalonia.Layout
 open Avalonia.Media
 open Avalonia.Media.Imaging
@@ -25,9 +26,13 @@ type AchievementsWindow(client: RaClient) as this =
     let pendingImages =
         Dictionary<struct (int64 * uint32 * string), ResizeArray<WeakReference<Image>>>()
 
-    let root = StackPanel(Spacing = 12.0, Margin = Thickness(18.0))
+    let root = Grid(RowDefinitions = RowDefinitions("Auto,*"), Margin = Thickness(18.0))
+    let header = StackPanel(Spacing = 10.0, Margin = Thickness(0.0, 0.0, 0.0, 12.0))
+    let contentHost = ContentControl()
     let mutable closed = false
     let mutable imageCacheSession: struct (int64 * uint32) option = None
+    let mutable sortColumn = RetroAchievementsPresentation.OriginalOrder
+    let mutable sortDirection = RetroAchievementsPresentation.Ascending
 
     let clearImageCache () =
         for bitmap in imageCache.Values do
@@ -103,58 +108,144 @@ type AchievementsWindow(client: RaClient) as this =
                     }
                     |> ignore
 
-    let achievementRow generation gameId (achievement: RaAchievement) =
-        let image = Image(Width = 48.0, Height = 48.0)
+    let tableColumns () =
+        ColumnDefinitions("48,56,120,*,64,76,100")
+
+    let cellText text =
+        let value =
+            TextBlock(
+                Text = text,
+                FontSize = DialogLayout.BodyFontSize,
+                VerticalAlignment = VerticalAlignment.Center,
+                TextWrapping = TextWrapping.Wrap
+            )
+
+        AppTheme.bindBrush value TextBlock.ForegroundProperty AppTheme.SecondaryText
+        value
+
+    let addCell column (control: Control) (grid: Grid) =
+        Grid.SetColumn(control, column)
+        grid.Children.Add control |> ignore
+
+    let achievementRow generation gameId (originalIndex, achievement: RaAchievement) =
+        let image =
+            Image(Width = 44.0, Height = 44.0, VerticalAlignment = VerticalAlignment.Top)
+
         loadImage generation gameId achievement.ImageUrl image
 
         let title =
+            TextBlock(Text = achievement.Title, FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap)
+
+        AppTheme.bindBrush title TextBlock.ForegroundProperty AppTheme.PrimaryText
+
+        let description =
             TextBlock(
-                Text = $"{achievement.Title}  ({achievement.Points} pts)",
-                FontWeight = Avalonia.Media.FontWeight.SemiBold,
-                TextWrapping = Avalonia.Media.TextWrapping.Wrap
+                Text = achievement.Description,
+                FontSize = DialogLayout.CaptionFontSize,
+                TextWrapping = TextWrapping.Wrap
             )
 
-        let rarity = achievement.Rarity.ToString("F2")
+        AppTheme.bindBrush description TextBlock.ForegroundProperty AppTheme.SecondaryText
+
+        let achievementText = StackPanel(Spacing = 2.0)
+        achievementText.Children.Add title |> ignore
+        achievementText.Children.Add description |> ignore
 
         let progress =
             if String.IsNullOrWhiteSpace achievement.MeasuredProgress then
-                $"Rarity: {rarity}" + "%"
-            else
-                $"{achievement.MeasuredProgress}  |  Rarity: {rarity}" + "%"
+                let percent = float achievement.MeasuredPercent
 
-        let details =
-            TextBlock(
-                Text = $"{achievement.Description}\n{progress}",
-                Opacity = 0.78,
-                TextWrapping = Avalonia.Media.TextWrapping.Wrap
+                if Double.IsNaN percent || Double.IsInfinity percent || percent <= 0.0 then
+                    ""
+                else
+                    achievement.MeasuredPercent.ToString("F0") + "%"
+            else
+                achievement.MeasuredProgress
+
+        let grid =
+            Grid(ColumnDefinitions = tableColumns (), MinHeight = 58.0, Margin = Thickness(0.0, 0.0, 0.0, 6.0))
+
+        addCell 0 (cellText (string (originalIndex + 1))) grid
+        addCell 1 image grid
+        addCell 2 (cellText achievement.BucketLabel) grid
+        addCell 3 achievementText grid
+        addCell 4 (cellText (string achievement.Points)) grid
+        addCell 5 (cellText (achievement.Rarity.ToString("F2") + "%")) grid
+        addCell 6 (cellText progress) grid
+        DialogLayout.surface grid (Thickness(8.0))
+
+    let mutable rebuild = fun () -> ()
+
+    let sortHeader label column =
+        let marker =
+            if sortColumn = column then
+                match sortDirection with
+                | RetroAchievementsPresentation.Ascending -> "  ↑"
+                | RetroAchievementsPresentation.Descending -> "  ↓"
+            else
+                ""
+
+        let button =
+            Button(
+                Content = label + marker,
+                Padding = Thickness(4.0),
+                HorizontalContentAlignment = HorizontalAlignment.Left,
+                FontWeight = FontWeight.SemiBold
             )
 
-        let text = StackPanel(Spacing = 3.0)
-        text.Children.Add title |> ignore
-        text.Children.Add details |> ignore
+        button.Click.Add(fun _ ->
+            let nextColumn, nextDirection =
+                RetroAchievementsPresentation.nextSort sortColumn sortDirection column
 
-        let grid = Grid(ColumnDefinitions = ColumnDefinitions("56,*"))
-        Grid.SetColumn(text, 1)
-        grid.Children.Add image |> ignore
-        grid.Children.Add text |> ignore
-        DialogLayout.surface grid (Thickness(10.0))
+            sortColumn <- nextColumn
+            sortDirection <- nextDirection
+            rebuild ())
 
-    let rebuild () =
+        button
+
+    let achievementTable generation gameId achievements =
+        let table = Grid(RowDefinitions = RowDefinitions("Auto,*"))
+
+        let headings =
+            Grid(ColumnDefinitions = tableColumns (), Margin = Thickness(8.0, 0.0, 8.0, 6.0))
+
+        addCell 0 (sortHeader "#" RetroAchievementsPresentation.OriginalOrder) headings
+        addCell 2 (sortHeader "Status" RetroAchievementsPresentation.Status) headings
+        addCell 3 (sortHeader "Achievement" RetroAchievementsPresentation.Title) headings
+        addCell 4 (sortHeader "Pts" RetroAchievementsPresentation.Points) headings
+        addCell 5 (sortHeader "Rarity" RetroAchievementsPresentation.Rarity) headings
+        addCell 6 (sortHeader "Progress" RetroAchievementsPresentation.Progress) headings
+        table.Children.Add headings |> ignore
+
+        let rows = StackPanel()
+
+        achievements
+        |> RetroAchievementsPresentation.sortAchievements sortColumn sortDirection
+        |> List.iter (achievementRow generation gameId >> rows.Children.Add >> ignore)
+
+        let scroll =
+            ScrollViewer(Content = rows, VerticalScrollBarVisibility = ScrollBarVisibility.Auto)
+
+        Grid.SetRow(scroll, 1)
+        table.Children.Add scroll |> ignore
+        table
+
+    let rebuildContent () =
         let snapshot = client.Snapshot
-        let scrollContent = StackPanel(Spacing = 10.0)
-        root.Children.Clear()
+        header.Children.Clear()
+        contentHost.Content <- null
         updateImageCacheSession snapshot
 
-        let header = DialogLayout.title "RetroAchievements"
-        root.Children.Add header |> ignore
-        root.Children.Add(DialogLayout.bodyText (statusText snapshot.Status)) |> ignore
+        header.Children.Add(DialogLayout.title "RetroAchievements") |> ignore
+
+        header.Children.Add(DialogLayout.bodyText (statusText snapshot.Status))
+        |> ignore
 
         match snapshot.User with
         | None ->
             let username = TextBox(PlaceholderText = "Username")
             let password = TextBox(PlaceholderText = "Password", PasswordChar = '●')
             let login = DialogLayout.actionButton "Log In" 100.0
-
             login.IsEnabled <- snapshot.Status <> Authenticating
 
             login.Click.Add(fun _ ->
@@ -170,10 +261,9 @@ type AchievementsWindow(client: RaClient) as this =
             panel.Children.Add username |> ignore
             panel.Children.Add password |> ignore
             panel.Children.Add login |> ignore
-            root.Children.Add(DialogLayout.surface panel (Thickness(12.0))) |> ignore
+            header.Children.Add(DialogLayout.surface panel (Thickness(12.0))) |> ignore
         | Some user ->
-            let logout = DialogLayout.actionButton "Log Out" 100.0
-            logout.Click.Add(fun _ -> client.Logout())
+            let account = Grid(ColumnDefinitions = ColumnDefinitions("*,Auto"))
 
             let scoreLabel, score =
                 if snapshot.HardcoreEnabled then
@@ -181,62 +271,63 @@ type AchievementsWindow(client: RaClient) as this =
                 else
                     "Softcore score", user.SoftcoreScore
 
-            root.Children.Add(DialogLayout.bodyText ($"{user.DisplayName}  |  {scoreLabel}: {score}"))
+            account.Children.Add(DialogLayout.bodyText ($"{user.DisplayName}  |  {scoreLabel}: {score}"))
             |> ignore
 
-            root.Children.Add logout |> ignore
+            let logout = DialogLayout.actionButton "Log Out" 100.0
+            logout.Click.Add(fun _ -> client.Logout())
+            Grid.SetColumn(logout, 1)
+            account.Children.Add logout |> ignore
+            header.Children.Add account |> ignore
 
         match snapshot.Game with
         | Some game ->
-            let gameImage = Image(Width = 64.0, Height = 64.0)
+            let gameImage = Image(Width = 56.0, Height = 56.0)
             loadImage snapshot.Generation game.Id game.ImageUrl gameImage
-            let gameTitle = DialogLayout.title game.Title
-            let gameHeader = Grid(ColumnDefinitions = ColumnDefinitions("72,*"))
-            Grid.SetColumn(gameTitle, 1)
-            gameHeader.Children.Add gameImage |> ignore
-            gameHeader.Children.Add gameTitle |> ignore
-            scrollContent.Children.Add gameHeader |> ignore
+            let gameDetails = StackPanel(Spacing = 5.0)
+            gameDetails.Children.Add(DialogLayout.title game.Title) |> ignore
 
             snapshot.RichPresence
             |> Option.iter (fun message ->
-                let presence = StackPanel(Spacing = 4.0)
-                presence.Children.Add(DialogLayout.bodyText "Rich Presence") |> ignore
-
-                presence.Children.Add(
+                let presence =
                     TextBlock(Text = message, FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap)
-                )
-                |> ignore
 
-                scrollContent.Children.Add(DialogLayout.surface presence (Thickness(10.0)))
-                |> ignore)
+                AppTheme.bindBrush presence TextBlock.ForegroundProperty AppTheme.SecondaryText
+                gameDetails.Children.Add presence |> ignore)
 
-            RetroAchievementsPresentation.populateAchievementGroups
-                scrollContent
-                (DialogLayout.title >> fun value -> value :> Control)
-                (achievementRow snapshot.Generation game.Id >> fun value -> value :> Control)
-                snapshot.Achievements
+            let gameHeader = Grid(ColumnDefinitions = ColumnDefinitions("64,*"))
+            Grid.SetColumn(gameDetails, 1)
+            gameHeader.Children.Add gameImage |> ignore
+            gameHeader.Children.Add gameDetails |> ignore
+            header.Children.Add(DialogLayout.surface gameHeader (Thickness(8.0))) |> ignore
+
+            if List.isEmpty snapshot.Achievements then
+                contentHost.Content <- DialogLayout.bodyText "No achievements are available for this game."
+            else
+                contentHost.Content <- achievementTable snapshot.Generation game.Id snapshot.Achievements
         | None -> ()
 
-        if scrollContent.Children.Count > 0 then
-            root.Children.Add(ScrollViewer(Content = scrollContent, MaxHeight = 500.0))
-            |> ignore
-
-    let changedSubscription =
-        client.Changed.Subscribe(fun _ ->
-            Dispatcher.UIThread.Post(fun () ->
-                if not closed then
-                    rebuild ()))
-
     do
+        rebuild <- rebuildContent
+        Grid.SetRow(contentHost, 1)
+        root.Children.Add header |> ignore
+        root.Children.Add contentHost |> ignore
+
         this.Title <- "RetroAchievements"
-        this.Width <- 680.0
+        this.Width <- 820.0
         this.Height <- 720.0
-        this.MinWidth <- 480.0
-        this.MinHeight <- 360.0
+        this.MinWidth <- 700.0
+        this.MinHeight <- 420.0
         this.WindowStartupLocation <- WindowStartupLocation.CenterOwner
         this.FontFamily <- AppFonts.ui
         AppTheme.bindBrush this Window.BackgroundProperty AppTheme.WindowBackground
-        this.Content <- ScrollViewer(Content = root)
+        this.Content <- root
+
+        let changedSubscription =
+            client.Changed.Subscribe(fun _ ->
+                Dispatcher.UIThread.Post(fun () ->
+                    if not closed then
+                        rebuild ()))
 
         this.Closed.Add(fun _ ->
             closed <- true

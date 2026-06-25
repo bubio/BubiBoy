@@ -77,7 +77,7 @@ module RetroAchievementsPresentationTests =
         Assert.Equal(1, calls)
 
     [<Fact>]
-    let ``achievement buckets use the documented display order`` () =
+    let ``achievement status sort puts recent and active items before locked items`` () =
         let input =
             [ achievement 3uy "Unsupported"
               achievement 7uy "Almost There"
@@ -87,17 +87,67 @@ module RetroAchievementsPresentationTests =
               achievement 2uy "Unlocked" ]
 
         let labels =
-            RetroAchievementsPresentation.achievementGroups input
-            |> List.map (fun ((_, label), _) -> label)
+            input
+            |> RetroAchievementsPresentation.sortAchievements
+                RetroAchievementsPresentation.Status
+                RetroAchievementsPresentation.Ascending
+            |> List.map (snd >> _.BucketLabel)
 
         Assert.Equal<string list>(
-            [ "Locked"
-              "Unlocked"
-              "Recently Unlocked"
+            [ "Recently Unlocked"
               "Active Challenge"
               "Almost There"
+              "Unlocked"
+              "Locked"
               "Unsupported" ],
             labels
+        )
+
+    [<Fact>]
+    let ``achievement table columns sort and toggle direction`` () =
+        let low =
+            { achievement 1uy "Beta" with
+                Points = 1u
+                Rarity = 5.0f }
+
+        let high =
+            { achievement 2uy "Alpha" with
+                Points = 10u
+                Rarity = 75.0f }
+
+        let byPoints =
+            RetroAchievementsPresentation.sortAchievements
+                RetroAchievementsPresentation.Points
+                RetroAchievementsPresentation.Descending
+                [ low; high ]
+
+        Assert.Equal<uint32 list>([ 10u; 1u ], byPoints |> List.map (snd >> _.Points))
+
+        Assert.Equal(
+            (RetroAchievementsPresentation.Status, RetroAchievementsPresentation.Descending),
+            RetroAchievementsPresentation.nextSort
+                RetroAchievementsPresentation.Status
+                RetroAchievementsPresentation.Ascending
+                RetroAchievementsPresentation.Status
+        )
+
+        Assert.Equal(
+            (RetroAchievementsPresentation.Title, RetroAchievementsPresentation.Ascending),
+            RetroAchievementsPresentation.nextSort
+                RetroAchievementsPresentation.Status
+                RetroAchievementsPresentation.Descending
+                RetroAchievementsPresentation.Title
+        )
+
+        let original = [ low; high ]
+
+        Assert.Equal<RaAchievement list>(
+            List.rev original,
+            RetroAchievementsPresentation.sortAchievements
+                RetroAchievementsPresentation.OriginalOrder
+                RetroAchievementsPresentation.Descending
+                original
+            |> List.map snd
         )
 
     let private snapshot generation gameId =
@@ -115,7 +165,7 @@ module RetroAchievementsPresentationTests =
           Generation = generation }
 
     [<Fact>]
-    let ``hardcore mode blocks loading states but permits saving reset and game changes`` () =
+    let ``hardcore mode blocks all disallowed emulator operations`` () =
         let current =
             { snapshot 1L 1u with
                 HardcoreEnabled = true }
@@ -124,12 +174,31 @@ module RetroAchievementsPresentationTests =
 
         Assert.Equal(OperationAllowed, RetroAchievementsOperations.evaluateSnapshot current allowed SaveState)
 
-        match RetroAchievementsOperations.evaluateSnapshot current allowed LoadState with
-        | OperationDenied message -> Assert.Contains("Hardcore Mode", message)
-        | OperationAllowed -> Assert.Fail "Hardcore load state was unexpectedly allowed."
+        let blockedOperations =
+            [ LoadState; Rewind; SlowMotion; FrameAdvance; Cheats; InputPlayback; Debugger ]
+
+        for operation in blockedOperations do
+            match RetroAchievementsOperations.evaluateSnapshot current allowed operation with
+            | OperationDenied message -> Assert.Contains("Hardcore Mode", message)
+            | OperationAllowed -> Assert.Fail $"{operation} was unexpectedly allowed in Hardcore Mode."
 
         Assert.Equal(OperationAllowed, RetroAchievementsOperations.evaluateSnapshot current allowed Reset)
         Assert.Equal(OperationAllowed, RetroAchievementsOperations.evaluateSnapshot current allowed ChangeGame)
+
+    [<Fact>]
+    let ``future hardcore restrictions remain available outside active hardcore sessions`` () =
+        let allowed () = PauseAllowed
+
+        let restrictedOperations =
+            [ LoadState; Rewind; SlowMotion; FrameAdvance; Cheats; InputPlayback; Debugger ]
+
+        let softcore = snapshot 1L 1u
+        let ready = { softcore with Status = Ready }
+
+        for operation in restrictedOperations do
+            Assert.Equal(OperationAllowed, RetroAchievementsOperations.evaluateSnapshot softcore allowed operation)
+
+            Assert.Equal(OperationAllowed, RetroAchievementsOperations.evaluateSnapshot ready allowed operation)
 
     let private indicatorEvent eventType id generation gameId progress percent =
         { EventType = eventType

@@ -8,6 +8,18 @@ open Avalonia.Media.Imaging
 open BubiBoy.RetroAchievements
 
 module internal RetroAchievementsPresentation =
+    type AchievementSortColumn =
+        | OriginalOrder
+        | Status
+        | Title
+        | Points
+        | Rarity
+        | Progress
+
+    type SortDirection =
+        | Ascending
+        | Descending
+
     type HostAction =
         | Ignore
         | Notify of message: string
@@ -153,15 +165,61 @@ module internal RetroAchievementsPresentation =
 
     let private bucketOrder bucket =
         match bucket with
-        | 1uy -> 0 // Locked
-        | 2uy -> 1 // Unlocked
-        | 5uy -> 2 // Recently Unlocked
-        | 6uy -> 3 // Active Challenge
-        | 7uy -> 4 // Almost There
+        | 5uy -> 0 // Recently Unlocked
+        | 6uy -> 1 // Active Challenge
+        | 7uy -> 2 // Almost There
+        | 2uy -> 3 // Unlocked
+        | 1uy -> 4 // Locked
         | 3uy -> 5 // Unsupported
         | 4uy -> 6 // Unofficial
         | 8uy -> 7 // Unsynced
         | _ -> 8
+
+    let private normalizedProgress (achievement: RaAchievement) =
+        if
+            Single.IsNaN achievement.MeasuredPercent
+            || Single.IsInfinity achievement.MeasuredPercent
+        then
+            -1.0f
+        else
+            achievement.MeasuredPercent
+
+    let sortAchievements column direction achievements =
+        let indexed = achievements |> List.indexed
+
+        let sorted =
+            match column with
+            | OriginalOrder -> indexed
+            | Status ->
+                indexed
+                |> List.sortBy (fun (_, achievement) ->
+                    bucketOrder achievement.Bucket, achievement.Title.ToUpperInvariant(), achievement.Id)
+            | Title ->
+                indexed
+                |> List.sortBy (fun (_, achievement) -> achievement.Title.ToUpperInvariant(), achievement.Id)
+            | Points ->
+                indexed
+                |> List.sortBy (fun (_, achievement) -> achievement.Points, achievement.Title.ToUpperInvariant())
+            | Rarity ->
+                indexed
+                |> List.sortBy (fun (_, achievement) -> achievement.Rarity, achievement.Title.ToUpperInvariant())
+            | Progress ->
+                indexed
+                |> List.sortBy (fun (_, achievement) ->
+                    normalizedProgress achievement, achievement.Title.ToUpperInvariant())
+
+        match direction with
+        | Ascending -> sorted
+        | Descending -> List.rev sorted
+
+    let nextSort currentColumn currentDirection selectedColumn =
+        if currentColumn = selectedColumn then
+            selectedColumn,
+            match currentDirection with
+            | Ascending -> Descending
+            | Descending -> Ascending
+        else
+            selectedColumn, Ascending
 
     let achievementGroups achievements =
         achievements

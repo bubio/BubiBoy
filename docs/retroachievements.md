@@ -51,6 +51,19 @@ Hardcore for a loaded game handles `RC_CLIENT_EVENT_RESET` by resetting the
 emulator and acknowledging the reset with `rc_client_reset()`. The persisted
 Hardcore preference defaults to enabled and is applied before loading a game.
 
+The shared operation policy also reserves explicit operation types for Rewind,
+Slow Motion, Frame Advance, Cheats, Input Playback, and Debugger access. These
+features are not currently exposed by BubiBoy, but their Hardcore restrictions
+are already tested. A future implementation must call the shared policy before
+performing any of these operations instead of adding a feature-local Hardcore
+check. Fast-forward is not classified as restricted.
+
+## Manual Acceptance
+
+Server-backed acceptance has been completed with one supported title and one
+achievement unlock. Automated tests remain the primary coverage for login,
+generation changes, overlays, state serialization, and failure paths.
+
 ## Dependency Update
 
 The pinned version and commit are recorded in `ThirdParty/versions.json`. To update:

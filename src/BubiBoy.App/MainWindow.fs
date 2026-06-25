@@ -350,11 +350,7 @@ type MainWindow(?startupRomPath: string) as this =
                       IsAlwaysOnTop = layoutController.IsAlwaysOnTop
                       IsFullScreen = this.WindowState = WindowState.FullScreen
                       ShowFullScreenInfo = settingsStore.Current.ShowFullScreenInfo
-                      CanLoadState =
-                        retroAchievements
-                        |> Option.forall (fun client ->
-                            let snapshot = client.Snapshot
-                            snapshot.Status <> Active || not snapshot.HardcoreEnabled)
+                      CanLoadState = RetroAchievementsOperations.isAllowed retroAchievements LoadState
                       VideoFilter = settingsStore.Current.VideoFilter }
 
         let frameDisplayTimer =
