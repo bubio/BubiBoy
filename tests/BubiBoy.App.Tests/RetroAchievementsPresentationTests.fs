@@ -77,6 +77,11 @@ module RetroAchievementsPresentationTests =
         Assert.Equal(1, calls)
 
     [<Fact>]
+    let ``disabling RetroAchievements preserves the hardcore preference`` () =
+        Assert.True(SettingsWindowSelection.hardcorePreference true)
+        Assert.False(SettingsWindowSelection.hardcorePreference false)
+
+    [<Fact>]
     let ``achievement status sort puts recent and active items before locked items`` () =
         let input =
             [ achievement 3uy "Unsupported"
@@ -380,6 +385,13 @@ module RetroAchievementsPresentationTests =
         }
 
     [<Fact>]
+    let ``decoded image cache enforces a total pixel budget`` () =
+        let used = RetroAchievementsPresentation.imagePixelCountForDimensions 2048 2048
+        Assert.True(RetroAchievementsPresentation.canCacheImageDimensions 0L 2048 2048)
+        Assert.True(RetroAchievementsPresentation.canCacheImageDimensions used 2048 2048)
+        Assert.False(RetroAchievementsPresentation.canCacheImageDimensions (used * 2L) 2048 2048)
+
+    [<Fact>]
     let ``image loader rejects malformed and oversized responses`` () =
         task {
             let mutable body = [| 1uy; 2uy; 3uy |]
@@ -387,9 +399,12 @@ module RetroAchievementsPresentationTests =
             use http =
                 new HttpClient(
                     new StubHandler(fun _ ->
-                        Task.FromResult(
-                            new HttpResponseMessage(HttpStatusCode.OK, Content = new ByteArrayContent(body))
-                        ))
+                        let content = new ByteArrayContent(body)
+
+                        if body.Length > 1024 * 1024 then
+                            content.Headers.ContentLength <- Nullable()
+
+                        Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK, Content = content)))
                 )
 
             let loader = RaImageLoader(http, fun () -> snapshot 1L 1u)

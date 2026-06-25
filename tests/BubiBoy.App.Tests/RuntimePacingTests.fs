@@ -107,6 +107,8 @@ module RuntimePacingTests =
         Assert.True(scheduler.RunNext())
         Assert.Equal(1, presented)
         Assert.Equal(2, scheduler.Requests)
+        coordinator.FallbackTick()
+        Assert.Equal(1, presented)
         coordinator.Stop()
         Assert.True(scheduler.RunNext())
         Assert.Equal(1, presented)

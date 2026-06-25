@@ -3,11 +3,15 @@ namespace BubiBoy.App
 open System
 open System.IO
 open System.Net.Http
+open System.Threading
 open Avalonia.Controls
 open Avalonia.Media.Imaging
 open BubiBoy.RetroAchievements
 
 module internal RetroAchievementsPresentation =
+    [<Literal>]
+    let MaxCachedImagePixels = 8 * 1024 * 1024
+
     type AchievementSortColumn =
         | OriginalOrder
         | Status
@@ -235,6 +239,18 @@ module internal RetroAchievementsPresentation =
         snapshot.Generation = generation
         && (snapshot.Game |> Option.exists (fun game -> game.Id = gameId))
 
+    let imagePixelCountForDimensions width height = int64 width * int64 height
+
+    let imagePixelCount (bitmap: Bitmap) =
+        imagePixelCountForDimensions bitmap.PixelSize.Width bitmap.PixelSize.Height
+
+    let canCacheImageDimensions currentPixels width height =
+        currentPixels + imagePixelCountForDimensions width height
+        <= int64 MaxCachedImagePixels
+
+    let canCacheImage currentPixels (bitmap: Bitmap) =
+        canCacheImageDimensions currentPixels bitmap.PixelSize.Width bitmap.PixelSize.Height
+
     let populateAchievementGroups
         (container: StackPanel)
         (createHeading: string -> Control)
@@ -249,17 +265,53 @@ module internal RetroAchievementsPresentation =
 type internal RaImageLoader(http: HttpClient, getSnapshot: unit -> RaSnapshot) =
     static let maxBytes = 1024 * 1024
 
+    let readBounded (response: HttpResponseMessage) cancellationToken =
+        task {
+            let contentLength = response.Content.Headers.ContentLength
+
+            if contentLength.HasValue && contentLength.Value > int64 maxBytes then
+                return None
+            else
+                use! source = response.Content.ReadAsStreamAsync(cancellationToken)
+                use destination = new MemoryStream()
+                let buffer = Array.zeroCreate<byte> 81920
+                let mutable total = 0
+                let mutable finished = false
+
+                while not finished do
+                    let! read = source.ReadAsync(buffer.AsMemory(0, buffer.Length), cancellationToken)
+
+                    if read = 0 then
+                        finished <- true
+                    elif total + read > maxBytes then
+                        total <- maxBytes + 1
+                        finished <- true
+                    else
+                        do! destination.WriteAsync(buffer.AsMemory(0, read), cancellationToken)
+                        total <- total + read
+
+                if total > maxBytes then
+                    return None
+                else
+                    return Some(destination.ToArray())
+        }
+
     member _.Load(generation: int64, gameId: uint32, url: string) =
         task {
             if not (RetroAchievementsPresentation.canRequestImage url) then
                 return None
             else
                 try
-                    let! bytes = http.GetByteArrayAsync(Uri url)
+                    use request = new HttpRequestMessage(HttpMethod.Get, Uri url)
 
-                    if bytes.Length > maxBytes then
-                        return None
-                    else
+                    use! response =
+                        http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, CancellationToken.None)
+
+                    let! bytes = readBounded response CancellationToken.None
+
+                    match bytes with
+                    | None -> return None
+                    | Some bytes ->
                         use stream = new MemoryStream(bytes)
                         let bitmap = new Bitmap(stream)
 

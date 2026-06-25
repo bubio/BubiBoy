@@ -11,6 +11,9 @@ type SettingsResult =
       RetroAchievementsHardcore: bool
       RetroAchievementsUsername: string }
 
+module internal SettingsWindowSelection =
+    let hardcorePreference isChecked = isChecked
+
 type SettingsWindow(initialSettings: AppSettings.Settings) as this =
     inherit Window()
 
@@ -126,7 +129,7 @@ type SettingsWindow(initialSettings: AppSettings.Settings) as this =
                     { BootRomSelection = selection
                       RetroAchievementsEnabled = enabled.IsChecked.GetValueOrDefault()
                       RetroAchievementsHardcore =
-                        enabled.IsChecked.GetValueOrDefault() && hardcore.IsChecked.GetValueOrDefault()
+                        SettingsWindowSelection.hardcorePreference (hardcore.IsChecked.GetValueOrDefault())
                       RetroAchievementsUsername = username.Text }
             ))
 

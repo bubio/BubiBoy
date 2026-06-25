@@ -31,6 +31,7 @@ type AchievementsWindow(client: RaClient) as this =
     let contentHost = ContentControl()
     let mutable closed = false
     let mutable imageCacheSession: struct (int64 * uint32) option = None
+    let mutable cachedImagePixels = 0L
     let mutable sortColumn = RetroAchievementsPresentation.OriginalOrder
     let mutable sortDirection = RetroAchievementsPresentation.Ascending
 
@@ -39,6 +40,7 @@ type AchievementsWindow(client: RaClient) as this =
             bitmap.Dispose()
 
         imageCache.Clear()
+        cachedImagePixels <- 0L
 
     let updateImageCacheSession snapshot =
         let session =
@@ -97,12 +99,19 @@ type AchievementsWindow(client: RaClient) as this =
                                             | true, target -> target.Source <- cached
                                             | _ -> ()
                                     | _ ->
-                                        imageCache[url] <- bitmap
+                                        if RetroAchievementsPresentation.canCacheImage cachedImagePixels bitmap then
+                                            imageCache[url] <- bitmap
 
-                                        for waiter in waiters do
-                                            match waiter.TryGetTarget() with
-                                            | true, target -> target.Source <- bitmap
-                                            | _ -> ()
+                                            cachedImagePixels <-
+                                                cachedImagePixels
+                                                + RetroAchievementsPresentation.imagePixelCount bitmap
+
+                                            for waiter in waiters do
+                                                match waiter.TryGetTarget() with
+                                                | true, target -> target.Source <- bitmap
+                                                | _ -> ()
+                                        else
+                                            bitmap.Dispose()
                                 else
                                     bitmap.Dispose()))
                     }

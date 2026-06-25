@@ -92,9 +92,11 @@ type internal FramePresentationCoordinator(scheduler: IAnimationFrameScheduler, 
             requestAnimationFrame () |> ignore
 
     member _.FallbackTick() =
-        if running then
+        if running && not animationPending then
             present ()
             requestAnimationFrame () |> ignore
+
+    member _.NeedsFallback = running && not animationPending
 
     member _.Stop() =
         running <- false

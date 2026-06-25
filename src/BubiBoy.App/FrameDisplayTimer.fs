@@ -71,7 +71,10 @@ type internal FrameDisplayTimer
     let fallbackTimer =
         new Timer(
             (fun _ ->
-                if Interlocked.CompareExchange(&fallbackPostPending, 1, 0) = 0 then
+                if
+                    coordinator.NeedsFallback
+                    && Interlocked.CompareExchange(&fallbackPostPending, 1, 0) = 0
+                then
                     Dispatcher.UIThread.Post(fun () ->
                         Interlocked.Exchange(&fallbackPostPending, 0) |> ignore
                         coordinator.FallbackTick())),

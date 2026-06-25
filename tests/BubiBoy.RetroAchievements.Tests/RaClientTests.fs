@@ -52,6 +52,7 @@ let ``achievement event refreshes snapshot and moves unlocked achievement bucket
     Assert.Equal(1uy, updated.Unlocked)
     Assert.Contains(snapshots, fun snapshot -> snapshot.Achievements |> List.exists (fun item -> item.Unlocked = 1uy))
     Assert.Contains(("player", "secret-token"), saved)
+    Assert.Single saved |> ignore
     Assert.DoesNotContain(logs, fun line -> line.Contains("secret-password") || line.Contains("secret-token"))
 
 [<Fact>]
@@ -380,7 +381,9 @@ let ``HTTP response larger than limit reports client error`` () =
 
     let handler =
         new StubHttpHandler(fun _ ->
-            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK, Content = new ByteArrayContent(oversized))))
+            let content = new ByteArrayContent(oversized)
+            content.Headers.ContentLength <- Nullable()
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK, Content = content)))
 
     let backend = FakeNativeBackend()
     let client, _, _, _, _ = createClient backend handler (TimeSpan.FromSeconds 30.0)
@@ -432,6 +435,24 @@ let ``old generation HTTP completion is discarded after unload`` () =
     backend.Request(unativeint 9, "https://example.test/slow", null, null)
     client.UnloadGame()
     response.SetResult(new HttpResponseMessage(HttpStatusCode.OK))
+    Threading.Thread.Sleep 20
+    client.Pump(false)
+    Assert.Empty backend.Completions
+    Assert.Equal(Ready, client.Snapshot.Status)
+
+[<Fact>]
+let ``HTTP cancellation racing completion does not escape unload`` () =
+    let response =
+        TaskCompletionSource<HttpResponseMessage>(TaskCreationOptions.RunContinuationsAsynchronously)
+
+    let handler = new StubHttpHandler(fun _ -> response.Task)
+    let backend = FakeNativeBackend()
+    let client, _, _, _, _ = createClient backend handler (TimeSpan.FromSeconds 30.0)
+    use client = client
+    activate backend client
+    backend.Request(unativeint 10, "https://example.test/race", null, null)
+    response.SetResult(new HttpResponseMessage(HttpStatusCode.OK, Content = new ByteArrayContent([| 1uy |])))
+    client.UnloadGame()
     Threading.Thread.Sleep 20
     client.Pump(false)
     Assert.Empty backend.Completions

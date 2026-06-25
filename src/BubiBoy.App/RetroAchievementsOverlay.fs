@@ -124,6 +124,7 @@ type internal RetroAchievementsOverlayController(host: Grid, client: RaClient) =
     let pending = HashSet<struct (uint32 * int64 * string)>()
     let mutable state = synchronizeOverlay client.Snapshot emptyOverlayState
     let mutable disposed = false
+    let mutable cachedImagePixels = 0L
 
     let dispatch action =
         if Dispatcher.UIThread.CheckAccess() then
@@ -147,6 +148,8 @@ type internal RetroAchievementsOverlayController(host: Grid, client: RaClient) =
         |> Seq.filter (activeUrls.Contains >> not)
         |> Seq.toArray
         |> Array.iter (fun url ->
+            cachedImagePixels <- cachedImagePixels - RetroAchievementsPresentation.imagePixelCount images[url]
+
             images[url].Dispose()
             images.Remove url |> ignore)
 
@@ -179,7 +182,17 @@ type internal RetroAchievementsOverlayController(host: Grid, client: RaClient) =
                                         | true, existing ->
                                             bitmap.Dispose()
                                             GC.KeepAlive existing
-                                        | _ -> images[item.ImageUrl] <- bitmap
+                                        | _ ->
+                                            if
+                                                RetroAchievementsPresentation.canCacheImage cachedImagePixels bitmap
+                                            then
+                                                images[item.ImageUrl] <- bitmap
+
+                                                cachedImagePixels <-
+                                                    cachedImagePixels
+                                                    + RetroAchievementsPresentation.imagePixelCount bitmap
+                                            else
+                                                bitmap.Dispose()
 
                                         render ()
                                     | Some bitmap -> bitmap.Dispose()
@@ -203,6 +216,7 @@ type internal RetroAchievementsOverlayController(host: Grid, client: RaClient) =
                 bitmap.Dispose()
 
             images.Clear()
+            cachedImagePixels <- 0L
 
         render ()
 
@@ -231,5 +245,6 @@ type internal RetroAchievementsOverlayController(host: Grid, client: RaClient) =
                     bitmap.Dispose()
 
                 images.Clear()
+                cachedImagePixels <- 0L
                 host.Children.Clear()
                 http.Dispose()

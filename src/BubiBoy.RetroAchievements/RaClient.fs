@@ -3,6 +3,7 @@ namespace BubiBoy.RetroAchievements
 open System
 open System.Collections.Concurrent
 open System.Diagnostics
+open System.IO
 open System.Net.Http
 open System.Runtime.InteropServices
 open System.Text
@@ -62,7 +63,7 @@ type RaClient
 
     let publish () = changed.Trigger(snapshot ())
 
-    let refreshUser () =
+    let refreshUser saveCredential =
         match nativeApi.GetUser handle with
         | Some nativeUser ->
             let next =
@@ -73,9 +74,10 @@ type RaClient
 
             user <- Some next
 
-            match credentialStore.SaveToken next.Username nativeUser.Token with
-            | Ok() -> ()
-            | Error message -> log $"RetroAchievements token was not saved: {message}"
+            if saveCredential then
+                match credentialStore.SaveToken next.Username nativeUser.Token with
+                | Ok() -> ()
+                | Error message -> log $"RetroAchievements token was not saved: {message}"
         | None -> user <- None
 
     let refreshGame () =
@@ -155,7 +157,7 @@ type RaClient
                 pendingOperation <- NoOperation
 
                 if result = 0 then
-                    refreshUser ()
+                    refreshUser true
                     status <- Ready
                     log $"RetroAchievements login succeeded for {username}."
                 else
@@ -214,7 +216,41 @@ type RaClient
 
     let cancelHttpRequests () =
         for request in requests.Values do
-            request.Cancel()
+            try
+                request.Cancel()
+            with :? ObjectDisposedException ->
+                ()
+
+    let readResponseBody (response: HttpResponseMessage) maxBytes cancellationToken =
+        task {
+            let contentLength = response.Content.Headers.ContentLength
+
+            if contentLength.HasValue && contentLength.Value > int64 maxBytes then
+                return None
+            else
+                use! source = response.Content.ReadAsStreamAsync(cancellationToken)
+                use destination = new MemoryStream()
+                let buffer = Array.zeroCreate<byte> 81920
+                let mutable total = 0
+                let mutable exceeded = false
+
+                while not exceeded do
+                    let! read = source.ReadAsync(buffer.AsMemory(0, buffer.Length), cancellationToken)
+
+                    if read = 0 then
+                        exceeded <- true
+                    elif total + read > maxBytes then
+                        total <- maxBytes + 1
+                        exceeded <- true
+                    else
+                        do! destination.WriteAsync(buffer.AsMemory(0, read), cancellationToken)
+                        total <- total + read
+
+                if total > maxBytes then
+                    return None
+                else
+                    return Some(destination.ToArray())
+        }
 
     let serverRequestCallback =
         NativeInterop.ServerRequestCallback(fun _ requestId url postData contentType ->
@@ -244,11 +280,11 @@ type RaClient
                         use! response =
                             httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cts.Token)
 
-                        let! bytes = response.Content.ReadAsByteArrayAsync(cts.Token)
+                        let! bytes = readResponseBody response (8 * 1024 * 1024) cts.Token
 
-                        if bytes.Length > 8 * 1024 * 1024 then
-                            statusCode <- -1
-                        else
+                        match bytes with
+                        | None -> statusCode <- -1
+                        | Some bytes ->
                             statusCode <- int response.StatusCode
                             body <- bytes
                     with
@@ -257,8 +293,9 @@ type RaClient
                         log $"RetroAchievements HTTP request failed: {ex.Message}"
                         statusCode <- -2
 
-                    requests.TryRemove requestKey |> ignore
-                    cts.Dispose()
+                    match requests.TryRemove requestKey with
+                    | true, owned -> owned.Dispose()
+                    | false, _ -> cts.Dispose()
 
                     completions.Enqueue(fun () ->
                         if requestGeneration = generation then
@@ -443,7 +480,7 @@ type RaClient
                         achievementsDirty <- false
 
                         if shouldRefreshUser then
-                            refreshUser ()
+                            refreshUser false
 
                         if shouldRefreshAchievements then
                             refreshAchievements ()
@@ -516,7 +553,6 @@ type RaClient
                     nativeApi.AbortServerRequests handle
                     nativeApi.Destroy handle
                     handle <- nativeint 0
-                    requests.Clear()
                     httpClient.Dispose()
                     GC.KeepAlive nativeCallbackRoots)
 
