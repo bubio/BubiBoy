@@ -4,7 +4,9 @@ static void event_callback(void* userdata, uint32_t event_type,
                            uint32_t related_id, const char* title,
                            const char* description, const char* image_url,
                            const char* measured_progress,
-                           float measured_percent) {
+                           float measured_percent, const char* value,
+                           const char* best_score, uint32_t rank,
+                           uint32_t total_entries) {
   (void)userdata;
   (void)event_type;
   (void)related_id;
@@ -13,6 +15,35 @@ static void event_callback(void* userdata, uint32_t event_type,
   (void)image_url;
   (void)measured_progress;
   (void)measured_percent;
+  (void)value;
+  (void)best_score;
+  (void)rank;
+  (void)total_entries;
+}
+
+static void scoreboard_entry_callback(void* userdata, const char* username,
+                                      uint32_t rank, const char* score) {
+  (void)userdata;
+  (void)username;
+  (void)rank;
+  (void)score;
+}
+
+static void leaderboard_callback(void* userdata, uint8_t bucket,
+                                 const char* bucket_label, uint32_t id,
+                                 const char* title, const char* description,
+                                 const char* tracker_value, uint8_t state,
+                                 uint8_t format, uint8_t lower_is_better) {
+  (void)userdata;
+  (void)bucket;
+  (void)bucket_label;
+  (void)id;
+  (void)title;
+  (void)description;
+  (void)tracker_value;
+  (void)state;
+  (void)format;
+  (void)lower_is_better;
 }
 
 int main(void) {
@@ -23,7 +54,8 @@ int main(void) {
   if (bubi_ra_version() != 12003000U)
     return 1;
 
-  client = bubi_ra_create(NULL, NULL, event_callback, NULL, NULL);
+  client = bubi_ra_create(NULL, NULL, event_callback,
+                          scoreboard_entry_callback, NULL, NULL);
   if (!client)
     return 2;
 
@@ -34,6 +66,7 @@ int main(void) {
   (void)bubi_ra_can_pause(client, &frames_remaining);
   (void)bubi_ra_get_rich_presence(client, rich_presence,
                                   sizeof(rich_presence));
+  bubi_ra_enumerate_leaderboards(client, leaderboard_callback);
 
   bubi_ra_destroy(client);
   return 0;

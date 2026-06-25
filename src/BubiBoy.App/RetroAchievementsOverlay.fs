@@ -90,6 +90,69 @@ module internal RetroAchievementsOverlay =
             CornerRadius = CornerRadius(7.0)
         )
 
+    let private leaderboardTracker (tracker: LeaderboardTracker) =
+        Border(
+            Child =
+                TextBlock(
+                    Text = tracker.Display,
+                    FontSize = 14.0,
+                    FontWeight = FontWeight.SemiBold,
+                    Foreground = Brushes.White
+                ),
+            MinWidth = 100.0,
+            Padding = Thickness(10.0, 6.0),
+            Background = cardBackground,
+            BorderBrush = borderBrush,
+            BorderThickness = Thickness(1.0),
+            CornerRadius = CornerRadius(6.0)
+        )
+
+    let private scoreboardCard (scoreboard: LeaderboardScoreboard) =
+        let details = StackPanel(Spacing = 3.0)
+
+        details.Children.Add(
+            TextBlock(
+                Text = scoreboard.Title,
+                FontSize = 13.0,
+                FontWeight = FontWeight.SemiBold,
+                Foreground = Brushes.White
+            )
+        )
+        |> ignore
+
+        details.Children.Add(
+            TextBlock(
+                Text =
+                    $"Rank {scoreboard.Rank} / {scoreboard.TotalEntries}  |  {scoreboard.SubmittedScore}  |  Best {scoreboard.BestScore}",
+                FontSize = 12.0,
+                Foreground = Brushes.White
+            )
+        )
+        |> ignore
+
+        scoreboard.TopEntries
+        |> List.truncate 3
+        |> List.iter (fun entry ->
+            details.Children.Add(
+                TextBlock(
+                    Text = $"#{entry.Rank} {entry.Username}  {entry.Score}",
+                    FontSize = 11.0,
+                    Foreground = Brushes.White
+                )
+            )
+            |> ignore)
+
+        Border(
+            Child = details,
+            MinWidth = 250.0,
+            MaxWidth = 400.0,
+            Padding = Thickness(10.0),
+            Background = cardBackground,
+            BorderBrush = borderBrush,
+            BorderThickness = Thickness(1.0),
+            CornerRadius = CornerRadius(7.0)
+        )
+
     let buildView state tryGetBitmap requestImage =
         let view = Grid(IsHitTestVisible = false, ClipToBounds = true)
 
@@ -107,6 +170,20 @@ module internal RetroAchievementsOverlay =
         challenges.IsVisible <- challenges.Children.Count > 0
         view.Children.Add challenges |> ignore
 
+        let trackers =
+            StackPanel(
+                Spacing = 6.0,
+                Margin = Thickness(10.0),
+                HorizontalAlignment = HorizontalAlignment.Left,
+                VerticalAlignment = VerticalAlignment.Top
+            )
+
+        state.LeaderboardTrackers
+        |> List.iter (leaderboardTracker >> trackers.Children.Add >> ignore)
+
+        trackers.IsVisible <- trackers.Children.Count > 0
+        view.Children.Add trackers |> ignore
+
         state.Progress
         |> Option.iter (fun item ->
             let progress = progressCard tryGetBitmap requestImage item
@@ -114,6 +191,14 @@ module internal RetroAchievementsOverlay =
             progress.HorizontalAlignment <- HorizontalAlignment.Right
             progress.VerticalAlignment <- VerticalAlignment.Bottom
             view.Children.Add progress |> ignore)
+
+        state.Scoreboard
+        |> Option.iter (fun item ->
+            let scoreboard = scoreboardCard item
+            scoreboard.Margin <- Thickness(10.0)
+            scoreboard.HorizontalAlignment <- HorizontalAlignment.Left
+            scoreboard.VerticalAlignment <- VerticalAlignment.Bottom
+            view.Children.Add scoreboard |> ignore)
 
         view
 
@@ -125,6 +210,9 @@ type internal RetroAchievementsOverlayController(host: Grid, client: RaClient) =
     let mutable state = synchronizeOverlay client.Snapshot emptyOverlayState
     let mutable disposed = false
     let mutable cachedImagePixels = 0L
+
+    let scoreboardTimer =
+        DispatcherTimer(Interval = RetroAchievementsPresentation.ScoreboardDisplayDuration)
 
     let dispatch action =
         if Dispatcher.UIThread.CheckAccess() then
@@ -209,6 +297,7 @@ type internal RetroAchievementsOverlayController(host: Grid, client: RaClient) =
         state <- synchronizeOverlay snapshot state
 
         if state.Session <> previousSession then
+            scoreboardTimer.Stop()
             host.Children.Clear()
             pending.Clear()
 
@@ -227,9 +316,24 @@ type internal RetroAchievementsOverlayController(host: Grid, client: RaClient) =
         client.EventRaised.Subscribe(fun event ->
             dispatch (fun () ->
                 state <- reduceOverlay client.Snapshot event state
+
+                if
+                    event.EventType = 13u
+                    && RetroAchievementsPresentation.isCurrentOverlayEvent event state
+                    && state.Scoreboard.IsSome
+                then
+                    scoreboardTimer.Stop()
+                    scoreboardTimer.Start()
+
                 render ()))
 
-    do render ()
+    do
+        scoreboardTimer.Tick.Add(fun _ ->
+            scoreboardTimer.Stop()
+            state <- RetroAchievementsPresentation.clearScoreboard state
+            render ())
+
+        render ()
 
     member internal _.State = state
 
@@ -237,6 +341,7 @@ type internal RetroAchievementsOverlayController(host: Grid, client: RaClient) =
         member _.Dispose() =
             if not disposed then
                 disposed <- true
+                scoreboardTimer.Stop()
                 changedSubscription.Dispose()
                 eventSubscription.Dispose()
                 pending.Clear()

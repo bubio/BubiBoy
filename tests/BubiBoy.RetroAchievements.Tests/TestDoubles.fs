@@ -30,11 +30,16 @@ type internal FakeNativeBackend() =
     let mutable operationCallback: NativeInterop.OperationCallback option = None
     let mutable readMemoryCallback: NativeInterop.ReadMemoryCallback option = None
     let mutable serverCallback: NativeInterop.ServerRequestCallback option = None
-    let mutable eventCallback: NativeInterop.EventCallback option = None
+    let mutable eventCallback: NativeInterop.LeaderboardEventCallback option = None
+
+    let mutable scoreboardEntryCallback: NativeInterop.ScoreboardEntryCallback option =
+        None
+
     let mutable doFrameAction: unit -> unit = fun () -> ()
     let mutable user: NativeInterop.UserData option = None
     let mutable game: NativeInterop.GameData option = None
     let mutable achievements: RaAchievement list = []
+    let mutable leaderboards: RaLeaderboard list = []
     let mutable richPresence: string option = None
     let mutable richPresenceReadCount = 0
     let mutable doFrameCount = 0
@@ -45,10 +50,11 @@ type internal FakeNativeBackend() =
 
     let api: NativeInterop.Api =
         { Create =
-            fun (readMemory, server, event, _, _) ->
+            fun (readMemory, server, event, scoreboardEntry, _, _) ->
                 readMemoryCallback <- Some readMemory
                 serverCallback <- Some server
                 eventCallback <- Some event
+                scoreboardEntryCallback <- Some scoreboardEntry
                 nativeint 1
           Destroy = ignore
           Version = fun () -> 12003000u
@@ -90,6 +96,22 @@ type internal FakeNativeBackend() =
                         achievement.Unlocked,
                         achievement.ImageUrl
                     ))
+          EnumerateLeaderboards =
+            fun (_, callback) ->
+                leaderboards
+                |> List.iter (fun leaderboard ->
+                    callback.Invoke(
+                        nativeint 0,
+                        leaderboard.Bucket,
+                        leaderboard.BucketLabel,
+                        leaderboard.Id,
+                        leaderboard.Title,
+                        leaderboard.Description,
+                        leaderboard.TrackerValue,
+                        leaderboard.State,
+                        leaderboard.Format,
+                        if leaderboard.LowerIsBetter then 1uy else 0uy
+                    ))
           DoFrame =
             fun _ ->
                 doFrameCount <- doFrameCount + 1
@@ -116,6 +138,10 @@ type internal FakeNativeBackend() =
     member _.Achievements
         with get () = achievements
         and set value = achievements <- value
+
+    member _.Leaderboards
+        with get () = leaderboards
+        and set value = leaderboards <- value
 
     member _.RichPresence
         with get () = richPresence
@@ -144,7 +170,7 @@ type internal FakeNativeBackend() =
         operationCallback <- None
 
     member _.RaiseEvent(eventType: uint32, id: uint32, title: string, description: string) =
-        eventCallback.Value.Invoke(nativeint 0, eventType, id, title, description, "", "", 0.0f)
+        eventCallback.Value.Invoke(nativeint 0, eventType, id, title, description, "", "", 0.0f, "", "", 0u, 0u)
 
     member _.RaiseIndicatorEvent
         (
@@ -164,7 +190,41 @@ type internal FakeNativeBackend() =
             description,
             imageUrl,
             measuredProgress,
-            measuredPercent
+            measuredPercent,
+            "",
+            "",
+            0u,
+            0u
+        )
+
+    member _.RaiseLeaderboardEvent
+        (
+            eventType: uint32,
+            id: uint32,
+            title: string,
+            description: string,
+            value: string,
+            bestScore: string,
+            rank: uint32,
+            totalEntries: uint32,
+            entries: RaLeaderboardEntry list
+        ) =
+        for entry in entries do
+            scoreboardEntryCallback.Value.Invoke(nativeint 0, entry.Username, entry.Rank, entry.Score)
+
+        eventCallback.Value.Invoke(
+            nativeint 0,
+            eventType,
+            id,
+            title,
+            description,
+            "",
+            "",
+            0.0f,
+            value,
+            bestScore,
+            rank,
+            totalEntries
         )
 
     member _.Request(requestId: unativeint, url: string, postData: string, contentType: string) =

@@ -34,6 +34,7 @@ type AchievementsWindow(client: RaClient) as this =
     let mutable cachedImagePixels = 0L
     let mutable sortColumn = RetroAchievementsPresentation.OriginalOrder
     let mutable sortDirection = RetroAchievementsPresentation.Ascending
+    let mutable selectedTabIndex = 0
 
     let clearImageCache () =
         for bitmap in imageCache.Values do
@@ -212,7 +213,7 @@ type AchievementsWindow(client: RaClient) as this =
 
         button
 
-    let achievementTable generation gameId achievements =
+    let achievementTable generation gameId (achievements: RaAchievement list) =
         let table = Grid(RowDefinitions = RowDefinitions("Auto,*"))
 
         let headings =
@@ -238,6 +239,36 @@ type AchievementsWindow(client: RaClient) as this =
         Grid.SetRow(scroll, 1)
         table.Children.Add scroll |> ignore
         table
+
+    let leaderboardTable (leaderboards: RaLeaderboard list) =
+        let rows = StackPanel(Spacing = 6.0)
+
+        leaderboards
+        |> List.iter (fun leaderboard ->
+            let details = StackPanel(Spacing = 2.0)
+
+            let title =
+                TextBlock(Text = leaderboard.Title, FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap)
+
+            AppTheme.bindBrush title TextBlock.ForegroundProperty AppTheme.PrimaryText
+            details.Children.Add title |> ignore
+
+            details.Children.Add(
+                cellText (
+                    if String.IsNullOrWhiteSpace leaderboard.TrackerValue then
+                        leaderboard.Description
+                    else
+                        $"{leaderboard.Description}\nCurrent: {leaderboard.TrackerValue}"
+                )
+            )
+            |> ignore
+
+            let row = Grid(ColumnDefinitions = ColumnDefinitions("120,*"))
+            addCell 0 (cellText leaderboard.BucketLabel) row
+            addCell 1 details row
+            rows.Children.Add(DialogLayout.surface row (Thickness(8.0))) |> ignore)
+
+        ScrollViewer(Content = rows, VerticalScrollBarVisibility = ScrollBarVisibility.Auto)
 
     let rebuildContent () =
         let snapshot = client.Snapshot
@@ -310,11 +341,41 @@ type AchievementsWindow(client: RaClient) as this =
             gameHeader.Children.Add gameDetails |> ignore
             header.Children.Add(DialogLayout.surface gameHeader (Thickness(8.0))) |> ignore
 
-            if List.isEmpty snapshot.Achievements then
-                contentHost.Content <- DialogLayout.bodyText "No achievements are available for this game."
-            else
-                contentHost.Content <- achievementTable snapshot.Generation game.Id snapshot.Achievements
-        | None -> ()
+            let tabs = TabControl()
+
+            let achievementsTab =
+                TabItem(Header = $"Achievements ({snapshot.Achievements.Length})")
+
+            let achievementsContent: Control =
+                if List.isEmpty snapshot.Achievements then
+                    DialogLayout.bodyText "No achievements are available for this game." :> Control
+                else
+                    achievementTable snapshot.Generation game.Id snapshot.Achievements :> Control
+
+            achievementsTab.Content <- achievementsContent
+
+            tabs.Items.Add achievementsTab |> ignore
+
+            let leaderboardsTab =
+                TabItem(Header = $"Leaderboards ({snapshot.Leaderboards.Length})")
+
+            let leaderboardsContent: Control =
+                if List.isEmpty snapshot.Leaderboards then
+                    DialogLayout.bodyText "No leaderboards are available for this game." :> Control
+                else
+                    leaderboardTable snapshot.Leaderboards :> Control
+
+            leaderboardsTab.Content <- leaderboardsContent
+
+            tabs.Items.Add leaderboardsTab |> ignore
+            tabs.SelectedIndex <- selectedTabIndex
+
+            tabs.SelectionChanged.Add(fun _ ->
+                if tabs.SelectedIndex >= 0 then
+                    selectedTabIndex <- tabs.SelectedIndex)
+
+            contentHost.Content <- tabs
+        | None -> selectedTabIndex <- 0
 
     do
         rebuild <- rebuildContent

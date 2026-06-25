@@ -116,6 +116,108 @@ let ``indicator events preserve progress and active game identity`` () =
     Assert.Equal(123u, event.GameId)
 
 [<Fact>]
+let ``leaderboard tracker and scoreboard events preserve structured values`` () =
+    let backend = FakeNativeBackend()
+
+    backend.Leaderboards <-
+        [ { Bucket = 2uy
+            BucketLabel = "Active"
+            Id = 12u
+            Title = "Fast Clear"
+            Description = "Finish quickly"
+            TrackerValue = "0:42.15"
+            State = 2uy
+            Format = 0uy
+            LowerIsBetter = true } ]
+
+    let client, _, _, _, _ =
+        createClient backend (successfulHandler ()) (TimeSpan.FromSeconds 30.0)
+
+    use client = client
+    activate backend client
+    let events = ResizeArray<RaEvent>()
+    client.EventRaised.Add events.Add
+
+    backend.DoFrameAction <-
+        fun () ->
+            backend.RaiseLeaderboardEvent(10u, 2u, "", "", "0:42.15", "", 0u, 0u, [])
+
+            backend.RaiseLeaderboardEvent(
+                13u,
+                12u,
+                "Fast Clear",
+                "Finish quickly",
+                "0:42.15",
+                "0:40.00",
+                8u,
+                100u,
+                [ { Username = "player"
+                    Rank = 8u
+                    Score = "0:42.15" }
+                  { Username = "leader"
+                    Rank = 1u
+                    Score = "0:30.00" } ]
+            )
+
+    client.ProcessFrame(session ())
+
+    Assert.Single(client.Snapshot.Leaderboards) |> ignore
+    Assert.Equal(2, events.Count)
+    Assert.Equal("0:42.15", events[0].Value)
+    Assert.Equal(8u, events[1].Rank)
+    Assert.Equal("0:40.00", events[1].BestScore)
+    Assert.Equal(2, events[1].LeaderboardEntries.Length)
+
+[<Fact>]
+let ``leaderboard state refresh is deferred until native frame processing completes`` () =
+    let backend = FakeNativeBackend()
+    let mutable insideFrame = false
+    let mutable enumeratedInsideFrame = false
+    let mutable enumerations = 0
+
+    let api =
+        { backend.Api with
+            EnumerateLeaderboards =
+                fun args ->
+                    enumerations <- enumerations + 1
+                    enumeratedInsideFrame <- enumeratedInsideFrame || insideFrame
+                    backend.Api.EnumerateLeaderboards args }
+
+    let credentials, _, _, _ = credentials ()
+    let logs = ResizeArray<string>()
+    use http = new HttpClient(successfulHandler ())
+
+    use client =
+        new RaClient(api, credentials, http, FakeTimeProvider(), TimeSpan.FromSeconds 30.0, logs.Add)
+
+    activate backend client
+    let baseline = enumerations
+
+    backend.DoFrameAction <-
+        fun () ->
+            insideFrame <- true
+
+            backend.Leaderboards <-
+                [ { Bucket = 2uy
+                    BucketLabel = "Active"
+                    Id = 12u
+                    Title = "Fast Clear"
+                    Description = "Finish quickly"
+                    TrackerValue = "0:42.15"
+                    State = 2uy
+                    Format = 0uy
+                    LowerIsBetter = true } ]
+
+            backend.RaiseLeaderboardEvent(2u, 12u, "Fast Clear", "Finish quickly", "", "", 0u, 0u, [])
+            insideFrame <- false
+
+    client.ProcessFrame(session ())
+
+    Assert.False(enumeratedInsideFrame)
+    Assert.Equal(baseline + 1, enumerations)
+    Assert.Equal("Fast Clear", Assert.Single(client.Snapshot.Leaderboards).Title)
+
+[<Fact>]
 let ``challenge show and hide refresh achievement buckets but progress update does not`` () =
     let backend = FakeNativeBackend()
     let mutable enumerations = 0

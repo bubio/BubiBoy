@@ -28,6 +28,7 @@ struct bubi_ra_client {
   bubi_ra_read_memory_callback read_memory;
   bubi_ra_server_request_callback server_request;
   bubi_ra_event_callback event_callback;
+  bubi_ra_scoreboard_entry_callback scoreboard_entry_callback;
   bubi_ra_log_callback log_callback;
   bubi_ra_operation_callback operation_callback;
   rc_client_async_handle_t* operation_handle;
@@ -130,6 +131,10 @@ static void bubi_event(const rc_client_event_t* event, rc_client_t* client) {
   const char* description = "";
   const char* measured_progress = "";
   float measured_percent = 0.0f;
+  const char* value = "";
+  const char* best_score = "";
+  uint32_t rank = 0;
+  uint32_t total_entries = 0;
   char image_url[1024] = {0};
 
   if (!context || !context->event_callback)
@@ -150,6 +155,10 @@ static void bubi_event(const rc_client_event_t* event, rc_client_t* client) {
     related_id = event->leaderboard->id;
     title = event->leaderboard->title;
     description = event->leaderboard->description;
+    value = event->leaderboard->tracker_value;
+  } else if (event->leaderboard_tracker) {
+    related_id = event->leaderboard_tracker->id;
+    value = event->leaderboard_tracker->display;
   } else if (event->server_error) {
     related_id = event->server_error->related_id;
     title = event->server_error->api;
@@ -159,10 +168,31 @@ static void bubi_event(const rc_client_event_t* event, rc_client_t* client) {
     title = event->subset->title;
   }
 
+  if (event->leaderboard_scoreboard) {
+    uint32_t i;
+    related_id = event->leaderboard_scoreboard->leaderboard_id;
+    value = event->leaderboard_scoreboard->submitted_score;
+    best_score = event->leaderboard_scoreboard->best_score;
+    rank = event->leaderboard_scoreboard->new_rank;
+    total_entries = event->leaderboard_scoreboard->num_entries;
+
+    if (context->scoreboard_entry_callback &&
+        event->leaderboard_scoreboard->top_entries) {
+      for (i = 0; i < event->leaderboard_scoreboard->num_top_entries; ++i) {
+        const rc_client_leaderboard_scoreboard_entry_t* entry =
+            &event->leaderboard_scoreboard->top_entries[i];
+        context->scoreboard_entry_callback(context->userdata,
+                                           entry->username ? entry->username : "",
+                                           entry->rank, entry->score);
+      }
+    }
+  }
+
   context->event_callback(context->userdata, event->type, related_id,
                           title ? title : "", description ? description : "",
                           image_url, measured_progress ? measured_progress : "",
-                          measured_percent);
+                          measured_percent, value ? value : "",
+                          best_score ? best_score : "", rank, total_entries);
 }
 
 static void bubi_operation_complete(int result, const char* error_message,
@@ -178,6 +208,7 @@ static void bubi_operation_complete(int result, const char* error_message,
 bubi_ra_client* bubi_ra_create(bubi_ra_read_memory_callback read_memory,
                                bubi_ra_server_request_callback server_request,
                                bubi_ra_event_callback event_callback,
+                               bubi_ra_scoreboard_entry_callback scoreboard_entry_callback,
                                bubi_ra_log_callback log_callback,
                                void* userdata) {
   bubi_ra_client* context = (bubi_ra_client*)calloc(1, sizeof(*context));
@@ -187,6 +218,7 @@ bubi_ra_client* bubi_ra_create(bubi_ra_read_memory_callback read_memory,
   context->read_memory = read_memory;
   context->server_request = server_request;
   context->event_callback = event_callback;
+  context->scoreboard_entry_callback = scoreboard_entry_callback;
   context->log_callback = log_callback;
   context->userdata = userdata;
   context->native = rc_client_create(bubi_read_memory, bubi_server_request);
@@ -371,6 +403,32 @@ void bubi_ra_enumerate_achievements(bubi_ra_client* client,
     }
   }
   rc_client_destroy_achievement_list(list);
+}
+
+void bubi_ra_enumerate_leaderboards(bubi_ra_client* client,
+                                    bubi_ra_leaderboard_callback callback) {
+  rc_client_leaderboard_list_t* list;
+  uint32_t bucket_index;
+  if (!client || !callback)
+    return;
+  list = rc_client_create_leaderboard_list(
+      client->native, RC_CLIENT_LEADERBOARD_LIST_GROUPING_TRACKING);
+  if (!list)
+    return;
+  for (bucket_index = 0; bucket_index < list->num_buckets; ++bucket_index) {
+    const rc_client_leaderboard_bucket_t* bucket = &list->buckets[bucket_index];
+    uint32_t leaderboard_index;
+    for (leaderboard_index = 0;
+         leaderboard_index < bucket->num_leaderboards; ++leaderboard_index) {
+      const rc_client_leaderboard_t* leaderboard =
+          bucket->leaderboards[leaderboard_index];
+      callback(client->userdata, bucket->bucket_type, bucket->label,
+               leaderboard->id, leaderboard->title, leaderboard->description,
+               leaderboard->tracker_value, leaderboard->state,
+               leaderboard->format, leaderboard->lower_is_better);
+    }
+  }
+  rc_client_destroy_leaderboard_list(list);
 }
 
 void bubi_ra_do_frame(bubi_ra_client* client) {

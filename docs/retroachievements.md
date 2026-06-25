@@ -17,6 +17,10 @@ Softcore and Hardcore sessions.
 - Rich Presence is sampled from the active emulation session once per second and
   shown in the Achievements window. It is cleared immediately when the game or
   authenticated session ends.
+- Leaderboard attempts are shown in the game viewport. Active tracker values are
+  displayed at the upper left, and submitted rank, score, personal best, and the
+  server-provided top entries are displayed at the lower left. The Achievements
+  window also exposes the current leaderboard list in a separate tab.
 
 ## Memory Map
 

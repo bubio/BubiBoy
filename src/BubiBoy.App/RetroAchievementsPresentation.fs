@@ -12,6 +12,8 @@ module internal RetroAchievementsPresentation =
     [<Literal>]
     let MaxCachedImagePixels = 8 * 1024 * 1024
 
+    let ScoreboardDisplayDuration = TimeSpan.FromSeconds 5.0
+
     type AchievementSortColumn =
         | OriginalOrder
         | Status
@@ -37,18 +39,33 @@ module internal RetroAchievementsPresentation =
           MeasuredPercent: float32
           Revision: int64 }
 
+    type LeaderboardTracker = { TrackerId: uint32; Display: string }
+
+    type LeaderboardScoreboard =
+        { LeaderboardId: uint32
+          Title: string
+          SubmittedScore: string
+          BestScore: string
+          Rank: uint32
+          TotalEntries: uint32
+          TopEntries: RaLeaderboardEntry list }
+
     type OverlaySession = { Generation: int64; GameId: uint32 }
 
     type OverlayState =
         { Session: OverlaySession option
           Challenges: IndicatorItem list
           Progress: IndicatorItem option
+          LeaderboardTrackers: LeaderboardTracker list
+          Scoreboard: LeaderboardScoreboard option
           NextRevision: int64 }
 
     let emptyOverlayState =
         { Session = None
           Challenges = []
           Progress = None
+          LeaderboardTrackers = []
+          Scoreboard = None
           NextRevision = 1L }
 
     let private snapshotSession (snapshot: RaSnapshot) =
@@ -67,6 +84,10 @@ module internal RetroAchievementsPresentation =
         else
             { emptyOverlayState with
                 Session = session }
+
+    let isCurrentOverlayEvent (event: RaEvent) state =
+        state.Session
+        |> Option.exists (fun session -> event.Generation = session.Generation && event.GameId = session.GameId)
 
     let private item revision (event: RaEvent) =
         { AchievementId = event.RelatedId
@@ -93,8 +114,7 @@ module internal RetroAchievementsPresentation =
     let reduceOverlay (snapshot: RaSnapshot) (event: RaEvent) (state: OverlayState) =
         let current = synchronizeOverlay snapshot state
 
-        match current.Session with
-        | Some session when event.Generation = session.Generation && event.GameId = session.GameId ->
+        if isCurrentOverlayEvent event current then
             match event.EventType with
             | 1u ->
                 { current with
@@ -131,8 +151,37 @@ module internal RetroAchievementsPresentation =
                 { current with
                     Progress = Some(item revision event)
                     NextRevision = max current.NextRevision (revision + 1L) }
+            | 10u
+            | 12u ->
+                let tracker =
+                    { TrackerId = event.RelatedId
+                      Display = event.Value }
+
+                let remaining =
+                    current.LeaderboardTrackers
+                    |> List.filter (fun value -> value.TrackerId <> tracker.TrackerId)
+
+                { current with
+                    LeaderboardTrackers = remaining @ [ tracker ] }
+            | 11u ->
+                { current with
+                    LeaderboardTrackers =
+                        current.LeaderboardTrackers
+                        |> List.filter (fun value -> value.TrackerId <> event.RelatedId) }
+            | 13u ->
+                { current with
+                    Scoreboard =
+                        Some
+                            { LeaderboardId = event.RelatedId
+                              Title = event.Title
+                              SubmittedScore = event.Value
+                              BestScore = event.BestScore
+                              Rank = event.Rank
+                              TotalEntries = event.TotalEntries
+                              TopEntries = event.LeaderboardEntries } }
             | _ -> current
-        | _ -> current
+        else
+            current
 
     let containsIndicator (item: IndicatorItem) state =
         let matches value =
@@ -142,6 +191,8 @@ module internal RetroAchievementsPresentation =
 
         state.Challenges |> List.exists matches
         || state.Progress |> Option.exists matches
+
+    let clearScoreboard state = { state with Scoreboard = None }
 
     let measuredPercent (item: IndicatorItem) =
         let value = float item.MeasuredPercent
@@ -154,6 +205,10 @@ module internal RetroAchievementsPresentation =
     let hostAction (event: RaEvent) =
         match event.EventType with
         | 1u -> Notify $"Achievement unlocked: {event.Title}"
+        | 2u -> Notify $"Leaderboard started: {event.Title}"
+        | 3u -> Notify $"Leaderboard attempt failed: {event.Title}"
+        | 4u -> Notify $"Leaderboard submitted: {event.Title}"
+        | 13u when event.Rank > 0u -> Notify $"Leaderboard rank: {event.Rank} / {event.TotalEntries} ({event.Value})"
         | 14u -> ResetRequested
         | 15u -> Notify "All achievements completed."
         | 16u -> Notify $"RetroAchievements server error: {event.Description}"
@@ -188,7 +243,7 @@ module internal RetroAchievementsPresentation =
         else
             achievement.MeasuredPercent
 
-    let sortAchievements column direction achievements =
+    let sortAchievements column direction (achievements: RaAchievement list) =
         let indexed = achievements |> List.indexed
 
         let sorted =
@@ -225,7 +280,7 @@ module internal RetroAchievementsPresentation =
         else
             selectedColumn, Ascending
 
-    let achievementGroups achievements =
+    let achievementGroups (achievements: RaAchievement list) =
         achievements
         |> List.groupBy (fun achievement -> achievement.Bucket, achievement.BucketLabel)
         |> List.sortBy (fun ((bucket, _), _) -> bucketOrder bucket)

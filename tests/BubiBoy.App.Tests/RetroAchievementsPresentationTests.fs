@@ -41,6 +41,11 @@ module RetroAchievementsPresentationTests =
               ImageUrl = ""
               MeasuredProgress = ""
               MeasuredPercent = 0.0f
+              Value = ""
+              BestScore = ""
+              Rank = 0u
+              TotalEntries = 0u
+              LeaderboardEntries = []
               Generation = 1L
               GameId = 1u }
 
@@ -166,6 +171,7 @@ module RetroAchievementsPresentationTests =
                   Hash = "hash"
                   ImageUrl = "" }
           Achievements = []
+          Leaderboards = []
           RichPresence = None
           Generation = generation }
 
@@ -213,6 +219,11 @@ module RetroAchievementsPresentationTests =
           ImageUrl = $"https://example.test/{id}.png"
           MeasuredProgress = progress
           MeasuredPercent = percent
+          Value = ""
+          BestScore = ""
+          Rank = 0u
+          TotalEntries = 0u
+          LeaderboardEntries = []
           Generation = generation
           GameId = gameId }
 
@@ -280,19 +291,77 @@ module RetroAchievementsPresentationTests =
         Assert.True(hidden.Progress.IsNone)
 
     [<Fact>]
+    let ``leaderboard reducer tracks values and scoreboard results`` () =
+        let current = snapshot 8L 42u
+
+        let tracker =
+            { indicatorEvent 10u 3u 8L 42u "" 0.0f with
+                Value = "1,234" }
+
+        let shown =
+            RetroAchievementsPresentation.reduceOverlay current tracker RetroAchievementsPresentation.emptyOverlayState
+
+        Assert.Equal("1,234", Assert.Single(shown.LeaderboardTrackers).Display)
+
+        let updated =
+            RetroAchievementsPresentation.reduceOverlay
+                current
+                { tracker with
+                    EventType = 12u
+                    Value = "1,500" }
+                shown
+
+        Assert.Equal("1,500", Assert.Single(updated.LeaderboardTrackers).Display)
+
+        let scoreboard =
+            { tracker with
+                EventType = 13u
+                RelatedId = 9u
+                Title = "High Score"
+                Value = "1,500"
+                BestScore = "2,000"
+                Rank = 12u
+                TotalEntries = 300u
+                LeaderboardEntries =
+                    [ { Username = "top"
+                        Rank = 1u
+                        Score = "9,999" } ] }
+
+        let completed =
+            RetroAchievementsPresentation.reduceOverlay current scoreboard updated
+
+        Assert.Equal(12u, completed.Scoreboard.Value.Rank)
+        Assert.Single(completed.Scoreboard.Value.TopEntries) |> ignore
+        Assert.True((RetroAchievementsPresentation.clearScoreboard completed).Scoreboard.IsNone)
+
+        let hidden =
+            RetroAchievementsPresentation.reduceOverlay current { tracker with EventType = 11u } completed
+
+        Assert.Empty hidden.LeaderboardTrackers
+
+    [<Fact>]
     let ``overlay ignores stale events and clears outside active session`` () =
         let current = snapshot 8L 42u
 
         let shown =
-            RetroAchievementsPresentation.reduceOverlay
+            RetroAchievementsPresentation.emptyOverlayState
+            |> RetroAchievementsPresentation.reduceOverlay current (indicatorEvent 5u 1u 8L 42u "" 0.0f)
+            |> RetroAchievementsPresentation.reduceOverlay
                 current
-                (indicatorEvent 5u 1u 8L 42u "" 0.0f)
-                RetroAchievementsPresentation.emptyOverlayState
+                { indicatorEvent 10u 3u 8L 42u "" 0.0f with
+                    Value = "1,500" }
+            |> RetroAchievementsPresentation.reduceOverlay
+                current
+                { indicatorEvent 13u 9u 8L 42u "" 0.0f with
+                    Title = "High Score"
+                    Value = "1,500" }
 
         let stale =
             RetroAchievementsPresentation.reduceOverlay current (indicatorEvent 5u 2u 7L 42u "" 0.0f) shown
 
         Assert.Single stale.Challenges |> ignore
+        Assert.Single stale.LeaderboardTrackers |> ignore
+        Assert.True(stale.Scoreboard.IsSome)
 
         let loggedOut =
             RetroAchievementsPresentation.synchronizeOverlay
@@ -304,9 +373,11 @@ module RetroAchievementsPresentationTests =
 
         Assert.Empty loggedOut.Challenges
         Assert.True(loggedOut.Progress.IsNone)
+        Assert.Empty loggedOut.LeaderboardTrackers
+        Assert.True(loggedOut.Scoreboard.IsNone)
 
     [<Fact>]
-    let ``overlay view creates independent challenge and progress controls`` () =
+    let ``overlay view creates independent achievement and leaderboard controls`` () =
         let current = snapshot 8L 42u
 
         let state =
@@ -314,6 +385,18 @@ module RetroAchievementsPresentationTests =
             |> RetroAchievementsPresentation.reduceOverlay current (indicatorEvent 5u 1u 8L 42u "" 0.0f)
             |> RetroAchievementsPresentation.reduceOverlay current (indicatorEvent 5u 2u 8L 42u "" 0.0f)
             |> RetroAchievementsPresentation.reduceOverlay current (indicatorEvent 7u 3u 8L 42u "3/10" 30.0f)
+            |> RetroAchievementsPresentation.reduceOverlay
+                current
+                { indicatorEvent 10u 4u 8L 42u "" 0.0f with
+                    Value = "1,500" }
+            |> RetroAchievementsPresentation.reduceOverlay
+                current
+                { indicatorEvent 13u 5u 8L 42u "" 0.0f with
+                    Title = "High Score"
+                    Value = "1,500"
+                    BestScore = "2,000"
+                    Rank = 12u
+                    TotalEntries = 300u }
 
         let build () =
             RetroAchievementsOverlay.buildView state (fun _ -> None) ignore
@@ -324,8 +407,8 @@ module RetroAchievementsPresentationTests =
         let secondHost = Grid()
         firstHost.Children.Add first |> ignore
         secondHost.Children.Add second |> ignore
-        Assert.Equal(2, first.Children.Count)
-        Assert.Equal(2, second.Children.Count)
+        Assert.Equal(4, first.Children.Count)
+        Assert.Equal(4, second.Children.Count)
         Assert.NotSame(first, second)
 
     [<Fact>]

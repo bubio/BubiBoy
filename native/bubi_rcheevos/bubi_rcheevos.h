@@ -24,7 +24,13 @@ typedef void (*bubi_ra_server_request_callback)(void* userdata, uintptr_t reques
 typedef void (*bubi_ra_event_callback)(void* userdata, uint32_t event_type, uint32_t related_id,
                                       const char* title, const char* description,
                                       const char* image_url, const char* measured_progress,
-                                      float measured_percent);
+                                      float measured_percent, const char* value,
+                                      const char* best_score, uint32_t rank,
+                                      uint32_t total_entries);
+typedef void (*bubi_ra_scoreboard_entry_callback)(void* userdata,
+                                                  const char* username,
+                                                  uint32_t rank,
+                                                  const char* score);
 typedef void (*bubi_ra_log_callback)(void* userdata, int level, const char* message);
 typedef void (*bubi_ra_operation_callback)(void* userdata, int result, const char* error_message);
 typedef void (*bubi_ra_achievement_callback)(
@@ -37,6 +43,7 @@ BUBI_RA_EXPORT bubi_ra_client* bubi_ra_create(
     bubi_ra_read_memory_callback read_memory,
     bubi_ra_server_request_callback server_request,
     bubi_ra_event_callback event_callback,
+    bubi_ra_scoreboard_entry_callback scoreboard_entry_callback,
     bubi_ra_log_callback log_callback,
     void* userdata);
 BUBI_RA_EXPORT void bubi_ra_destroy(bubi_ra_client* client);
@@ -77,6 +84,12 @@ BUBI_RA_EXPORT int bubi_ra_get_rich_presence(bubi_ra_client* client,
                                              size_t message_size);
 BUBI_RA_EXPORT void bubi_ra_enumerate_achievements(bubi_ra_client* client,
                                                    bubi_ra_achievement_callback callback);
+typedef void (*bubi_ra_leaderboard_callback)(
+    void* userdata, uint8_t bucket, const char* bucket_label, uint32_t id,
+    const char* title, const char* description, const char* tracker_value,
+    uint8_t state, uint8_t format, uint8_t lower_is_better);
+BUBI_RA_EXPORT void bubi_ra_enumerate_leaderboards(
+    bubi_ra_client* client, bubi_ra_leaderboard_callback callback);
 
 BUBI_RA_EXPORT void bubi_ra_do_frame(bubi_ra_client* client);
 BUBI_RA_EXPORT void bubi_ra_idle(bubi_ra_client* client);

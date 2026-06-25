@@ -35,6 +35,22 @@ type RaAchievement =
       Unlocked: byte
       ImageUrl: string }
 
+type RaLeaderboard =
+    { Bucket: byte
+      BucketLabel: string
+      Id: uint32
+      Title: string
+      Description: string
+      TrackerValue: string
+      State: byte
+      Format: byte
+      LowerIsBetter: bool }
+
+type RaLeaderboardEntry =
+    { Username: string
+      Rank: uint32
+      Score: string }
+
 type RaEvent =
     { EventType: uint32
       RelatedId: uint32
@@ -43,6 +59,11 @@ type RaEvent =
       ImageUrl: string
       MeasuredProgress: string
       MeasuredPercent: float32
+      Value: string
+      BestScore: string
+      Rank: uint32
+      TotalEntries: uint32
+      LeaderboardEntries: RaLeaderboardEntry list
       Generation: int64
       GameId: uint32 }
 
@@ -52,6 +73,7 @@ type RaSnapshot =
       User: RaUser option
       Game: RaGame option
       Achievements: RaAchievement list
+      Leaderboards: RaLeaderboard list
       RichPresence: string option
       Generation: int64 }
 

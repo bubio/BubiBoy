@@ -16,7 +16,24 @@ module internal NativeInterop =
     type ServerRequestCallback = delegate of nativeint * unativeint * string * string * string -> unit
 
     [<UnmanagedFunctionPointer(CallingConvention.Cdecl, CharSet = CharSet.Ansi)>]
-    type EventCallback = delegate of nativeint * uint32 * uint32 * string * string * string * string * float32 -> unit
+    type LeaderboardEventCallback =
+        delegate of
+            nativeint *
+            uint32 *
+            uint32 *
+            string *
+            string *
+            string *
+            string *
+            float32 *
+            string *
+            string *
+            uint32 *
+            uint32 ->
+                unit
+
+    [<UnmanagedFunctionPointer(CallingConvention.Cdecl, CharSet = CharSet.Ansi)>]
+    type ScoreboardEntryCallback = delegate of nativeint * string * uint32 * string -> unit
 
     [<UnmanagedFunctionPointer(CallingConvention.Cdecl, CharSet = CharSet.Ansi)>]
     type LogCallback = delegate of nativeint * int * string -> unit
@@ -42,6 +59,10 @@ module internal NativeInterop =
             string ->
                 unit
 
+    [<UnmanagedFunctionPointer(CallingConvention.Cdecl, CharSet = CharSet.Ansi)>]
+    type LeaderboardCallback =
+        delegate of nativeint * byte * string * uint32 * string * string * string * byte * byte * byte -> unit
+
     type UserData =
         { Username: string
           DisplayName: string
@@ -56,7 +77,14 @@ module internal NativeInterop =
           ImageUrl: string }
 
     type Api =
-        { Create: ReadMemoryCallback * ServerRequestCallback * EventCallback * LogCallback * nativeint -> nativeint
+        { Create:
+            ReadMemoryCallback *
+            ServerRequestCallback *
+            LeaderboardEventCallback *
+            ScoreboardEntryCallback *
+            LogCallback *
+            nativeint
+                -> nativeint
           Destroy: nativeint -> unit
           Version: unit -> uint32
           UserAgent: nativeint * StringBuilder * unativeint -> unativeint
@@ -72,6 +100,7 @@ module internal NativeInterop =
           GetGame: nativeint -> GameData option
           GetRichPresence: nativeint -> string option
           EnumerateAchievements: nativeint * AchievementCallback -> unit
+          EnumerateLeaderboards: nativeint * LeaderboardCallback -> unit
           DoFrame: nativeint -> unit
           Idle: nativeint -> unit
           SetHardcoreEnabled: nativeint * bool -> unit
@@ -87,7 +116,8 @@ module internal NativeInterop =
         extern nativeint bubi_ra_create(
             ReadMemoryCallback readMemory,
             ServerRequestCallback serverRequest,
-            EventCallback eventCallback,
+            LeaderboardEventCallback eventCallback,
+            ScoreboardEntryCallback scoreboardEntryCallback,
             LogCallback logCallback,
             nativeint userdata
         )
@@ -177,6 +207,9 @@ module internal NativeInterop =
         extern void bubi_ra_enumerate_achievements(nativeint client, AchievementCallback callback)
 
         [<DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)>]
+        extern void bubi_ra_enumerate_leaderboards(nativeint client, LeaderboardCallback callback)
+
+        [<DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)>]
         extern void bubi_ra_do_frame(nativeint client)
 
         [<DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)>]
@@ -214,8 +247,15 @@ module internal NativeInterop =
 
     let api =
         { Create =
-            fun (readMemory, serverRequest, eventCallback, logCallback, userdata) ->
-                Native.bubi_ra_create (readMemory, serverRequest, eventCallback, logCallback, userdata)
+            fun (readMemory, serverRequest, eventCallback, scoreboardEntryCallback, logCallback, userdata) ->
+                Native.bubi_ra_create (
+                    readMemory,
+                    serverRequest,
+                    eventCallback,
+                    scoreboardEntryCallback,
+                    logCallback,
+                    userdata
+                )
           Destroy = Native.bubi_ra_destroy
           Version = Native.bubi_ra_version
           UserAgent = fun (client, buffer, size) -> Native.bubi_ra_user_agent (client, buffer, size)
@@ -303,6 +343,7 @@ module internal NativeInterop =
                 else
                     None
           EnumerateAchievements = fun (client, callback) -> Native.bubi_ra_enumerate_achievements (client, callback)
+          EnumerateLeaderboards = fun (client, callback) -> Native.bubi_ra_enumerate_leaderboards (client, callback)
           DoFrame = Native.bubi_ra_do_frame
           Idle = Native.bubi_ra_idle
           SetHardcoreEnabled =

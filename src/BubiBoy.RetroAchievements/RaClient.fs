@@ -42,6 +42,7 @@ type RaClient
     let mutable user: RaUser option = None
     let mutable game: RaGame option = None
     let mutable achievements: RaAchievement list = []
+    let mutable leaderboards: RaLeaderboard list = []
     let mutable richPresence: string option = None
     let mutable currentSession: Emulator.Session option = None
     let mutable generation = 0L
@@ -49,6 +50,7 @@ type RaClient
     let mutable lastIdle = timeProvider.GetTimestamp()
     let mutable lastRichPresence = timeProvider.GetTimestamp()
     let mutable achievementsDirty = false
+    let mutable leaderboardsDirty = false
     let mutable userDirty = false
     let mutable memoryBuffer = Array.zeroCreate<byte> 256
 
@@ -58,6 +60,7 @@ type RaClient
           User = user
           Game = game
           Achievements = achievements
+          Leaderboards = leaderboards
           RichPresence = richPresence
           Generation = generation }
 
@@ -131,6 +134,27 @@ type RaClient
         nativeApi.EnumerateAchievements(handle, achievementCallback)
         achievements <- achievementBuffer |> Seq.toList
 
+    let mutable leaderboardBuffer = ResizeArray<RaLeaderboard>()
+
+    let leaderboardCallback =
+        NativeInterop.LeaderboardCallback
+            (fun _ bucket bucketLabel id title description trackerValue state format lowerIsBetter ->
+                leaderboardBuffer.Add
+                    { Bucket = bucket
+                      BucketLabel = Option.ofObj bucketLabel |> Option.defaultValue ""
+                      Id = id
+                      Title = Option.ofObj title |> Option.defaultValue ""
+                      Description = Option.ofObj description |> Option.defaultValue ""
+                      TrackerValue = Option.ofObj trackerValue |> Option.defaultValue ""
+                      State = state
+                      Format = format
+                      LowerIsBetter = lowerIsBetter <> 0uy })
+
+    let refreshLeaderboards () =
+        leaderboardBuffer <- ResizeArray()
+        nativeApi.EnumerateLeaderboards(handle, leaderboardCallback)
+        leaderboards <- leaderboardBuffer |> Seq.toList
+
     let refreshRichPresence () =
         let next =
             nativeApi.GetRichPresence handle
@@ -174,12 +198,14 @@ type RaClient
                     refreshHardcore ()
                     refreshGame ()
                     refreshAchievements ()
+                    refreshLeaderboards ()
                     refreshRichPresence () |> ignore
                     lastRichPresence <- timeProvider.GetTimestamp()
                     status <- Active
                 else
                     game <- None
                     achievements <- []
+                    leaderboards <- []
                     richPresence <- None
                     status <- OfflineSession errorMessage
                     log $"RetroAchievements game load failed: {errorMessage}"
@@ -304,11 +330,40 @@ type RaClient
 
             Task.Run(Func<Task>(fun () -> runRequest () :> Task)) |> ignore)
 
+    let mutable scoreboardEntryBuffer = ResizeArray<RaLeaderboardEntry>()
+
+    let scoreboardEntryCallback =
+        NativeInterop.ScoreboardEntryCallback(fun _ username rank score ->
+            scoreboardEntryBuffer.Add
+                { Username = Option.ofObj username |> Option.defaultValue ""
+                  Rank = rank
+                  Score = Option.ofObj score |> Option.defaultValue "" })
+
     let eventCallback =
-        NativeInterop.EventCallback
-            (fun _ eventType relatedId title description imageUrl measuredProgress measuredPercent ->
+        NativeInterop.LeaderboardEventCallback
+            (fun
+                _
+                eventType
+                relatedId
+                title
+                description
+                imageUrl
+                measuredProgress
+                measuredPercent
+                value
+                bestScore
+                rank
+                totalEntries ->
                 let eventGameId =
                     game |> Option.map (fun value -> value.Id) |> Option.defaultValue 0u
+
+                let leaderboardEntries =
+                    if eventType = 13u then
+                        let entries = scoreboardEntryBuffer |> Seq.toList
+                        scoreboardEntryBuffer <- ResizeArray()
+                        entries
+                    else
+                        []
 
                 let event =
                     { EventType = eventType
@@ -318,6 +373,11 @@ type RaClient
                       ImageUrl = Option.ofObj imageUrl |> Option.defaultValue ""
                       MeasuredProgress = Option.ofObj measuredProgress |> Option.defaultValue ""
                       MeasuredPercent = measuredPercent
+                      Value = Option.ofObj value |> Option.defaultValue ""
+                      BestScore = Option.ofObj bestScore |> Option.defaultValue ""
+                      Rank = rank
+                      TotalEntries = totalEntries
+                      LeaderboardEntries = leaderboardEntries
                       Generation = generation
                       GameId = eventGameId }
 
@@ -326,6 +386,9 @@ type RaClient
 
                 if eventType = 1u || eventType = 5u || eventType = 6u then
                     achievementsDirty <- true
+
+                if eventType = 2u || eventType = 3u || eventType = 4u then
+                    leaderboardsDirty <- true
 
                 eventRaised.Trigger event)
 
@@ -339,6 +402,7 @@ type RaClient
         [| readMemoryCallback
            serverRequestCallback
            eventCallback
+           scoreboardEntryCallback
            logCallback
            operationCallback |]
 
@@ -352,7 +416,15 @@ type RaClient
         if not (httpClient.DefaultRequestHeaders.UserAgent.ToString().Contains("BubiBoy/")) then
             httpClient.DefaultRequestHeaders.UserAgent.ParseAdd "BubiBoy/1.1"
 
-        handle <- nativeApi.Create(readMemoryCallback, serverRequestCallback, eventCallback, logCallback, nativeint 0)
+        handle <-
+            nativeApi.Create(
+                readMemoryCallback,
+                serverRequestCallback,
+                eventCallback,
+                scoreboardEntryCallback,
+                logCallback,
+                nativeint 0
+            )
 
         if handle = nativeint 0 then
             invalidOp "Could not create the RetroAchievements client."
@@ -423,6 +495,11 @@ type RaClient
             user <- None
             game <- None
             achievements <- []
+            leaderboards <- []
+            scoreboardEntryBuffer <- ResizeArray()
+            achievementsDirty <- false
+            leaderboardsDirty <- false
+            userDirty <- false
             richPresence <- None
             status <- LoggedOut
             publish ())
@@ -435,6 +512,10 @@ type RaClient
             generation <- generation + 1L
             status <- LoadingGame
             pendingOperation <- LoadGame
+            achievementsDirty <- false
+            leaderboardsDirty <- false
+            userDirty <- false
+            scoreboardEntryBuffer <- ResizeArray()
             currentSession <- Some session
             nativeApi.SetHardcoreEnabled(handle, desiredHardcore)
             refreshHardcore ()
@@ -452,6 +533,11 @@ type RaClient
             currentSession <- None
             game <- None
             achievements <- []
+            leaderboards <- []
+            scoreboardEntryBuffer <- ResizeArray()
+            achievementsDirty <- false
+            leaderboardsDirty <- false
+            userDirty <- false
             richPresence <- None
             status <- if user.IsSome then Ready else LoggedOut
             publish ())
@@ -461,6 +547,11 @@ type RaClient
             currentSession <- None
             game <- None
             achievements <- []
+            leaderboards <- []
+            scoreboardEntryBuffer <- ResizeArray()
+            achievementsDirty <- false
+            leaderboardsDirty <- false
+            userDirty <- false
             richPresence <- None
             status <- OfflineSession reason
             publish ())
@@ -473,17 +564,22 @@ type RaClient
                 try
                     nativeApi.DoFrame handle
 
-                    if achievementsDirty || userDirty then
+                    if achievementsDirty || leaderboardsDirty || userDirty then
                         let shouldRefreshUser = userDirty
                         let shouldRefreshAchievements = achievementsDirty
+                        let shouldRefreshLeaderboards = leaderboardsDirty
                         userDirty <- false
                         achievementsDirty <- false
+                        leaderboardsDirty <- false
 
                         if shouldRefreshUser then
                             refreshUser false
 
                         if shouldRefreshAchievements then
                             refreshAchievements ()
+
+                        if shouldRefreshLeaderboards then
+                            refreshLeaderboards ()
 
                         publish ()
 
