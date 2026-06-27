@@ -35,6 +35,11 @@ type RaAchievement =
       Unlocked: byte
       ImageUrl: string }
 
+type RaLeaderboardEntry =
+    { Username: string
+      Rank: uint32
+      Score: string }
+
 type RaLeaderboard =
     { Bucket: byte
       BucketLabel: string
@@ -44,12 +49,8 @@ type RaLeaderboard =
       TrackerValue: string
       State: byte
       Format: byte
-      LowerIsBetter: bool }
-
-type RaLeaderboardEntry =
-    { Username: string
-      Rank: uint32
-      Score: string }
+      LowerIsBetter: bool
+      TopEntries: RaLeaderboardEntry list }
 
 type RaEvent =
     { EventType: uint32

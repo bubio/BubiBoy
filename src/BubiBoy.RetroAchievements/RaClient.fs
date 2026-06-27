@@ -1,6 +1,7 @@
 namespace BubiBoy.RetroAchievements
 
 open System
+open System.Collections.Generic
 open System.Collections.Concurrent
 open System.Diagnostics
 open System.IO
@@ -53,6 +54,8 @@ type RaClient
     let mutable leaderboardsDirty = false
     let mutable userDirty = false
     let mutable memoryBuffer = Array.zeroCreate<byte> 256
+    let leaderboardEntryBuffers = Dictionary<uint32, ResizeArray<RaLeaderboardEntry>>()
+    let fetchedLeaderboardEntries = HashSet<struct (int64 * uint32)>()
 
     let snapshot () =
         { Status = status
@@ -136,9 +139,17 @@ type RaClient
 
     let mutable leaderboardBuffer = ResizeArray<RaLeaderboard>()
 
+    let leaderboardEntryMap () =
+        leaderboards
+        |> List.map (fun leaderboard -> leaderboard.Id, leaderboard.TopEntries)
+        |> Map.ofList
+
     let leaderboardCallback =
         NativeInterop.LeaderboardCallback
             (fun _ bucket bucketLabel id title description trackerValue state format lowerIsBetter ->
+                let existingEntries =
+                    leaderboardEntryMap () |> Map.tryFind id |> Option.defaultValue []
+
                 leaderboardBuffer.Add
                     { Bucket = bucket
                       BucketLabel = Option.ofObj bucketLabel |> Option.defaultValue ""
@@ -148,12 +159,75 @@ type RaClient
                       TrackerValue = Option.ofObj trackerValue |> Option.defaultValue ""
                       State = state
                       Format = format
-                      LowerIsBetter = lowerIsBetter <> 0uy })
+                      LowerIsBetter = lowerIsBetter <> 0uy
+                      TopEntries = existingEntries })
+
+    let leaderboardEntryCallback =
+        NativeInterop.LeaderboardEntryCallback(fun _ leaderboardId username rank score ->
+            let mutable buffer = Unchecked.defaultof<ResizeArray<RaLeaderboardEntry>>
+
+            if not (leaderboardEntryBuffers.TryGetValue(leaderboardId, &buffer)) then
+                buffer <- ResizeArray()
+                leaderboardEntryBuffers[leaderboardId] <- buffer
+
+            buffer.Add
+                { Username = Option.ofObj username |> Option.defaultValue ""
+                  Rank = rank
+                  Score = Option.ofObj score |> Option.defaultValue "" })
+
+    let leaderboardEntriesCallback =
+        NativeInterop.LeaderboardEntriesCallback(fun _ leaderboardId result errorMessage _ _ ->
+            let key = struct (generation, leaderboardId)
+
+            if status = Active && fetchedLeaderboardEntries.Contains key then
+                let entries =
+                    match leaderboardEntryBuffers.TryGetValue leaderboardId with
+                    | true, value -> value |> Seq.toList
+                    | false, _ -> []
+
+                leaderboardEntryBuffers.Remove leaderboardId |> ignore
+
+                if result = 0 then
+                    leaderboards <-
+                        leaderboards
+                        |> List.map (fun leaderboard ->
+                            if leaderboard.Id = leaderboardId then
+                                { leaderboard with
+                                    TopEntries = entries }
+                            else
+                                leaderboard)
+
+                    publish ()
+                else
+                    let message =
+                        Option.ofObj errorMessage
+                        |> Option.defaultValue "leaderboard entries request failed"
+
+                    log $"RetroAchievements leaderboard entries fetch failed for {leaderboardId}: {message}")
+
+    let requestLeaderboardTopEntries () =
+        if status = Active then
+            leaderboards
+            |> List.iter (fun leaderboard ->
+                let key = struct (generation, leaderboard.Id)
+
+                if fetchedLeaderboardEntries.Add key then
+                    leaderboardEntryBuffers[leaderboard.Id] <- ResizeArray()
+
+                    nativeApi.FetchLeaderboardEntries(
+                        handle,
+                        leaderboard.Id,
+                        1u,
+                        1u,
+                        leaderboardEntryCallback,
+                        leaderboardEntriesCallback
+                    ))
 
     let refreshLeaderboards () =
         leaderboardBuffer <- ResizeArray()
         nativeApi.EnumerateLeaderboards(handle, leaderboardCallback)
         leaderboards <- leaderboardBuffer |> Seq.toList
+        requestLeaderboardTopEntries ()
 
     let refreshRichPresence () =
         let next =
@@ -197,15 +271,17 @@ type RaClient
                 if result = 0 then
                     refreshHardcore ()
                     refreshGame ()
+                    status <- Active
                     refreshAchievements ()
                     refreshLeaderboards ()
                     refreshRichPresence () |> ignore
                     lastRichPresence <- timeProvider.GetTimestamp()
-                    status <- Active
                 else
                     game <- None
                     achievements <- []
                     leaderboards <- []
+                    leaderboardEntryBuffers.Clear()
+                    fetchedLeaderboardEntries.Clear()
                     richPresence <- None
                     status <- OfflineSession errorMessage
                     log $"RetroAchievements game load failed: {errorMessage}"
@@ -403,6 +479,8 @@ type RaClient
            serverRequestCallback
            eventCallback
            scoreboardEntryCallback
+           leaderboardEntryCallback
+           leaderboardEntriesCallback
            logCallback
            operationCallback |]
 
@@ -497,6 +575,8 @@ type RaClient
             achievements <- []
             leaderboards <- []
             scoreboardEntryBuffer <- ResizeArray()
+            leaderboardEntryBuffers.Clear()
+            fetchedLeaderboardEntries.Clear()
             achievementsDirty <- false
             leaderboardsDirty <- false
             userDirty <- false
@@ -516,6 +596,8 @@ type RaClient
             leaderboardsDirty <- false
             userDirty <- false
             scoreboardEntryBuffer <- ResizeArray()
+            leaderboardEntryBuffers.Clear()
+            fetchedLeaderboardEntries.Clear()
             currentSession <- Some session
             nativeApi.SetHardcoreEnabled(handle, desiredHardcore)
             refreshHardcore ()
@@ -535,6 +617,8 @@ type RaClient
             achievements <- []
             leaderboards <- []
             scoreboardEntryBuffer <- ResizeArray()
+            leaderboardEntryBuffers.Clear()
+            fetchedLeaderboardEntries.Clear()
             achievementsDirty <- false
             leaderboardsDirty <- false
             userDirty <- false
@@ -549,6 +633,8 @@ type RaClient
             achievements <- []
             leaderboards <- []
             scoreboardEntryBuffer <- ResizeArray()
+            leaderboardEntryBuffers.Clear()
+            fetchedLeaderboardEntries.Clear()
             achievementsDirty <- false
             leaderboardsDirty <- false
             userDirty <- false

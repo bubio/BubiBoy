@@ -31,6 +31,17 @@ typedef void (*bubi_ra_scoreboard_entry_callback)(void* userdata,
                                                   const char* username,
                                                   uint32_t rank,
                                                   const char* score);
+typedef void (*bubi_ra_leaderboard_entry_callback)(void* userdata,
+                                                   uint32_t leaderboard_id,
+                                                   const char* username,
+                                                   uint32_t rank,
+                                                   const char* score);
+typedef void (*bubi_ra_leaderboard_entries_callback)(void* userdata,
+                                                     uint32_t leaderboard_id,
+                                                     int result,
+                                                     const char* error_message,
+                                                     uint32_t total_entries,
+                                                     int32_t user_index);
 typedef void (*bubi_ra_log_callback)(void* userdata, int level, const char* message);
 typedef void (*bubi_ra_operation_callback)(void* userdata, int result, const char* error_message);
 typedef void (*bubi_ra_achievement_callback)(
@@ -90,6 +101,10 @@ typedef void (*bubi_ra_leaderboard_callback)(
     uint8_t state, uint8_t format, uint8_t lower_is_better);
 BUBI_RA_EXPORT void bubi_ra_enumerate_leaderboards(
     bubi_ra_client* client, bubi_ra_leaderboard_callback callback);
+BUBI_RA_EXPORT void bubi_ra_fetch_leaderboard_entries(
+    bubi_ra_client* client, uint32_t leaderboard_id, uint32_t first_entry,
+    uint32_t count, bubi_ra_leaderboard_entry_callback entry_callback,
+    bubi_ra_leaderboard_entries_callback complete_callback);
 
 BUBI_RA_EXPORT void bubi_ra_do_frame(bubi_ra_client* client);
 BUBI_RA_EXPORT void bubi_ra_idle(bubi_ra_client* client);

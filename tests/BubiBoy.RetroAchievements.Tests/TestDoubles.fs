@@ -40,6 +40,7 @@ type internal FakeNativeBackend() =
     let mutable game: NativeInterop.GameData option = None
     let mutable achievements: RaAchievement list = []
     let mutable leaderboards: RaLeaderboard list = []
+    let leaderboardEntries = Dictionary<uint32, RaLeaderboardEntry list>()
     let mutable richPresence: string option = None
     let mutable richPresenceReadCount = 0
     let mutable doFrameCount = 0
@@ -112,6 +113,20 @@ type internal FakeNativeBackend() =
                         leaderboard.Format,
                         if leaderboard.LowerIsBetter then 1uy else 0uy
                     ))
+          FetchLeaderboardEntries =
+            fun (_, leaderboardId, firstEntry, count, entryCallback, completeCallback) ->
+                let entries =
+                    match leaderboardEntries.TryGetValue leaderboardId with
+                    | true, value -> value
+                    | false, _ -> []
+
+                entries
+                |> List.skip (max 0 (int firstEntry - 1))
+                |> List.truncate (int count)
+                |> List.iter (fun entry ->
+                    entryCallback.Invoke(nativeint 0, leaderboardId, entry.Username, entry.Rank, entry.Score))
+
+                completeCallback.Invoke(nativeint 0, leaderboardId, 0, "", uint32 entries.Length, -1)
           DoFrame =
             fun _ ->
                 doFrameCount <- doFrameCount + 1
@@ -142,6 +157,8 @@ type internal FakeNativeBackend() =
     member _.Leaderboards
         with get () = leaderboards
         and set value = leaderboards <- value
+
+    member _.LeaderboardEntries = leaderboardEntries
 
     member _.RichPresence
         with get () = richPresence

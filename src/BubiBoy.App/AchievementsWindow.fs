@@ -245,7 +245,7 @@ type AchievementsWindow(client: RaClient) as this =
 
         leaderboards
         |> List.iter (fun leaderboard ->
-            let details = StackPanel(Spacing = 2.0)
+            let details = StackPanel(Spacing = 6.0)
 
             let title =
                 TextBlock(Text = leaderboard.Title, FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap)
@@ -253,20 +253,41 @@ type AchievementsWindow(client: RaClient) as this =
             AppTheme.bindBrush title TextBlock.ForegroundProperty AppTheme.PrimaryText
             details.Children.Add title |> ignore
 
-            details.Children.Add(
-                cellText (
-                    if String.IsNullOrWhiteSpace leaderboard.TrackerValue then
-                        leaderboard.Description
-                    else
-                        $"{leaderboard.Description}\nCurrent: {leaderboard.TrackerValue}"
+            let description =
+                TextBlock(
+                    Text = $"Game: {leaderboard.Description}",
+                    FontSize = DialogLayout.BodyFontSize,
+                    FontWeight = FontWeight.SemiBold,
+                    TextWrapping = TextWrapping.Wrap
                 )
-            )
-            |> ignore
 
-            let row = Grid(ColumnDefinitions = ColumnDefinitions("120,*"))
-            addCell 0 (cellText leaderboard.BucketLabel) row
-            addCell 1 details row
-            rows.Children.Add(DialogLayout.surface row (Thickness(8.0))) |> ignore)
+            AppTheme.bindBrush description TextBlock.ForegroundProperty AppTheme.SecondaryText
+            details.Children.Add description |> ignore
+
+            let bestEntry =
+                leaderboard.TopEntries
+                |> List.tryFind (fun entry -> entry.Rank = 1u)
+                |> Option.orElseWith (fun () -> leaderboard.TopEntries |> List.tryHead)
+
+            let footer = StackPanel(Orientation = Orientation.Horizontal, Spacing = 8.0)
+
+            match bestEntry with
+            | Some entry ->
+                footer.Children.Add(cellText "♕") |> ignore
+                footer.Children.Add(cellText entry.Score) |> ignore
+                footer.Children.Add(cellText entry.Username) |> ignore
+            | None -> footer.Children.Add(cellText "Top score loading...") |> ignore
+
+            if not (String.IsNullOrWhiteSpace leaderboard.TrackerValue) then
+                footer.Children.Add(cellText $"Current: {leaderboard.TrackerValue}") |> ignore
+
+            details.Children.Add footer |> ignore
+
+            let row =
+                Grid(ColumnDefinitions = ColumnDefinitions("*"), Margin = Thickness(0.0, 0.0, 0.0, 2.0))
+
+            addCell 0 details row
+            rows.Children.Add(DialogLayout.surface row (Thickness(10.0))) |> ignore)
 
         ScrollViewer(Content = rows, VerticalScrollBarVisibility = ScrollBarVisibility.Auto)
 

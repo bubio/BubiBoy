@@ -128,7 +128,8 @@ let ``leaderboard tracker and scoreboard events preserve structured values`` () 
             TrackerValue = "0:42.15"
             State = 2uy
             Format = 0uy
-            LowerIsBetter = true } ]
+            LowerIsBetter = true
+            TopEntries = [] } ]
 
     let client, _, _, _, _ =
         createClient backend (successfulHandler ()) (TimeSpan.FromSeconds 30.0)
@@ -169,6 +170,42 @@ let ``leaderboard tracker and scoreboard events preserve structured values`` () 
     Assert.Equal(2, events[1].LeaderboardEntries.Length)
 
 [<Fact>]
+let ``leaderboard list fetches top entry for display`` () =
+    let backend = FakeNativeBackend()
+
+    backend.Leaderboards <-
+        [ { Bucket = 1uy
+            BucketLabel = "Inactive"
+            Id = 99u
+            Title = "A-Type Challenge"
+            Description = "Earn the most points"
+            TrackerValue = ""
+            State = 1uy
+            Format = 1uy
+            LowerIsBetter = false
+            TopEntries = [] } ]
+
+    backend.LeaderboardEntries.Add(
+        99u,
+        [ { Username = "angelusmortalis"
+            Rank = 1u
+            Score = "945688" } ]
+    )
+
+    let client, _, _, _, _ =
+        createClient backend (successfulHandler ()) (TimeSpan.FromSeconds 30.0)
+
+    use client = client
+    activate backend client
+
+    let leaderboard = Assert.Single(client.Snapshot.Leaderboards)
+    let entry = Assert.Single(leaderboard.TopEntries)
+    Assert.Equal("A-Type Challenge", leaderboard.Title)
+    Assert.Equal(1u, entry.Rank)
+    Assert.Equal("945688", entry.Score)
+    Assert.Equal("angelusmortalis", entry.Username)
+
+[<Fact>]
 let ``leaderboard state refresh is deferred until native frame processing completes`` () =
     let backend = FakeNativeBackend()
     let mutable insideFrame = false
@@ -206,7 +243,8 @@ let ``leaderboard state refresh is deferred until native frame processing comple
                     TrackerValue = "0:42.15"
                     State = 2uy
                     Format = 0uy
-                    LowerIsBetter = true } ]
+                    LowerIsBetter = true
+                    TopEntries = [] } ]
 
             backend.RaiseLeaderboardEvent(2u, 12u, "Fast Clear", "Finish quickly", "", "", 0u, 0u, [])
             insideFrame <- false

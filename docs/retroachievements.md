@@ -20,7 +20,8 @@ Softcore and Hardcore sessions.
 - Leaderboard attempts are shown in the game viewport. Active tracker values are
   displayed at the upper left, and submitted rank, score, personal best, and the
   server-provided top entries are displayed at the lower left. The Achievements
-  window also exposes the current leaderboard list in a separate tab.
+  window also exposes the current leaderboard list in a separate tab and fetches
+  each leaderboard's top entry for page-like context.
 
 ## Memory Map
 

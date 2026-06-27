@@ -23,6 +23,13 @@ typedef struct bubi_ra_pending_request {
   void* callback_data;
 } bubi_ra_pending_request;
 
+typedef struct bubi_ra_leaderboard_entries_request {
+  bubi_ra_client* client;
+  uint32_t leaderboard_id;
+  bubi_ra_leaderboard_entry_callback entry_callback;
+  bubi_ra_leaderboard_entries_callback complete_callback;
+} bubi_ra_leaderboard_entries_request;
+
 struct bubi_ra_client {
   rc_client_t* native;
   bubi_ra_read_memory_callback read_memory;
@@ -203,6 +210,48 @@ static void bubi_operation_complete(int result, const char* error_message,
   context->operation_handle = NULL;
   if (callback)
     callback(context->userdata, result, error_message ? error_message : "");
+}
+
+static void bubi_leaderboard_entries_complete(int result,
+                                              const char* error_message,
+                                              rc_client_leaderboard_entry_list_t* list,
+                                              rc_client_t* native,
+                                              void* userdata) {
+  bubi_ra_leaderboard_entries_request* request =
+      (bubi_ra_leaderboard_entries_request*)userdata;
+  uint32_t total_entries = 0;
+  int32_t user_index = -1;
+
+  (void)native;
+
+  if (!request)
+    return;
+
+  if (result == RC_OK && list) {
+    uint32_t i;
+    total_entries = list->total_entries;
+    user_index = list->user_index;
+
+    if (request->entry_callback) {
+      for (i = 0; i < list->num_entries; ++i) {
+        const rc_client_leaderboard_entry_t* entry = &list->entries[i];
+        request->entry_callback(request->client->userdata, request->leaderboard_id,
+                                entry->user ? entry->user : "", entry->rank,
+                                entry->display);
+      }
+    }
+  }
+
+  if (request->complete_callback) {
+    request->complete_callback(request->client->userdata, request->leaderboard_id,
+                               result, error_message ? error_message : "",
+                               total_entries, user_index);
+  }
+
+  if (list)
+    rc_client_destroy_leaderboard_entry_list(list);
+
+  free(request);
 }
 
 bubi_ra_client* bubi_ra_create(bubi_ra_read_memory_callback read_memory,
@@ -429,6 +478,36 @@ void bubi_ra_enumerate_leaderboards(bubi_ra_client* client,
     }
   }
   rc_client_destroy_leaderboard_list(list);
+}
+
+void bubi_ra_fetch_leaderboard_entries(
+    bubi_ra_client* client, uint32_t leaderboard_id, uint32_t first_entry,
+    uint32_t count, bubi_ra_leaderboard_entry_callback entry_callback,
+    bubi_ra_leaderboard_entries_callback complete_callback) {
+  bubi_ra_leaderboard_entries_request* request;
+
+  if (!client || !client->native || !complete_callback)
+    return;
+
+  request = (bubi_ra_leaderboard_entries_request*)calloc(1, sizeof(*request));
+  if (!request) {
+    complete_callback(client->userdata, leaderboard_id, RC_OUT_OF_MEMORY,
+                      "out of memory", 0, -1);
+    return;
+  }
+
+  request->client = client;
+  request->leaderboard_id = leaderboard_id;
+  request->entry_callback = entry_callback;
+  request->complete_callback = complete_callback;
+
+  if (!rc_client_begin_fetch_leaderboard_entries(
+          client->native, leaderboard_id, first_entry, count,
+          bubi_leaderboard_entries_complete, request)) {
+    free(request);
+    complete_callback(client->userdata, leaderboard_id, RC_INVALID_STATE,
+                      "leaderboard entries request was not started", 0, -1);
+  }
 }
 
 void bubi_ra_do_frame(bubi_ra_client* client) {

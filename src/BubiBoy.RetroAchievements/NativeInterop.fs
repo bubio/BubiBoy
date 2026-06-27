@@ -36,6 +36,12 @@ module internal NativeInterop =
     type ScoreboardEntryCallback = delegate of nativeint * string * uint32 * string -> unit
 
     [<UnmanagedFunctionPointer(CallingConvention.Cdecl, CharSet = CharSet.Ansi)>]
+    type LeaderboardEntryCallback = delegate of nativeint * uint32 * string * uint32 * string -> unit
+
+    [<UnmanagedFunctionPointer(CallingConvention.Cdecl, CharSet = CharSet.Ansi)>]
+    type LeaderboardEntriesCallback = delegate of nativeint * uint32 * int * string * uint32 * int -> unit
+
+    [<UnmanagedFunctionPointer(CallingConvention.Cdecl, CharSet = CharSet.Ansi)>]
     type LogCallback = delegate of nativeint * int * string -> unit
 
     [<UnmanagedFunctionPointer(CallingConvention.Cdecl, CharSet = CharSet.Ansi)>]
@@ -101,6 +107,8 @@ module internal NativeInterop =
           GetRichPresence: nativeint -> string option
           EnumerateAchievements: nativeint * AchievementCallback -> unit
           EnumerateLeaderboards: nativeint * LeaderboardCallback -> unit
+          FetchLeaderboardEntries:
+              nativeint * uint32 * uint32 * uint32 * LeaderboardEntryCallback * LeaderboardEntriesCallback -> unit
           DoFrame: nativeint -> unit
           Idle: nativeint -> unit
           SetHardcoreEnabled: nativeint * bool -> unit
@@ -208,6 +216,16 @@ module internal NativeInterop =
 
         [<DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)>]
         extern void bubi_ra_enumerate_leaderboards(nativeint client, LeaderboardCallback callback)
+
+        [<DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)>]
+        extern void bubi_ra_fetch_leaderboard_entries(
+            nativeint client,
+            uint32 leaderboardId,
+            uint32 firstEntry,
+            uint32 count,
+            LeaderboardEntryCallback entryCallback,
+            LeaderboardEntriesCallback completeCallback
+        )
 
         [<DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)>]
         extern void bubi_ra_do_frame(nativeint client)
@@ -344,6 +362,16 @@ module internal NativeInterop =
                     None
           EnumerateAchievements = fun (client, callback) -> Native.bubi_ra_enumerate_achievements (client, callback)
           EnumerateLeaderboards = fun (client, callback) -> Native.bubi_ra_enumerate_leaderboards (client, callback)
+          FetchLeaderboardEntries =
+            fun (client, leaderboardId, firstEntry, count, entryCallback, completeCallback) ->
+                Native.bubi_ra_fetch_leaderboard_entries (
+                    client,
+                    leaderboardId,
+                    firstEntry,
+                    count,
+                    entryCallback,
+                    completeCallback
+                )
           DoFrame = Native.bubi_ra_do_frame
           Idle = Native.bubi_ra_idle
           SetHardcoreEnabled =
