@@ -4,13 +4,16 @@
     <Project Path="src/BubiBoy.Audio/BubiBoy.Audio.fsproj" />
     <Project Path="src/BubiBoy.Core/BubiBoy.Core.fsproj" />
     <Project Path="src/BubiBoy.IO/BubiBoy.IO.fsproj" />
+    <Project Path="src/BubiBoy.RetroAchievements/BubiBoy.RetroAchievements.fsproj" />
     <Project Path="src/ControllerInput/ControllerInput.fsproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/BubiBoy.Audio.Tests/BubiBoy.Audio.Tests.fsproj" />
+    <Project Path="tests/BubiBoy.App.Tests/BubiBoy.App.Tests.fsproj" />
     <Project Path="tests/BubiBoy.Benchmarks/BubiBoy.Benchmarks.fsproj" />
     <Project Path="tests/BubiBoy.Core.Tests/BubiBoy.Core.Tests.fsproj" />
     <Project Path="tests/BubiBoy.IO.Tests/BubiBoy.IO.Tests.fsproj" />
+    <Project Path="tests/BubiBoy.RetroAchievements.Tests/BubiBoy.RetroAchievements.Tests.fsproj" />
     <Project Path="tests/BubiBoy.TestRoms/BubiBoy.TestRoms.fsproj" />
     <Project Path="tests/ControllerInput.Tests/ControllerInput.Tests.fsproj" />
   </Folder>

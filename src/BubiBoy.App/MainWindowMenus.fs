@@ -9,6 +9,7 @@ open BubiBoy.IO
 module MainWindowMenus =
     type Actions =
         { OpenSettings: unit -> unit
+          OpenAchievements: unit -> unit
           OpenInputMapping: unit -> unit
           SaveState: unit -> unit
           LoadState: unit -> unit
@@ -28,6 +29,7 @@ module MainWindowMenus =
           IsAlwaysOnTop: bool
           IsFullScreen: bool
           ShowFullScreenInfo: bool
+          CanLoadState: bool
           VideoFilter: AppSettings.VideoFilter }
 
     type Elements =
@@ -113,6 +115,7 @@ module MainWindowMenus =
 
         let nativeInputMappingItem = nativePlain "Input Mapping..." actions.OpenInputMapping
         let nativeSettingsItem = nativePlain "Settings..." actions.OpenSettings
+        let nativeAchievementsItem = nativePlain "Achievements..." actions.OpenAchievements
 
         let nativeFullscreenItem =
             nativeItem "Full Screen" Key.F platformModifier actions.ToggleFullScreen
@@ -169,6 +172,7 @@ module MainWindowMenus =
         let loadStateItem = menuItem "Load State" Key.L platformModifier actions.LoadState
         let inputMappingItem = plainMenuItem "Input Mapping..." actions.OpenInputMapping
         let settingsItem = plainMenuItem "Settings..." actions.OpenSettings
+        let achievementsItem = plainMenuItem "Achievements..." actions.OpenAchievements
 
         let fullscreenItem =
             menuItem "Full Screen" Key.F platformModifier actions.ToggleFullScreen
@@ -239,8 +243,8 @@ module MainWindowMenus =
             resetMenuItem.IsEnabled <- viewModel.HasLoadedRom
             nativeSaveStateItem.IsEnabled <- viewModel.HasSession
             saveStateItem.IsEnabled <- viewModel.HasSession
-            nativeLoadStateItem.IsEnabled <- viewModel.HasSession
-            loadStateItem.IsEnabled <- viewModel.HasSession
+            nativeLoadStateItem.IsEnabled <- viewModel.HasSession && state.CanLoadState
+            loadStateItem.IsEnabled <- viewModel.HasSession && state.CanLoadState
             nativeFullscreenItem.IsChecked <- state.IsFullScreen
             fullscreenItem.IsChecked <- state.IsFullScreen
             nativeFullScreenInfoItem.IsChecked <- state.ShowFullScreenInfo
@@ -282,6 +286,7 @@ module MainWindowMenus =
         nativeEmulationSubmenu.Items.Add nativeSaveStateItem |> ignore
         nativeEmulationSubmenu.Items.Add nativeLoadStateItem |> ignore
         nativeEmulationSubmenu.Items.Add(NativeMenuItemSeparator()) |> ignore
+        nativeEmulationSubmenu.Items.Add nativeAchievementsItem |> ignore
         nativeEmulationSubmenu.Items.Add nativeSettingsItem |> ignore
         nativeEmulationSubmenu.Items.Add nativeInputMappingItem |> ignore
         nativeEmulationMenu.Menu <- nativeEmulationSubmenu
@@ -321,6 +326,7 @@ module MainWindowMenus =
         emulationMenu.Items.Add saveStateItem |> ignore
         emulationMenu.Items.Add loadStateItem |> ignore
         emulationMenu.Items.Add(Separator()) |> ignore
+        emulationMenu.Items.Add achievementsItem |> ignore
         emulationMenu.Items.Add settingsItem |> ignore
         emulationMenu.Items.Add inputMappingItem |> ignore
 

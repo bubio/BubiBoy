@@ -35,6 +35,7 @@ playing and testing classic handheld games.
 - Supports ROM-only, MBC1, MBC2, MBC3, and MBC5 cartridges.
 - Loads and saves battery-backed `.sav` data automatically.
 - Supports save states and recent ROMs.
+- Supports opt-in RetroAchievements Softcore/Hardcore login, game identification, achievement and leaderboard lists, in-game trackers and scoreboards, badges, unlock notifications, Rich Presence, and Softcore RA-aware save states on macOS.
 - Supports configurable keyboard/controller mappings and native controller input on macOS, Linux, and Windows.
 - Provides nearest-neighbor, smooth, and LCD-style image filters.
 - Can use external DMG and CGB boot ROMs when supplied by the user.
@@ -80,11 +81,15 @@ CI publishes self-contained distribution artifacts:
 ### macOS
 
 ```sh
-dotnet publish src/BubiBoy.App/BubiBoy.App.fsproj -c Release -r osx-arm64 --self-contained true
-dotnet publish src/BubiBoy.App/BubiBoy.App.fsproj -c Release -r osx-x64 --self-contained true
+tools/build-ci-macos.sh osx-arm64
+tools/build-ci-macos.sh osx-x64
 ```
 
 Output: `src/BubiBoy.App/bin/Release/<rid>/BubiBoy.app`
+
+The script mirrors the macOS CI sequence: build both native libraries, restore,
+build, test, self-contained publish, copy RID-specific native libraries, and
+ad-hoc sign the completed bundle.
 
 ### Linux
 
@@ -119,6 +124,7 @@ This project includes or bundles third-party components used for UI, audio, test
 
 - Avalonia (UI): Avalonia.Desktop, Avalonia.Themes.Fluent - MIT License. See https://github.com/AvaloniaUI/Avalonia
 - miniaudio (native audio wrapper): included under native/miniaudio.h and native/miniaudio-LICENSE. miniaudio is dual-licensed (Public Domain or MIT No Attribution). Full text: native/miniaudio-LICENSE. See https://github.com/mackron/miniaudio
+- rcheevos 12.3.0 (RetroAchievements client): vendored under `ThirdParty/rcheevos` with the MIT license in `ThirdParty/rcheevos-LICENSE`. See https://github.com/RetroAchievements/rcheevos
 - BenchmarkDotNet (benchmarks) - MIT License.
 - Test-related packages: xUnit.net, coverlet.collector, Microsoft.NET.Test.Sdk - used for tests and coverage. Check each package/NuGet entry for precise license details.
 

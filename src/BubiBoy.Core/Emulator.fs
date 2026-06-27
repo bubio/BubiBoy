@@ -30,6 +30,11 @@ module Emulator =
           AudioSamples: Apu.Sample[]
           StopReason: StopReason }
 
+    /// Copies bytes from the side-effect-free memory view used by host-side
+    /// diagnostics and achievement runtimes.
+    let readInspectionMemory address buffer bufferOffset count session =
+        Bus.readInspectionMemory address buffer bufferOffset count session.Bus
+
     /// Creates an emulator session from a complete ROM image.
     let createSession rom =
         rom

@@ -1,6 +1,7 @@
 namespace BubiBoy.App
 
 open System
+open System.Diagnostics
 open System.Runtime.InteropServices
 open Avalonia
 open Avalonia.Controls
@@ -10,6 +11,7 @@ open Avalonia.Platform
 open BubiBoy.Audio
 open BubiBoy.Core
 open BubiBoy.IO
+open BubiBoy.RetroAchievements
 
 type MainWindow(?startupRomPath: string) as this =
     inherit Window()
@@ -32,6 +34,7 @@ type MainWindow(?startupRomPath: string) as this =
         let mutable openRomHandler = fun () -> ()
         let mutable toggleRunPauseHandler = fun () -> ()
         let mutable resetHandler = fun () -> ()
+        let mutable retroAchievementsResetHandler = fun () -> ()
         let mutable clearRecentHandler = fun () -> ()
 
         let viewModel =
@@ -62,10 +65,67 @@ type MainWindow(?startupRomPath: string) as this =
         let notifications =
             AppNotificationCenter(toast, fun () -> layoutController.IsFloating)
 
+        let retroAchievements =
+            match RaClient.TryCreate(fun message -> Debug.WriteLine message) with
+            | Ok client -> Some client
+            | Error message ->
+                if settingsStore.Current.RetroAchievementsEnabled then
+                    notifications.Show $"RetroAchievements unavailable: {message}"
+
+                None
+
+        let mutable achievementsWindow: AchievementsWindow option = None
+
+        retroAchievements
+        |> Option.iter (fun client ->
+            client.SetHardcoreEnabled settingsStore.Current.RetroAchievementsHardcore
+
+            client.EventRaised.Add(fun event ->
+                match RetroAchievementsPresentation.hostAction event with
+                | RetroAchievementsPresentation.Notify message ->
+                    Avalonia.Threading.Dispatcher.UIThread.Post(fun () ->
+                        notifications.Show(message, TimeSpan.FromSeconds 5.0))
+                | RetroAchievementsPresentation.ResetRequested ->
+                    Avalonia.Threading.Dispatcher.UIThread.Post retroAchievementsResetHandler
+                | RetroAchievementsPresentation.Ignore -> ())
+
+            if settingsStore.Current.RetroAchievementsEnabled then
+                let username = settingsStore.Current.RetroAchievementsUsername
+
+                if
+                    not (client.LoginWithStoredToken username)
+                    && not (String.IsNullOrWhiteSpace username)
+                then
+                    notifications.Show "Open Achievements to log in to RetroAchievements.")
+
+        let retroAchievementsOverlay =
+            retroAchievements
+            |> Option.map (fun client ->
+                new RetroAchievementsOverlayController(viewport.RetroAchievementsOverlayHost, client))
+
         let saveSettings () =
             match settingsStore.Save() with
             | Ok() -> ()
             | Error message -> notifications.Show $"Settings error: {message}"
+
+        retroAchievements
+        |> Option.iter (fun client ->
+            client.Changed.Add(fun snapshot ->
+                snapshot.User
+                |> Option.iter (fun raUser ->
+                    Avalonia.Threading.Dispatcher.UIThread.Post(fun () ->
+                        if
+                            not settingsStore.Current.RetroAchievementsEnabled
+                            || settingsStore.Current.RetroAchievementsUsername <> raUser.Username
+                        then
+                            settingsStore.SetRetroAchievements(
+                                true,
+                                settingsStore.Current.RetroAchievementsHardcore,
+                                raUser.Username
+                            )
+                            |> ignore
+
+                            saveSettings ()))))
 
         loadedSettings.LoadError
         |> Option.iter (fun message -> notifications.Show $"Settings error: {message}")
@@ -86,13 +146,15 @@ type MainWindow(?startupRomPath: string) as this =
                 )
             )
 
-        let audioBufferTargetFrames = audioFramesPerVideoFrame * 16
+        let audioBufferCapacityFrames = audioFramesPerVideoFrame * 8
+        let audioBufferTargetFrames = audioFramesPerVideoFrame * 4
+        let audioBufferFallbackTargetFrames = audioFramesPerVideoFrame * 6
 
         let audioOutput, audioFallbackError =
-            match Miniaudio.tryCreateDevice AudioHost.defaultFormat AudioHost.defaultFormat.SampleRate with
+            match Miniaudio.tryCreateDevice AudioHost.defaultFormat audioBufferCapacityFrames with
             | Ok device -> device :> AudioHost.AudioDevice, None
             | Error message ->
-                AudioHost.createBufferedDevice AudioHost.defaultFormat.SampleRate :> AudioHost.AudioDevice, Some message
+                AudioHost.createBufferedDevice audioBufferCapacityFrames :> AudioHost.AudioDevice, Some message
 
         audioFallbackError
         |> Option.iter (fun message ->
@@ -107,7 +169,10 @@ type MainWindow(?startupRomPath: string) as this =
                 traceCounters,
                 perfTrace,
                 250_000,
-                audioBufferTargetFrames
+                audioBufferTargetFrames,
+                audioBufferFallbackTargetFrames,
+                TimeProvider.System,
+                retroAchievements
             )
 
         let mutable refreshMenus = fun () -> ()
@@ -123,7 +188,8 @@ type MainWindow(?startupRomPath: string) as this =
                   SettingsStore = settingsStore
                   SaveSettings = saveSettings
                   Notifications = notifications
-                  RefreshMenus = fun () -> refreshMenus () }
+                  RefreshMenus = fun () -> refreshMenus ()
+                  RetroAchievements = retroAchievements }
             )
 
         viewModel.PropertyChanged.Add(fun args ->
@@ -154,6 +220,7 @@ type MainWindow(?startupRomPath: string) as this =
         openRomHandler <- openRomPicker
         toggleRunPauseHandler <- sessionController.ToggleRunPause
         resetHandler <- sessionController.ResetCurrentRom
+        retroAchievementsResetHandler <- sessionController.HandleRetroAchievementsReset
         clearRecentHandler <- clearRecentRoms
 
         let setScale scale =
@@ -197,18 +264,60 @@ type MainWindow(?startupRomPath: string) as this =
 
         let openSettings () =
             async {
-                let! result =
-                    AppDialogs.showSettings this settingsStore.Current.BootRomSelection
-                    |> Async.AwaitTask
+                let! result = AppDialogs.showSettings this settingsStore.Current |> Async.AwaitTask
 
                 match result with
                 | Some selection ->
-                    settingsStore.SetBootRomSelection selection |> ignore
+                    settingsStore.SetBootRomSelection selection.BootRomSelection |> ignore
+
+                    settingsStore.SetRetroAchievements(
+                        selection.RetroAchievementsEnabled,
+                        selection.RetroAchievementsHardcore,
+                        selection.RetroAchievementsUsername
+                    )
+                    |> ignore
+
                     saveSettings ()
-                    notifications.Show "Boot ROM setting saved. It will apply on the next ROM load or reset."
+
+                    match retroAchievements with
+                    | Some client when not selection.RetroAchievementsEnabled ->
+                        client.SetHardcoreEnabled false
+                        client.Logout()
+                    | Some client ->
+                        client.SetHardcoreEnabled selection.RetroAchievementsHardcore
+
+                        if client.Snapshot.Status = LoggedOut then
+                            if not (client.LoginWithStoredToken selection.RetroAchievementsUsername) then
+                                notifications.Show "RetroAchievements enabled. Open Achievements to log in."
+                    | None -> ()
+
+                    notifications.Show "Settings saved. Boot ROM changes apply on the next ROM load or reset."
                 | None -> ()
             }
             |> Async.StartImmediate
+
+        let openAchievements () =
+            match retroAchievements with
+            | Some client ->
+                match achievementsWindow with
+                | Some window ->
+                    if window.WindowState = WindowState.Minimized then
+                        window.WindowState <- WindowState.Normal
+
+                    window.Activate()
+                | None ->
+                    let window = AchievementsWindow(client)
+                    achievementsWindow <- Some window
+
+                    window.Closed.Add(fun _ ->
+                        if
+                            achievementsWindow
+                            |> Option.exists (fun current -> Object.ReferenceEquals(current, window))
+                        then
+                            achievementsWindow <- None)
+
+                    window.Show(this)
+            | None -> notifications.Show "RetroAchievements native support is unavailable."
 
         let menuElements =
             MainWindowMenus.create
@@ -217,6 +326,7 @@ type MainWindow(?startupRomPath: string) as this =
                 platformModifier
                 viewModel
                 { OpenSettings = openSettings
+                  OpenAchievements = openAchievements
                   OpenInputMapping = inputHost.OpenMapping
                   SaveState = sessionController.SaveState
                   LoadState = sessionController.LoadState
@@ -240,6 +350,7 @@ type MainWindow(?startupRomPath: string) as this =
                       IsAlwaysOnTop = layoutController.IsAlwaysOnTop
                       IsFullScreen = this.WindowState = WindowState.FullScreen
                       ShowFullScreenInfo = settingsStore.Current.ShowFullScreenInfo
+                      CanLoadState = RetroAchievementsOperations.isAllowed retroAchievements LoadState
                       VideoFilter = settingsStore.Current.VideoFilter }
 
         let frameDisplayTimer =
@@ -248,10 +359,21 @@ type MainWindow(?startupRomPath: string) as this =
                   DequeueFrame = emulationRunner.DequeueFrame
                   UpdateFrame = sessionController.UpdateFrame
                   UpdateDiagnostics = fun () -> viewModel.DebugDetails <- sessionController.FormatRuntimeDiagnostics()
-                  AudioDiagnostics = audioOutput.Diagnostics },
+                  AudioDiagnostics = audioOutput.Diagnostics
+                  PumpServices =
+                    fun () ->
+                        retroAchievements
+                        |> Option.iter (fun client ->
+                            try
+                                client.Pump(not sessionController.IsRunning)
+                            with ex ->
+                                Debug.WriteLine $"RetroAchievements pump failed: {ex}"
+                                client.SetOffline "RetroAchievements service processing failed."
+                                notifications.Show "RetroAchievements went offline; emulation will continue.") },
                 performanceCounters,
                 traceCounters,
-                perfTrace
+                perfTrace,
+                TopLevelAnimationFrameScheduler(this)
             )
 
         let executeCommand (command: System.Windows.Input.ICommand) =
@@ -321,6 +443,13 @@ type MainWindow(?startupRomPath: string) as this =
             frameDisplayTimer.Stop()
             viewport.StopTimers()
             inputHost.Dispose()
+
+            retroAchievementsOverlay
+            |> Option.iter (fun overlay -> (overlay :> IDisposable).Dispose())
+
+            retroAchievements
+            |> Option.iter (fun client -> (client :> IDisposable).Dispose())
+
             PerfTrace.close perfTrace)
 
         let contentGrid = Grid(RowDefinitions = RowDefinitions("Auto,*,Auto"))
@@ -349,7 +478,7 @@ type MainWindow(?startupRomPath: string) as this =
         refreshMenus ()
         layoutController.ApplyInitialLayout()
         inputHost.Start()
-        frameDisplayTimer.Start()
+        this.Opened.Add(fun _ -> frameDisplayTimer.Start())
 
         startupRomPath
         |> Option.filter (String.IsNullOrWhiteSpace >> not)

@@ -220,6 +220,26 @@ module CartridgeMemory =
             let effectiveOffset = bankedOffset % image.Ram.Length
             image.Ram[effectiveOffset]
 
+    /// Reads one byte from a physical cartridge RAM bank without consulting the
+    /// controller enable or bank-selection registers. Missing banks read as FF.
+    let readPhysicalRamByte bank offset image =
+        if bank < 0 || offset < 0 || offset >= ramBankSize || image.Ram.Length = 0 then
+            0xFFuy
+        elif supportsMbc2 image.Header.CartridgeKind then
+            if bank = 0 then
+                0xF0uy ||| (image.Ram[offset &&& 0x01FF] &&& 0x0Fuy)
+            else
+                0xFFuy
+        elif bank >= image.RamBanks then
+            0xFFuy
+        else
+            let physicalOffset = bank * ramBankSize + offset
+
+            if physicalOffset < image.Ram.Length then
+                image.Ram[physicalOffset]
+            else
+                0xFFuy
+
     let private writeRamBank image bank offset value =
         if image.Ram.Length = 0 then
             image

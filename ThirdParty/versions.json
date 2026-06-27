@@ -1,0 +1,13 @@
+{
+  "rcheevos": {
+    "version": "12.3.0",
+    "tag": "v12.3.0",
+    "commit": "e9ca3694c862b61235595176dac4b22677848c93",
+    "archive_sha256": "75ebe331c5ae0f80d736b11e76a46ad6c59e942c2c9a8c4f41236f3b41a741a5",
+    "license": "MIT",
+    "compile_definitions": [
+      "RC_DISABLE_LUA",
+      "RC_CLIENT_SUPPORTS_HASH"
+    ]
+  }
+}

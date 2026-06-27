@@ -419,6 +419,91 @@ module Bus =
 
     let internal rawObjPaletteByte index memory = memory.ObjPaletteRam[index &&& 0x3F]
 
+    let private readInspectionByte (address: uint32) memory =
+        let readNativeAddress (nativeAddress: int) =
+            match nativeAddress with
+            | value when value <= 0x7FFF -> CartridgeMemory.readByte (uint16 value) memory.Cartridge
+            | value when value >= 0x8000 && value <= 0x9FFF ->
+                memory.Vram[memory.VramBank * VramBankSize + value - 0x8000]
+            | value when value >= 0xA000 && value <= 0xBFFF ->
+                CartridgeMemory.readPhysicalRamByte 0 (value - 0xA000) memory.Cartridge
+            | value when value >= 0xC000 && value <= 0xCFFF -> memory.Wram[value - 0xC000]
+            // The RetroAchievements Game Boy map exposes bank 1 here even when
+            // a different CGB WRAM bank is selected by SVBK.
+            | value when value >= 0xD000 && value <= 0xDFFF -> memory.Wram[WramBankSize + value - 0xD000]
+            | value when value >= 0xE000 && value <= 0xFDFF ->
+                let mirrored = value - 0x2000
+
+                if mirrored <= 0xCFFF then
+                    memory.Wram[mirrored - 0xC000]
+                else
+                    memory.Wram[WramBankSize + mirrored - 0xD000]
+            | value when value >= 0xFE00 && value <= 0xFE9F -> memory.Oam[value - 0xFE00]
+            | value when value >= 0xFEA0 && value <= 0xFEFF -> 0xFFuy
+            | 0xFF00 -> Joypad.readP1 memory.Joypad
+            | 0xFF04 -> Timer.div memory.Timer
+            | 0xFF0F -> 0xE0uy ||| (memory.Io[0x0F] &&& 0x1Fuy)
+            | 0xFF41 ->
+                let raw = memory.Io[0x41] &&& 0xF8uy
+                let coincidence = if memory.Lcd.Line = memory.Io[0x45] then 0x04uy else 0uy
+                raw ||| coincidence ||| Lcd.modeBits memory.Lcd.Mode
+            | 0xFF44 -> memory.Lcd.Line
+            | 0xFF4D when memory.Mode = Hardware.Cgb ->
+                0x7Euy
+                ||| (if memory.DoubleSpeed then 0x80uy else 0uy)
+                ||| (if memory.SpeedSwitchPrepared then 0x01uy else 0uy)
+            | 0xFF4F when memory.Mode = Hardware.Cgb -> 0xFEuy ||| byte memory.VramBank
+            | 0xFF55 when memory.Mode = Hardware.Cgb ->
+                if memory.HdmaActive then
+                    byte (memory.HdmaRemaining - 1)
+                else
+                    0xFFuy
+            | 0xFF69 when memory.Mode = Hardware.Cgb -> memory.BgPaletteRam[int (memory.Io[0x68] &&& 0x3Fuy)]
+            | 0xFF6B when memory.Mode = Hardware.Cgb -> memory.ObjPaletteRam[int (memory.Io[0x6A] &&& 0x3Fuy)]
+            | 0xFF6C when memory.Mode = Hardware.Cgb -> 0xFEuy ||| (memory.Io[0x6C] &&& 0x01uy)
+            | 0xFF70 when memory.Mode = Hardware.Cgb -> 0xF8uy ||| byte memory.WramBank
+            | value when value >= 0xFF00 && value <= 0xFF7F -> memory.Io[value - 0xFF00]
+            | value when value >= 0xFF80 && value <= 0xFFFE -> memory.Hram[value - 0xFF80]
+            | 0xFFFF -> memory.InterruptEnable
+            | _ -> 0xFFuy
+
+        if address <= 0xFFFFu then
+            readNativeAddress (int address)
+        elif address >= 0x10000u && address <= 0x15FFFu then
+            if memory.Mode = Hardware.Cgb then
+                let offset = int (address - 0x10000u)
+                let bank = 2 + offset / WramBankSize
+                memory.Wram[bank * WramBankSize + offset % WramBankSize]
+            else
+                0xFFuy
+        elif address >= 0x16000u && address <= 0x33FFFu then
+            let offset = int (address - 0x16000u)
+            let bank = 1 + offset / 0x2000
+            CartridgeMemory.readPhysicalRamByte bank (offset % 0x2000) memory.Cartridge
+        else
+            0xFFuy
+
+    /// Copies bytes from the side-effect-free debugger/achievement memory map.
+    /// Returns the number of bytes copied before the buffer or mapped range ends.
+    let readInspectionMemory address (buffer: byte[]) bufferOffset count memory =
+        if
+            isNull buffer
+            || bufferOffset < 0
+            || count < 0
+            || bufferOffset > buffer.Length
+            || count > buffer.Length - bufferOffset
+            || address > 0x33FFFu
+        then
+            0
+        else
+            let available = int (0x34000u - address)
+            let copied = min count available
+
+            for index = 0 to copied - 1 do
+                buffer[bufferOffset + index] <- readInspectionByte (address + uint32 index) memory
+
+            copied
+
     /// Copies all audio samples currently waiting on the bus.
     let pendingAudioSamples memory =
         synchronizeApu memory |> ignore

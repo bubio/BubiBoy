@@ -22,6 +22,9 @@ let ``saveToPath writes versioned settings and creates directories`` () =
           ShowFullScreenInfo = false
           VideoFilter = AppSettings.Smooth
           BootRomSelection = AppSettings.Cgb
+          RetroAchievementsEnabled = true
+          RetroAchievementsHardcore = true
+          RetroAchievementsUsername = "player"
           KeyboardMapping = AppSettings.defaultKeyboardMapping |> Map.add "A" "C" |> Map.add "B" "V"
           ControllerMapping =
             AppSettings.defaultControllerMapping
@@ -33,9 +36,11 @@ let ``saveToPath writes versioned settings and creates directories`` () =
     | Ok() ->
         Assert.True(File.Exists path)
         let savedJson = File.ReadAllText path
-        Assert.Contains("\"Version\": 7", savedJson)
+        Assert.Contains("\"Version\": 9", savedJson)
+        Assert.Contains("\"RetroAchievementsHardcore\": true", savedJson)
         Assert.Contains("\"VideoFilter\": \"Smooth\"", savedJson)
         Assert.DoesNotContain("IsFloating", savedJson)
+        Assert.DoesNotContain("Token", savedJson)
 
         match AppSettings.loadFromPath path with
         | Error message -> Assert.Fail message
@@ -46,6 +51,9 @@ let ``saveToPath writes versioned settings and creates directories`` () =
             Assert.False(loaded.ShowFullScreenInfo)
             Assert.Equal(AppSettings.Smooth, loaded.VideoFilter)
             Assert.Equal(AppSettings.Cgb, loaded.BootRomSelection)
+            Assert.True(loaded.RetroAchievementsEnabled)
+            Assert.True(loaded.RetroAchievementsHardcore)
+            Assert.Equal("player", loaded.RetroAchievementsUsername)
             Assert.Equal("C", loaded.KeyboardMapping["A"])
             Assert.Equal("V", loaded.KeyboardMapping["B"])
             Assert.Equal("West", loaded.ControllerMapping["A"])
@@ -58,6 +66,35 @@ let ``loadFromPath returns defaults when settings file is missing`` () =
     | Ok settings -> Assert.Equal(AppSettings.defaults, settings)
 
 [<Fact>]
+let ``version 8 settings migrate with hardcore disabled`` () =
+    let path = tempPath "settings-v8.json"
+    Directory.CreateDirectory(Path.GetDirectoryName path) |> ignore
+
+    File.WriteAllText(
+        path,
+        """{
+  "Version": 8,
+  "VolumePercent": 50,
+  "RecentRoms": [],
+  "Scale": 2,
+  "ShowFullScreenInfo": true,
+  "VideoFilter": "Off",
+  "BootRomSelection": "Disabled",
+  "RetroAchievementsEnabled": true,
+  "RetroAchievementsUsername": "player",
+  "KeyboardMapping": {},
+  "ControllerMapping": {}
+}"""
+    )
+
+    match AppSettings.loadFromPath path with
+    | Error message -> Assert.Fail message
+    | Ok settings ->
+        Assert.True(settings.RetroAchievementsEnabled)
+        Assert.True(settings.RetroAchievementsHardcore)
+        Assert.Equal("player", settings.RetroAchievementsUsername)
+
+[<Fact>]
 let ``normalize clamps volume and limits deduplicated recent ROMs`` () =
     let paths = [ for index in 0..12 -> tempPath $"game{index}.gb" ]
 
@@ -68,6 +105,9 @@ let ``normalize clamps volume and limits deduplicated recent ROMs`` () =
           ShowFullScreenInfo = false
           VideoFilter = AppSettings.Lcd
           BootRomSelection = AppSettings.Automatic
+          RetroAchievementsEnabled = false
+          RetroAchievementsHardcore = true
+          RetroAchievementsUsername = ""
           KeyboardMapping =
             AppSettings.defaultKeyboardMapping
             |> Map.add "A" "Q"
@@ -90,6 +130,7 @@ let ``normalize clamps volume and limits deduplicated recent ROMs`` () =
     Assert.False(settings.ShowFullScreenInfo)
     Assert.Equal(AppSettings.Lcd, settings.VideoFilter)
     Assert.Equal(AppSettings.Automatic, settings.BootRomSelection)
+    Assert.True(settings.RetroAchievementsHardcore)
     Assert.Equal("Q", settings.KeyboardMapping["A"])
     Assert.Equal("X", settings.KeyboardMapping["B"])
     Assert.Equal("Enter", settings.KeyboardMapping["Start"])
@@ -111,6 +152,9 @@ let ``rememberRom moves existing ROM to front`` () =
           ShowFullScreenInfo = true
           VideoFilter = AppSettings.Off
           BootRomSelection = AppSettings.Disabled
+          RetroAchievementsEnabled = false
+          RetroAchievementsHardcore = false
+          RetroAchievementsUsername = ""
           KeyboardMapping = AppSettings.defaultKeyboardMapping
           ControllerMapping = AppSettings.defaultControllerMapping }
 

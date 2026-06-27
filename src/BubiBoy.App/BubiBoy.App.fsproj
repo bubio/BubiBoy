@@ -8,6 +8,11 @@
     <Product>BubiBoy</Product>
     <Version>1.1.0</Version>
   </PropertyGroup>
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>BubiBoy.App.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
 
   <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('Windows')) or ('$(RuntimeIdentifier)' == 'win-x64' or $([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('win-')))">
     <OutputType>WinExe</OutputType>
@@ -44,9 +49,14 @@
     <Compile Include="InputMapping.fs" />
     <Compile Include="ControllerInputAdapter.fs" />
     <Compile Include="InputStateController.fs" />
+    <Compile Include="RuntimePacing.fs" />
     <Compile Include="EmulationRunner.fs" />
     <Compile Include="DialogLayout.fs" />
+    <Compile Include="RetroAchievementsOperations.fs" />
+    <Compile Include="RetroAchievementsPresentation.fs" />
+    <Compile Include="RetroAchievementsOverlay.fs" />
     <Compile Include="InputMappingWindow.fs" />
+    <Compile Include="AchievementsWindow.fs" />
     <Compile Include="SettingsWindow.fs" />
     <Compile Include="RomSession.fs" />
     <Compile Include="RomWorkflow.fs" />
@@ -61,6 +71,7 @@
     <Compile Include="WindowLayoutController.fs" />
     <Compile Include="MainWindowMenus.fs" />
     <Compile Include="FrameDisplayTimer.fs" />
+    <Compile Include="RaStateWorkflow.fs" />
     <Compile Include="EmulationSessionController.fs" />
     <Compile Include="MainWindow.fs" />
     <Compile Include="App.fs" />
@@ -71,6 +82,7 @@
     <ProjectReference Include="..\BubiBoy.Core\BubiBoy.Core.fsproj" />
     <ProjectReference Include="..\BubiBoy.IO\BubiBoy.IO.fsproj" />
     <ProjectReference Include="..\BubiBoy.Audio\BubiBoy.Audio.fsproj" />
+    <ProjectReference Include="..\BubiBoy.RetroAchievements\BubiBoy.RetroAchievements.fsproj" />
     <ProjectReference Include="..\ControllerInput\ControllerInput.fsproj" />
   </ItemGroup>
 

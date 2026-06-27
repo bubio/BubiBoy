@@ -8,7 +8,8 @@ module PerfTrace =
     type Trace =
         { Writer: StreamWriter
           DisplayWriter: StreamWriter
-          Gate: obj
+          FrameGate: obj
+          DisplayGate: obj
           Stopwatch: Stopwatch }
 
     let createFromEnvironment () =
@@ -22,7 +23,7 @@ module PerfTrace =
                     new StreamWriter(File.Open(path, FileMode.Create, FileAccess.Write, FileShare.Read))
 
                 writer.WriteLine(
-                    "timeMs,frame,frameMs,steps,cycles,pc,stop,acceptedAudio,enqueueDropped,bufferBefore,bufferAfter,underrunAfter,droppedAfter,gc0,gc1,gc2"
+                    "timeMs,frame,frameMs,coreMs,raMs,steps,cycles,pc,stop,acceptedAudio,enqueueDropped,bufferBefore,bufferAfter,underrunAfter,droppedAfter,gc0,gc1,gc2"
                 )
 
                 writer.Flush()
@@ -32,7 +33,7 @@ module PerfTrace =
                     new StreamWriter(File.Open(displayPath, FileMode.Create, FileAccess.Write, FileShare.Read))
 
                 displayWriter.WriteLine(
-                    "timeMs,tick,displayMs,tickDeltaMs,displayedFrame,queueBefore,queueAfter,bufferedAudio,underrun,dropped,gc0,gc1,gc2"
+                    "timeMs,tick,displayMs,tickDeltaMs,displayedFrame,pendingFrame,overwrittenFrames,bufferedAudio,underrun,dropped,gc0,gc1,gc2"
                 )
 
                 displayWriter.Flush()
@@ -40,7 +41,8 @@ module PerfTrace =
                 Some
                     { Writer = writer
                       DisplayWriter = displayWriter
-                      Gate = obj ()
+                      FrameGate = obj ()
+                      DisplayGate = obj ()
                       Stopwatch = Stopwatch.StartNew() }
             with ex ->
                 eprintfn $"Could not create BUBIBOY_PERF_LOG '{path}': {ex.Message}"
@@ -50,6 +52,8 @@ module PerfTrace =
         trace
         frame
         frameMs
+        coreMs
+        raMs
         steps
         cycles
         pc
@@ -64,12 +68,10 @@ module PerfTrace =
         match trace with
         | None -> ()
         | Some trace ->
-            lock trace.Gate (fun () ->
+            lock trace.FrameGate (fun () ->
                 trace.Writer.WriteLine(
-                    $"{trace.Stopwatch.Elapsed.TotalMilliseconds:F3},{frame},{frameMs:F3},{steps},{cycles},0x{pc:X4},{stop},{acceptedAudio},{enqueueDropped},{bufferBefore},{bufferAfter},{underrunAfter},{droppedAfter},{GC.CollectionCount 0},{GC.CollectionCount 1},{GC.CollectionCount 2}"
-                )
-
-                trace.Writer.Flush())
+                    $"{trace.Stopwatch.Elapsed.TotalMilliseconds:F3},{frame},{frameMs:F3},{coreMs:F3},{raMs:F3},{steps},{cycles},0x{pc:X4},{stop},{acceptedAudio},{enqueueDropped},{bufferBefore},{bufferAfter},{underrunAfter},{droppedAfter},{GC.CollectionCount 0},{GC.CollectionCount 1},{GC.CollectionCount 2}"
+                ))
 
     let writeDisplay
         trace
@@ -77,8 +79,8 @@ module PerfTrace =
         displayMs
         tickDeltaMs
         displayedFrame
-        queueBefore
-        queueAfter
+        pendingFrame
+        overwrittenFrames
         bufferedAudio
         underrun
         dropped
@@ -86,17 +88,14 @@ module PerfTrace =
         match trace with
         | None -> ()
         | Some trace ->
-            lock trace.Gate (fun () ->
+            lock trace.DisplayGate (fun () ->
                 trace.DisplayWriter.WriteLine(
-                    $"{trace.Stopwatch.Elapsed.TotalMilliseconds:F3},{tick},{displayMs:F3},{tickDeltaMs:F3},{displayedFrame},{queueBefore},{queueAfter},{bufferedAudio},{underrun},{dropped},{GC.CollectionCount 0},{GC.CollectionCount 1},{GC.CollectionCount 2}"
-                )
-
-                trace.DisplayWriter.Flush())
+                    $"{trace.Stopwatch.Elapsed.TotalMilliseconds:F3},{tick},{displayMs:F3},{tickDeltaMs:F3},{displayedFrame},{pendingFrame},{overwrittenFrames},{bufferedAudio},{underrun},{dropped},{GC.CollectionCount 0},{GC.CollectionCount 1},{GC.CollectionCount 2}"
+                ))
 
     let close trace =
         match trace with
         | None -> ()
         | Some trace ->
-            lock trace.Gate (fun () ->
-                trace.Writer.Dispose()
-                trace.DisplayWriter.Dispose())
+            lock trace.FrameGate (fun () -> trace.Writer.Dispose())
+            lock trace.DisplayGate (fun () -> trace.DisplayWriter.Dispose())
