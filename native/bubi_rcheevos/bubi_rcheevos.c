@@ -489,6 +489,12 @@ void bubi_ra_fetch_leaderboard_entries(
   if (!client || !client->native || !complete_callback)
     return;
 
+  if (!rc_client_get_game_info(client->native)) {
+    complete_callback(client->userdata, leaderboard_id, RC_INVALID_STATE,
+                      "leaderboard entries require a loaded game", 0, -1);
+    return;
+  }
+
   request = (bubi_ra_leaderboard_entries_request*)calloc(1, sizeof(*request));
   if (!request) {
     complete_callback(client->userdata, leaderboard_id, RC_OUT_OF_MEMORY,
