@@ -111,9 +111,7 @@ module Apu =
           SnapshotNoise: NoiseChannel
           SnapshotPendingSamples: PendingSamplesSnapshot }
 
-    let private emptyPendingSamples () =
-        { Buffer = Array.zeroCreate<Sample> 2048
-          Count = 0 }
+    let private emptyPendingSamples () = { Buffer = Array.empty; Count = 0 }
 
     let private pendingSamplesFromSnapshot snapshot =
         let samples =
@@ -134,7 +132,13 @@ module Apu =
             if pending.Count < pending.Buffer.Length then
                 pending.Buffer
             else
-                let next = Array.zeroCreate<Sample> (pending.Buffer.Length * 2)
+                let capacity =
+                    if pending.Buffer.Length = 0 then
+                        2048
+                    else
+                        pending.Buffer.Length * 2
+
+                let next = Array.zeroCreate<Sample> capacity
                 System.Array.Copy(pending.Buffer, next, pending.Buffer.Length)
                 next
 

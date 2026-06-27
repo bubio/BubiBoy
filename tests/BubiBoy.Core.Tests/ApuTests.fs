@@ -114,6 +114,31 @@ let ``triggered pulse channel produces deterministic one second sample count`` (
     Assert.Contains(samples, fun sample -> sample.Left <> 0.0f || sample.Right <> 0.0f)
 
 [<Fact>]
+let ``fresh APU states keep independent pending sample buffers`` () =
+    let poweredIo, poweredState = triggerPulse1 0uy 0x80uy 0xF0uy 0x00uy 0x80uy
+    let silentIo = emptyIo ()
+
+    let cyclesPerSample =
+        int ((int64 Hardware.DmgClockHz + int64 Apu.SampleRate - 1L) / int64 Apu.SampleRate)
+
+    let powered = Apu.tick cyclesPerSample poweredIo poweredState
+    let silent = Apu.tick cyclesPerSample silentIo Apu.initial
+
+    let poweredSamples = Apu.pendingSamples powered
+    let silentSamples = Apu.pendingSamples silent
+
+    Assert.Equal(1, poweredSamples.Length)
+    Assert.Equal(1, silentSamples.Length)
+    Assert.Contains(poweredSamples, fun sample -> sample.Left <> 0.0f || sample.Right <> 0.0f)
+
+    Assert.All(
+        silentSamples,
+        fun sample ->
+            Assert.Equal(0.0f, sample.Left)
+            Assert.Equal(0.0f, sample.Right)
+    )
+
+[<Fact>]
 let ``length counter disables pulse channel`` () =
     let io, state = triggerPulse1 0uy 0x3Fuy 0xF0uy 0x00uy 0xC0uy
 
