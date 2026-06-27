@@ -14,6 +14,15 @@ type SettingsResult =
 module internal SettingsWindowSelection =
     let hardcorePreference isChecked = isChecked
 
+    let bootRomDescription selection =
+        match selection with
+        | AppSettings.Disabled -> "Skip the boot ROM and start from BubiBoy's post-boot hardware state."
+        | AppSettings.Automatic ->
+            "Use a CGB boot ROM for Color-compatible games and a DMG boot ROM for original Game Boy games."
+        | AppSettings.Cgb -> "Always try the CGB boot ROM, including for original Game Boy games."
+        | AppSettings.Dmg ->
+            "Always try the original Game Boy boot ROM. Color-only games will fall back to post-boot startup."
+
 type SettingsWindow(initialSettings: AppSettings.Settings) as this =
     inherit Window()
 
@@ -27,7 +36,7 @@ type SettingsWindow(initialSettings: AppSettings.Settings) as this =
         this.Title <- "Settings"
         this.WindowStartupLocation <- WindowStartupLocation.CenterOwner
         this.Width <- 520.0
-        this.Height <- 390.0
+        this.Height <- 420.0
         this.CanResize <- false
         this.FontFamily <- AppFonts.ui
         AppTheme.bindBrush this Window.BackgroundProperty AppTheme.WindowBackground
@@ -42,6 +51,9 @@ type SettingsWindow(initialSettings: AppSettings.Settings) as this =
             |> Array.tryFindIndex (fun (_, value) -> value = initialSettings.BootRomSelection)
             |> Option.defaultValue 0
 
+        let selectedDescription =
+            DialogLayout.bodyText (SettingsWindowSelection.bootRomDescription initialSettings.BootRomSelection)
+
         let radioButtons =
             choices
             |> Array.mapi (fun index (label, _) ->
@@ -54,6 +66,11 @@ type SettingsWindow(initialSettings: AppSettings.Settings) as this =
                     )
 
                 DialogLayout.styleRadioButton button
+
+                button.IsCheckedChanged.Add(fun _ ->
+                    if button.IsChecked.GetValueOrDefault() then
+                        selectedDescription.Text <- SettingsWindowSelection.bootRomDescription (snd choices[index]))
+
                 button)
 
         let bootOptions =
@@ -99,7 +116,7 @@ type SettingsWindow(initialSettings: AppSettings.Settings) as this =
 
         let content =
             Grid(
-                RowDefinitions = RowDefinitions("Auto,8,Auto,8,Auto,18,Auto,8,Auto,*,Auto"),
+                RowDefinitions = RowDefinitions("Auto,8,Auto,8,Auto,8,Auto,18,Auto,8,Auto,*,Auto"),
                 Margin = DialogLayout.contentMargin
             )
 
@@ -110,9 +127,10 @@ type SettingsWindow(initialSettings: AppSettings.Settings) as this =
         add 0 bootTitle
         add 2 bootDescription
         add 4 (DialogLayout.surface bootOptions (Thickness(12.0, 8.0)))
-        add 6 raTitle
-        add 8 (DialogLayout.surface raPanel (Thickness(12.0, 10.0)))
-        add 10 buttons
+        add 6 selectedDescription
+        add 8 raTitle
+        add 10 (DialogLayout.surface raPanel (Thickness(12.0, 10.0)))
+        add 12 buttons
         this.Content <- content
 
         cancelButton.Click.Add(fun _ -> this.Close(None))

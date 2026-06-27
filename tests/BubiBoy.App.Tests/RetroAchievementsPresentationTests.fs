@@ -7,6 +7,7 @@ open System.Threading
 open System.Threading.Tasks
 open Avalonia.Controls
 open BubiBoy.App
+open BubiBoy.IO
 open BubiBoy.RetroAchievements
 open Xunit
 
@@ -85,6 +86,19 @@ module RetroAchievementsPresentationTests =
     let ``disabling RetroAchievements preserves the hardcore preference`` () =
         Assert.True(SettingsWindowSelection.hardcorePreference true)
         Assert.False(SettingsWindowSelection.hardcorePreference false)
+
+    [<Fact>]
+    let ``boot ROM selections have concise descriptions`` () =
+        let selections =
+            [ AppSettings.Disabled
+              AppSettings.Automatic
+              AppSettings.Cgb
+              AppSettings.Dmg ]
+
+        for selection in selections do
+            let description = SettingsWindowSelection.bootRomDescription selection
+            Assert.False(String.IsNullOrWhiteSpace description)
+            Assert.True(description.Length < 120)
 
     [<Fact>]
     let ``achievement status sort puts recent and active items before locked items`` () =
