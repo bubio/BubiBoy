@@ -35,7 +35,7 @@ playing and testing classic handheld games.
 - Supports ROM-only, MBC1, MBC2, MBC3, and MBC5 cartridges.
 - Loads and saves battery-backed `.sav` data automatically.
 - Supports save states and recent ROMs.
-- Supports opt-in RetroAchievements Softcore/Hardcore login, game identification, achievement and leaderboard lists, in-game trackers and scoreboards, badges, unlock notifications, Rich Presence, and Softcore RA-aware save states on macOS and Linux.
+- Supports opt-in RetroAchievements Softcore/Hardcore login, game identification, achievement and leaderboard lists, in-game trackers and scoreboards, badges, unlock notifications, Rich Presence, and Softcore RA-aware save states on macOS, Linux, and Windows.
 - Supports configurable keyboard/controller mappings and native controller input on macOS, Linux, and Windows.
 - Provides nearest-neighbor, smooth, and LCD-style image filters.
 - Can use external DMG and CGB boot ROMs when supplied by the user.
@@ -123,7 +123,7 @@ dotnet publish src/BubiBoy.App/BubiBoy.App.fsproj -c Release -r win-arm64 --self
 
 Output: `src/BubiBoy.App/bin/Release/net10.0/<rid>/publish/BubiBoy.exe`
 
-For packaged audio output, the native wrapper is copied under `runtimes/<rid>/native`.
+For packaged audio output and RetroAchievements support, the native wrappers are copied under `runtimes/<rid>/native`. On Windows, RetroAchievements tokens are persisted with Credential Manager as Generic Credentials under `org.bubiboy.RetroAchievements:<username>`.
 
 ## Requirements
 

@@ -1,8 +1,8 @@
 # RetroAchievements Integration
 
 BubiBoy uses the `rc_client` API from rcheevos 12.3.0 for its initial
-RetroAchievements integration. The feature is opt-in and currently targets macOS
-and Linux Softcore/Hardcore sessions.
+RetroAchievements integration. The feature is opt-in and currently targets macOS,
+Linux, and Windows Softcore/Hardcore sessions.
 
 ## Boundaries
 
@@ -11,11 +11,12 @@ and Linux Softcore/Hardcore sessions.
   and runtime progress serialization.
 - `native/bubi_rcheevos` flattens the C API into an ownership-safe ABI for F#.
 - Passwords are never persisted. The username is stored in settings. On macOS, the
-  token is stored in Keychain under `org.bubiboy.RetroAchievements`. On Linux, the
-  token is stored via Secret Service (`libsecret`) when available in the runtime.
-  If Secret Service is unavailable, the token is not persisted and the user must
-  re-authenticate after restart. Windows currently keeps the existing non-persistent
-  behavior.
+  token is stored in Keychain under `org.bubiboy.RetroAchievements`. On Windows,
+  the token is stored as a Generic Credential in Windows Credential Manager using
+  the `org.bubiboy.RetroAchievements:<username>` target. On Linux, the token is
+  stored via Secret Service (`libsecret`) when available in the runtime. If Secret
+  Service is unavailable, the token is not persisted and the user must
+  re-authenticate after restart.
 - A failed login or game identification never prevents the ROM from running. That
   ROM remains an offline session until it is reloaded.
 - Rich Presence is sampled from the active emulation session once per second and

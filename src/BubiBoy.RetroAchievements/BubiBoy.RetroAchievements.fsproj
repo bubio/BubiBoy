@@ -7,12 +7,17 @@
     <BubiBoyRaNativeRid Condition="'$(BubiBoyRaNativeRid)' == ''">$(NETCoreSdkRuntimeIdentifier)</BubiBoyRaNativeRid>
     <BubiBoyRaNativeLibraryName Condition="$([System.String]::Copy('$(BubiBoyRaNativeRid)').StartsWith('osx-'))">libbubi_rcheevos.dylib</BubiBoyRaNativeLibraryName>
     <BubiBoyRaNativeLibraryName Condition="$([System.String]::Copy('$(BubiBoyRaNativeRid)').StartsWith('linux-'))">libbubi_rcheevos.so</BubiBoyRaNativeLibraryName>
+    <BubiBoyRaNativeLibraryName Condition="$([System.String]::Copy('$(BubiBoyRaNativeRid)').StartsWith('win-'))">bubi_rcheevos.dll</BubiBoyRaNativeLibraryName>
     <BubiBoyRaNativeRoot>$(MSBuildThisFileDirectory)../../native/bubi_rcheevos</BubiBoyRaNativeRoot>
     <BubiBoyRaNativeCMakeBuildDir>$(BubiBoyRaNativeRoot)/build/cmake/$(BubiBoyRaNativeRid)</BubiBoyRaNativeCMakeBuildDir>
+    <BubiBoyRaNativeCMakeConfigureArgs>-DCMAKE_BUILD_TYPE=$(Configuration)</BubiBoyRaNativeCMakeConfigureArgs>
+    <BubiBoyRaNativeCMakeConfigureArgs Condition="$([System.String]::Copy('$(BubiBoyRaNativeRid)').StartsWith('win-'))"></BubiBoyRaNativeCMakeConfigureArgs>
+    <BubiBoyRaNativeCMakeLibrary>$(BubiBoyRaNativeCMakeBuildDir)/$(BubiBoyRaNativeLibraryName)</BubiBoyRaNativeCMakeLibrary>
+    <BubiBoyRaNativeCMakeLibrary Condition="$([System.String]::Copy('$(BubiBoyRaNativeRid)').StartsWith('win-'))">$(BubiBoyRaNativeCMakeBuildDir)/$(Configuration)/$(BubiBoyRaNativeLibraryName)</BubiBoyRaNativeCMakeLibrary>
     <BubiBoyRaNativeRuntimeDir>$(BubiBoyRaNativeRoot)/build/runtimes/$(BubiBoyRaNativeRid)/native</BubiBoyRaNativeRuntimeDir>
     <BubiBoyRaNativeRuntimeLibrary>$(BubiBoyRaNativeRuntimeDir)/$(BubiBoyRaNativeLibraryName)</BubiBoyRaNativeRuntimeLibrary>
     <BubiBoyRaNativeSources>$(BubiBoyRaNativeRoot)/CMakeLists.txt;$(BubiBoyRaNativeRoot)/bubi_rcheevos.c;$(BubiBoyRaNativeRoot)/bubi_rcheevos.h;$(MSBuildThisFileDirectory)../../ThirdParty/versions.json</BubiBoyRaNativeSources>
-    <BubiBoyCanBuildNativeRetroAchievements Condition="($([System.String]::Copy('$(BubiBoyRaNativeRid)').StartsWith('osx-')) or $([System.String]::Copy('$(BubiBoyRaNativeRid)').StartsWith('linux-'))) and ('$(RuntimeIdentifier)' == '' or '$(RuntimeIdentifier)' == '$(NETCoreSdkRuntimeIdentifier)')">true</BubiBoyCanBuildNativeRetroAchievements>
+    <BubiBoyCanBuildNativeRetroAchievements Condition="($([System.String]::Copy('$(BubiBoyRaNativeRid)').StartsWith('osx-')) or $([System.String]::Copy('$(BubiBoyRaNativeRid)').StartsWith('linux-')) or $([System.String]::Copy('$(BubiBoyRaNativeRid)').StartsWith('win-'))) and ('$(RuntimeIdentifier)' == '' or '$(RuntimeIdentifier)' == '$(NETCoreSdkRuntimeIdentifier)')">true</BubiBoyCanBuildNativeRetroAchievements>
   </PropertyGroup>
   <ItemGroup>
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
@@ -53,9 +58,9 @@
           Outputs="$(BubiBoyRaNativeRuntimeLibrary)"
           Condition="'$(BubiBoyBuildNativeRetroAchievements)' == 'true' and '$(BubiBoyCanBuildNativeRetroAchievements)' == 'true' and '$(BubiBoyRaNativeLibraryName)' != ''">
     <MakeDir Directories="$(BubiBoyRaNativeRuntimeDir)" />
-    <Exec Command="cmake -S &quot;$(BubiBoyRaNativeRoot)&quot; -B &quot;$(BubiBoyRaNativeCMakeBuildDir)&quot; -DCMAKE_BUILD_TYPE=$(Configuration)" />
+    <Exec Command="cmake -S &quot;$(BubiBoyRaNativeRoot)&quot; -B &quot;$(BubiBoyRaNativeCMakeBuildDir)&quot; $(BubiBoyRaNativeCMakeConfigureArgs)" />
     <Exec Command="cmake --build &quot;$(BubiBoyRaNativeCMakeBuildDir)&quot; --config $(Configuration)" />
-    <Copy SourceFiles="$(BubiBoyRaNativeCMakeBuildDir)/$(BubiBoyRaNativeLibraryName)"
+    <Copy SourceFiles="$(BubiBoyRaNativeCMakeLibrary)"
           DestinationFiles="$(BubiBoyRaNativeRuntimeLibrary)" />
   </Target>
 </Project>

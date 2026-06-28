@@ -25,6 +25,7 @@ module RaCredentialStore =
     let private isMacOs = RuntimeInformation.IsOSPlatform OSPlatform.OSX
     let private isLinux = RuntimeInformation.IsOSPlatform OSPlatform.Linux
     let private isWindows = RuntimeInformation.IsOSPlatform OSPlatform.Windows
+    let private supportsSecureStorage = isMacOs || isLinux || isWindows
 
     let private saveFailureMessage (result: int) =
         if isMacOs then
@@ -35,14 +36,14 @@ module RaCredentialStore =
             | CredentialBackendError -> "Linux Secret Service returned an error while storing the token."
             | _ -> $"Linux credential storage returned status {result}."
         elif isWindows then
-            "Secure RetroAchievements token persistence for Windows is not implemented yet."
+            $"Windows Credential Manager returned status {result} while storing the token."
         else
             "Secure RetroAchievements credential storage is not available on this platform yet."
 
     let saveToken username token =
         if String.IsNullOrWhiteSpace username || String.IsNullOrWhiteSpace token then
             Error "RetroAchievements username and token must not be empty."
-        elif not isMacOs && not isLinux then
+        elif not supportsSecureStorage then
             Error(saveFailureMessage CredentialUnavailable)
         else
             let result =
@@ -54,7 +55,7 @@ module RaCredentialStore =
                 Error(saveFailureMessage result)
 
     let tryLoadToken username =
-        if String.IsNullOrWhiteSpace username || (not isMacOs && not isLinux) then
+        if String.IsNullOrWhiteSpace username || not supportsSecureStorage then
             None
         else
             let buffer = StringBuilder(1024)
@@ -70,7 +71,7 @@ module RaCredentialStore =
                 None
 
     let deleteToken username =
-        if String.IsNullOrWhiteSpace username || (not isMacOs && not isLinux) then
+        if String.IsNullOrWhiteSpace username || not supportsSecureStorage then
             ()
         else
             NativeInterop.Native.bubi_ra_credential_delete (Service, username) |> ignore
