@@ -10,6 +10,15 @@ BubiBoy is a Game Boy and Game Boy Color emulator written in F# on .NET 10.
   <a href="https://github.com/bubio/BubiBoy/releases/latest">
     <img src="https://img.shields.io/github/v/release/bubio/BubiBoy" alt="Latest Release">
   </a>
+  <a href="https://github.com/bubio/BubiBoy/actions/workflows/ci-linux.yml">
+    <img src="https://github.com/bubio/BubiBoy/actions/workflows/ci-linux.yml/badge.svg" alt="Linux">
+  </a>
+  <a href="https://github.com/bubio/BubiBoy/actions/workflows/ci-macos.yml">
+    <img src="https://github.com/bubio/BubiBoy/actions/workflows/ci-macos.yml/badge.svg" alt="macOS">
+  </a>
+  <a href="https://github.com/bubio/BubiBoy/actions/workflows/ci-windows.yml">
+    <img src="https://github.com/bubio/BubiBoy/actions/workflows/ci-windows.yml/badge.svg" alt="Windows">
+  </a>
   <a href="https://github.com/bubio/BubiBoy/blob/main/LICENSE">
     <img src="https://img.shields.io/github/license/bubio/BubiBoy" alt="License">
   </a>
@@ -27,6 +36,7 @@ playing and testing classic handheld games.
 ![Wizardry on BubiBoy running on macOS Tahoe](/docs/Screenshot1.png)
 ![Dragon Quest III on BubiBoy running on Windows 11](/docs/Screenshot2.png)
 ![Prince of Persia on BubiBoy running on Ubuntu 24.04](/docs/Screenshot3.png)
+![Tetris on BubiBoy running on macOS Tahoe](/docs/Screenshot4.png)
 
 ## Features
 
