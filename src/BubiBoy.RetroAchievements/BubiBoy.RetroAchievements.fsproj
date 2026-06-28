@@ -6,12 +6,13 @@
     <BubiBoyRaNativeRid Condition="'$(RuntimeIdentifier)' != ''">$(RuntimeIdentifier)</BubiBoyRaNativeRid>
     <BubiBoyRaNativeRid Condition="'$(BubiBoyRaNativeRid)' == ''">$(NETCoreSdkRuntimeIdentifier)</BubiBoyRaNativeRid>
     <BubiBoyRaNativeLibraryName Condition="$([System.String]::Copy('$(BubiBoyRaNativeRid)').StartsWith('osx-'))">libbubi_rcheevos.dylib</BubiBoyRaNativeLibraryName>
+    <BubiBoyRaNativeLibraryName Condition="$([System.String]::Copy('$(BubiBoyRaNativeRid)').StartsWith('linux-'))">libbubi_rcheevos.so</BubiBoyRaNativeLibraryName>
     <BubiBoyRaNativeRoot>$(MSBuildThisFileDirectory)../../native/bubi_rcheevos</BubiBoyRaNativeRoot>
     <BubiBoyRaNativeCMakeBuildDir>$(BubiBoyRaNativeRoot)/build/cmake/$(BubiBoyRaNativeRid)</BubiBoyRaNativeCMakeBuildDir>
     <BubiBoyRaNativeRuntimeDir>$(BubiBoyRaNativeRoot)/build/runtimes/$(BubiBoyRaNativeRid)/native</BubiBoyRaNativeRuntimeDir>
     <BubiBoyRaNativeRuntimeLibrary>$(BubiBoyRaNativeRuntimeDir)/$(BubiBoyRaNativeLibraryName)</BubiBoyRaNativeRuntimeLibrary>
     <BubiBoyRaNativeSources>$(BubiBoyRaNativeRoot)/CMakeLists.txt;$(BubiBoyRaNativeRoot)/bubi_rcheevos.c;$(BubiBoyRaNativeRoot)/bubi_rcheevos.h;$(MSBuildThisFileDirectory)../../ThirdParty/versions.json</BubiBoyRaNativeSources>
-    <BubiBoyCanBuildNativeRetroAchievements Condition="$([System.String]::Copy('$(BubiBoyRaNativeRid)').StartsWith('osx-')) and ('$(RuntimeIdentifier)' == '' or '$(RuntimeIdentifier)' == '$(NETCoreSdkRuntimeIdentifier)')">true</BubiBoyCanBuildNativeRetroAchievements>
+    <BubiBoyCanBuildNativeRetroAchievements Condition="($([System.String]::Copy('$(BubiBoyRaNativeRid)').StartsWith('osx-')) or $([System.String]::Copy('$(BubiBoyRaNativeRid)').StartsWith('linux-'))) and ('$(RuntimeIdentifier)' == '' or '$(RuntimeIdentifier)' == '$(NETCoreSdkRuntimeIdentifier)')">true</BubiBoyCanBuildNativeRetroAchievements>
   </PropertyGroup>
   <ItemGroup>
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">

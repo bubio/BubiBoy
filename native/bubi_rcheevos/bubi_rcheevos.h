@@ -119,11 +119,11 @@ BUBI_RA_EXPORT int bubi_ra_serialize_progress(bubi_ra_client* client, uint8_t* b
                                               size_t size);
 BUBI_RA_EXPORT int bubi_ra_deserialize_progress(bubi_ra_client* client,
                                                 const uint8_t* buffer, size_t size);
-BUBI_RA_EXPORT int bubi_ra_keychain_store(const char* service, const char* account,
-                                          const char* secret);
-BUBI_RA_EXPORT int bubi_ra_keychain_load(const char* service, const char* account,
-                                         char* secret, size_t secret_size);
-BUBI_RA_EXPORT int bubi_ra_keychain_delete(const char* service, const char* account);
+BUBI_RA_EXPORT int bubi_ra_credential_store(const char* service, const char* account,
+                                            const char* secret);
+BUBI_RA_EXPORT int bubi_ra_credential_load(const char* service, const char* account,
+                                           char* secret, size_t secret_size);
+BUBI_RA_EXPORT int bubi_ra_credential_delete(const char* service, const char* account);
 
 #ifdef __cplusplus
 }

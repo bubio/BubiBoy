@@ -255,13 +255,13 @@ module internal NativeInterop =
         extern int bubi_ra_deserialize_progress(nativeint client, byte[] buffer, unativeint size)
 
         [<DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)>]
-        extern int bubi_ra_keychain_store(string service, string account, string secret)
+        extern int bubi_ra_credential_store(string service, string account, string secret)
 
         [<DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)>]
-        extern int bubi_ra_keychain_load(string service, string account, StringBuilder secret, unativeint secretSize)
+        extern int bubi_ra_credential_load(string service, string account, StringBuilder secret, unativeint secretSize)
 
         [<DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)>]
-        extern int bubi_ra_keychain_delete(string service, string account)
+        extern int bubi_ra_credential_delete(string service, string account)
 
     let api =
         { Create =

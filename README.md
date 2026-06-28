@@ -35,7 +35,7 @@ playing and testing classic handheld games.
 - Supports ROM-only, MBC1, MBC2, MBC3, and MBC5 cartridges.
 - Loads and saves battery-backed `.sav` data automatically.
 - Supports save states and recent ROMs.
-- Supports opt-in RetroAchievements Softcore/Hardcore login, game identification, achievement and leaderboard lists, in-game trackers and scoreboards, badges, unlock notifications, Rich Presence, and Softcore RA-aware save states on macOS.
+- Supports opt-in RetroAchievements Softcore/Hardcore login, game identification, achievement and leaderboard lists, in-game trackers and scoreboards, badges, unlock notifications, Rich Presence, and Softcore RA-aware save states on macOS and Linux.
 - Supports configurable keyboard/controller mappings and native controller input on macOS, Linux, and Windows.
 - Provides nearest-neighbor, smooth, and LCD-style image filters.
 - Can use external DMG and CGB boot ROMs when supplied by the user.
@@ -110,8 +110,8 @@ tools/build-linux-with-container.sh linux-arm64
 tools/build-linux-with-container.sh linux-x64
 ```
 
-This helper script runs a Linux container (`mcr.microsoft.com/dotnet/sdk:10.0`), builds `libbubi_miniaudio.so`,
-publishes for the selected Linux RID, and copies the native library into
+This helper script runs a Linux container (`mcr.microsoft.com/dotnet/sdk:10.0`), builds `libbubi_miniaudio.so`
+and `libbubi_rcheevos.so`, publishes for the selected Linux RID, and copies the native libraries into
 `src/BubiBoy.App/bin/Release/net10.0/<rid>/publish/runtimes/<rid>/native`.
 
 ### Windows
