@@ -4,6 +4,7 @@
 #include "rc_consoles.h"
 #include "rc_version.h"
 
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -12,6 +13,9 @@
 #define BUBI_RA_MEMORY_PAGE_SIZE 64U
 #define BUBI_RA_MEMORY_PAGE_COUNT \
   (BUBI_RA_MEMORY_SIZE / BUBI_RA_MEMORY_PAGE_SIZE)
+#define BUBI_RA_CREDENTIAL_UNAVAILABLE -1
+#define BUBI_RA_CREDENTIAL_BACKEND_MISSING -2
+#define BUBI_RA_CREDENTIAL_BACKEND_ERROR -3
 
 #if defined(__APPLE__)
 #include <Security/Security.h>
@@ -19,6 +23,11 @@
 
 #if defined(__linux__) && BUBI_RA_HAS_LIBSECRET
 #include <libsecret/secret.h>
+#endif
+
+#if defined(_WIN32)
+#include <windows.h>
+#include <wincred.h>
 #endif
 
 typedef struct bubi_ra_pending_request {
@@ -58,6 +67,96 @@ static void bubi_copy_string(char* destination, size_t size, const char* source)
 
   snprintf(destination, size, "%s", source);
 }
+
+#if defined(_WIN32)
+static wchar_t* bubi_ra_multi_byte_to_wide_with_code_page(const char* value,
+                                                           UINT code_page,
+                                                           DWORD flags) {
+  int length;
+  wchar_t* buffer;
+
+  if (!value)
+    return NULL;
+
+  length = MultiByteToWideChar(code_page, flags, value, -1, NULL, 0);
+  if (length <= 0)
+    return NULL;
+
+  buffer = (wchar_t*)calloc((size_t)length, sizeof(wchar_t));
+  if (!buffer)
+    return NULL;
+
+  if (MultiByteToWideChar(code_page, flags, value, -1, buffer, length) == 0) {
+    free(buffer);
+    return NULL;
+  }
+
+  return buffer;
+}
+
+static wchar_t* bubi_ra_multi_byte_to_wide(const char* value) {
+  wchar_t* converted =
+      bubi_ra_multi_byte_to_wide_with_code_page(value, CP_UTF8,
+                                                MB_ERR_INVALID_CHARS);
+  if (converted)
+    return converted;
+
+  return bubi_ra_multi_byte_to_wide_with_code_page(value, CP_ACP, 0);
+}
+
+static int bubi_ra_wide_to_multi_byte(const wchar_t* value, char* buffer,
+                                      size_t size) {
+  int converted;
+  DWORD error;
+
+  if (!value || !buffer || size == 0 || size > (size_t)INT_MAX)
+    return BUBI_RA_CREDENTIAL_BACKEND_ERROR;
+
+  converted = WideCharToMultiByte(CP_UTF8, 0, value, -1, buffer, (int)size,
+                                  NULL, NULL);
+  if (converted != 0)
+    return 0;
+
+  error = GetLastError();
+  if (error == ERROR_NO_UNICODE_TRANSLATION) {
+    converted = WideCharToMultiByte(CP_ACP, 0, value, -1, buffer, (int)size,
+                                    NULL, NULL);
+    if (converted != 0)
+      return 0;
+
+    error = GetLastError();
+  }
+
+  return error != ERROR_SUCCESS ? (int)error : BUBI_RA_CREDENTIAL_BACKEND_ERROR;
+}
+
+static wchar_t* bubi_ra_credential_target(const char* service,
+                                          const char* account) {
+  wchar_t* service_wide = NULL;
+  wchar_t* account_wide = NULL;
+  wchar_t* target = NULL;
+  size_t target_length;
+
+  service_wide = bubi_ra_multi_byte_to_wide(service);
+  account_wide = bubi_ra_multi_byte_to_wide(account);
+
+  if (!service_wide || !account_wide)
+    goto cleanup;
+
+  target_length = wcslen(service_wide) + wcslen(account_wide) + 2;
+  target = (wchar_t*)calloc(target_length, sizeof(wchar_t));
+  if (!target)
+    goto cleanup;
+
+  _snwprintf_s(target, target_length, _TRUNCATE, L"%ls:%ls", service_wide,
+               account_wide);
+
+cleanup:
+  free(service_wide);
+  free(account_wide);
+  return target;
+}
+#endif
 
 static bubi_ra_client* bubi_context(rc_client_t* client) {
   return (bubi_ra_client*)rc_client_get_userdata(client);
@@ -551,10 +650,6 @@ int bubi_ra_deserialize_progress(bubi_ra_client* client, const uint8_t* buffer, 
   return client ? rc_client_deserialize_progress_sized(client->native, buffer, size) : -1;
 }
 
-#define BUBI_RA_CREDENTIAL_UNAVAILABLE -1
-#define BUBI_RA_CREDENTIAL_BACKEND_MISSING -2
-#define BUBI_RA_CREDENTIAL_BACKEND_ERROR -3
-
 #if defined(__linux__) && BUBI_RA_HAS_LIBSECRET
 static const SecretSchema bubi_ra_secret_schema = {
     "org.bubiboy.RetroAchievements", SECRET_SCHEMA_NONE,
@@ -589,6 +684,51 @@ int bubi_ra_credential_store(const char* service, const char* account,
     return BUBI_RA_CREDENTIAL_BACKEND_ERROR;
   }
   return 0;
+#elif defined(_WIN32)
+  wchar_t* target = NULL;
+  wchar_t* account_wide = NULL;
+  wchar_t* secret_wide = NULL;
+  size_t secret_length;
+  CREDENTIALW credential;
+  BOOL stored;
+  DWORD error;
+
+  target = bubi_ra_credential_target(service, account);
+  account_wide = bubi_ra_multi_byte_to_wide(account);
+  secret_wide = bubi_ra_multi_byte_to_wide(secret);
+
+  if (!target || !account_wide || !secret_wide) {
+    free(target);
+    free(account_wide);
+    free(secret_wide);
+    return BUBI_RA_CREDENTIAL_BACKEND_ERROR;
+  }
+
+  secret_length = wcslen(secret_wide);
+  if (secret_length > CRED_MAX_CREDENTIAL_BLOB_SIZE / sizeof(wchar_t)) {
+    SecureZeroMemory(secret_wide, (secret_length + 1) * sizeof(wchar_t));
+    free(target);
+    free(account_wide);
+    free(secret_wide);
+    return ERROR_BAD_LENGTH;
+  }
+
+  ZeroMemory(&credential, sizeof(credential));
+  credential.Type = CRED_TYPE_GENERIC;
+  credential.TargetName = target;
+  credential.UserName = account_wide;
+  credential.Persist = CRED_PERSIST_LOCAL_MACHINE;
+  credential.CredentialBlob = (LPBYTE)secret_wide;
+  credential.CredentialBlobSize = (DWORD)(secret_length * sizeof(wchar_t));
+
+  stored = CredWriteW(&credential, 0);
+  error = stored ? ERROR_SUCCESS : GetLastError();
+
+  SecureZeroMemory(secret_wide, (secret_length + 1) * sizeof(wchar_t));
+  free(target);
+  free(account_wide);
+  free(secret_wide);
+  return error != ERROR_SUCCESS ? (int)error : 0;
 #elif defined(__linux__)
   (void)service;
   (void)account;
@@ -642,6 +782,51 @@ int bubi_ra_credential_load(const char* service, const char* account,
   secret_password_free(value);
   (void)service;
   return 0;
+#elif defined(_WIN32)
+  wchar_t* target = NULL;
+  PCREDENTIALW credential = NULL;
+  wchar_t* secret_wide = NULL;
+  DWORD error;
+  size_t secret_length;
+  int result;
+
+  target = bubi_ra_credential_target(service, account);
+  if (!target)
+    return BUBI_RA_CREDENTIAL_BACKEND_ERROR;
+
+  if (!CredReadW(target, CRED_TYPE_GENERIC, 0, &credential)) {
+    error = GetLastError();
+    free(target);
+    return error == ERROR_NOT_FOUND ? BUBI_RA_CREDENTIAL_UNAVAILABLE
+                                    : (int)error;
+  }
+
+  free(target);
+
+  if (!credential ||
+      credential->CredentialBlobSize % sizeof(wchar_t) != 0) {
+    if (credential)
+      CredFree(credential);
+    return BUBI_RA_CREDENTIAL_BACKEND_ERROR;
+  }
+
+  secret_length = credential->CredentialBlobSize / sizeof(wchar_t);
+  secret_wide = (wchar_t*)calloc(secret_length + 1, sizeof(wchar_t));
+  if (!secret_wide) {
+    CredFree(credential);
+    return BUBI_RA_CREDENTIAL_BACKEND_ERROR;
+  }
+
+  memcpy(secret_wide, credential->CredentialBlob,
+         credential->CredentialBlobSize);
+  secret_wide[secret_length] = L'\0';
+
+  result = bubi_ra_wide_to_multi_byte(secret_wide, secret, secret_size);
+
+  SecureZeroMemory(secret_wide, (secret_length + 1) * sizeof(wchar_t));
+  free(secret_wide);
+  CredFree(credential);
+  return result;
 #elif defined(__linux__)
   (void)service;
   (void)account;
@@ -679,6 +864,22 @@ int bubi_ra_credential_delete(const char* service, const char* account) {
   (void)service;
   (void)cleared;
   return 0;
+#elif defined(_WIN32)
+  wchar_t* target = bubi_ra_credential_target(service, account);
+  BOOL deleted;
+  DWORD error;
+
+  if (!target)
+    return BUBI_RA_CREDENTIAL_BACKEND_ERROR;
+
+  deleted = CredDeleteW(target, CRED_TYPE_GENERIC, 0);
+  error = deleted ? ERROR_SUCCESS : GetLastError();
+  free(target);
+
+  if (error == ERROR_NOT_FOUND)
+    return 0;
+
+  return error != ERROR_SUCCESS ? (int)error : 0;
 #elif defined(__linux__)
   (void)service;
   (void)account;
