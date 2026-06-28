@@ -33,7 +33,7 @@ container run --arch "${container_arch}" --rm \
   bash -lc "
     set -euo pipefail
     apt-get update
-    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends cmake build-essential
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends cmake build-essential libsecret-1-dev pkg-config
     cmake -S native -B ${cmake_build_dir} -DCMAKE_BUILD_TYPE=Release
     cmake --build ${cmake_build_dir} --config Release
     cmake -S native/bubi_rcheevos -B ${ra_build_dir} -DCMAKE_BUILD_TYPE=Release

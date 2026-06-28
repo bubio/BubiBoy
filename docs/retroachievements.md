@@ -11,8 +11,11 @@ and Linux Softcore/Hardcore sessions.
   and runtime progress serialization.
 - `native/bubi_rcheevos` flattens the C API into an ownership-safe ABI for F#.
 - Passwords are never persisted. The username is stored in settings. On macOS, the
-  token is stored in Keychain under `org.bubiboy.RetroAchievements`. Linux does
-  not yet have secure token persistence.
+  token is stored in Keychain under `org.bubiboy.RetroAchievements`. On Linux, the
+  token is stored via Secret Service (`libsecret`) when available in the runtime.
+  If Secret Service is unavailable, the token is not persisted and the user must
+  re-authenticate after restart. Windows currently keeps the existing non-persistent
+  behavior.
 - A failed login or game identification never prevents the ROM from running. That
   ROM remains an offline session until it is reloaded.
 - Rich Presence is sampled from the active emulation session once per second and

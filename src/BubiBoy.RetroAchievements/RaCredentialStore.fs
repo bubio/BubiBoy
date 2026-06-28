@@ -5,6 +5,15 @@ open System.Runtime.InteropServices
 open System.Text
 
 module RaCredentialStore =
+    [<Literal>]
+    let private CredentialUnavailable = -1
+
+    [<Literal>]
+    let private CredentialBackendMissing = -2
+
+    [<Literal>]
+    let private CredentialBackendError = -3
+
     type Store =
         { SaveToken: string -> string -> Result<unit, string>
           TryLoadToken: string -> string option
@@ -13,41 +22,58 @@ module RaCredentialStore =
     [<Literal>]
     let private Service = "org.bubiboy.RetroAchievements"
 
+    let private isMacOs = RuntimeInformation.IsOSPlatform OSPlatform.OSX
+    let private isLinux = RuntimeInformation.IsOSPlatform OSPlatform.Linux
+    let private isWindows = RuntimeInformation.IsOSPlatform OSPlatform.Windows
+
+    let private saveFailureMessage (result: int) =
+        if isMacOs then
+            $"macOS Keychain returned status {result}."
+        elif isLinux then
+            match result with
+            | CredentialBackendMissing -> "Linux Secret Service (libsecret) support is not available in this build."
+            | CredentialBackendError -> "Linux Secret Service returned an error while storing the token."
+            | _ -> $"Linux credential storage returned status {result}."
+        elif isWindows then
+            "Secure RetroAchievements token persistence for Windows is not implemented yet."
+        else
+            "Secure RetroAchievements credential storage is not available on this platform yet."
+
     let saveToken username token =
         if String.IsNullOrWhiteSpace username || String.IsNullOrWhiteSpace token then
             Error "RetroAchievements username and token must not be empty."
-        elif not (RuntimeInformation.IsOSPlatform OSPlatform.OSX) then
-            Error "Secure RetroAchievements credential storage is not available on this platform yet."
+        elif not isMacOs && not isLinux then
+            Error(saveFailureMessage CredentialUnavailable)
         else
-            let result = NativeInterop.Native.bubi_ra_keychain_store (Service, username, token)
+            let result =
+                NativeInterop.Native.bubi_ra_credential_store (Service, username, token)
 
             if result = 0 then
                 Ok()
             else
-                Error $"macOS Keychain returned status {result}."
+                Error(saveFailureMessage result)
 
     let tryLoadToken username =
-        if
-            String.IsNullOrWhiteSpace username
-            || not (RuntimeInformation.IsOSPlatform OSPlatform.OSX)
-        then
+        if String.IsNullOrWhiteSpace username || (not isMacOs && not isLinux) then
             None
         else
             let buffer = StringBuilder(1024)
 
             let result =
-                NativeInterop.Native.bubi_ra_keychain_load (Service, username, buffer, unativeint buffer.Capacity)
+                NativeInterop.Native.bubi_ra_credential_load (Service, username, buffer, unativeint buffer.Capacity)
 
-            if result = 0 then Some(buffer.ToString()) else None
+            if result = 0 then
+                Some(buffer.ToString())
+            elif isLinux && (result = CredentialBackendMissing || result = CredentialUnavailable) then
+                None
+            else
+                None
 
     let deleteToken username =
-        if
-            String.IsNullOrWhiteSpace username
-            || not (RuntimeInformation.IsOSPlatform OSPlatform.OSX)
-        then
+        if String.IsNullOrWhiteSpace username || (not isMacOs && not isLinux) then
             ()
         else
-            NativeInterop.Native.bubi_ra_keychain_delete (Service, username) |> ignore
+            NativeInterop.Native.bubi_ra_credential_delete (Service, username) |> ignore
 
     let store =
         { SaveToken = saveToken

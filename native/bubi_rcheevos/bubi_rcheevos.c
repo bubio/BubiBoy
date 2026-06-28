@@ -17,6 +17,10 @@
 #include <Security/Security.h>
 #endif
 
+#if defined(__linux__) && BUBI_RA_HAS_LIBSECRET
+#include <libsecret/secret.h>
+#endif
+
 typedef struct bubi_ra_pending_request {
   struct bubi_ra_pending_request* next;
   rc_client_server_callback_t callback;
@@ -547,8 +551,18 @@ int bubi_ra_deserialize_progress(bubi_ra_client* client, const uint8_t* buffer, 
   return client ? rc_client_deserialize_progress_sized(client->native, buffer, size) : -1;
 }
 
-int bubi_ra_keychain_store(const char* service, const char* account,
-                           const char* secret) {
+#define BUBI_RA_CREDENTIAL_UNAVAILABLE -1
+#define BUBI_RA_CREDENTIAL_BACKEND_MISSING -2
+#define BUBI_RA_CREDENTIAL_BACKEND_ERROR -3
+
+#if defined(__linux__) && BUBI_RA_HAS_LIBSECRET
+static const SecretSchema bubi_ra_secret_schema = {
+    "org.bubiboy.RetroAchievements", SECRET_SCHEMA_NONE,
+    {{"account", SECRET_SCHEMA_ATTRIBUTE_STRING}, {NULL, 0}}};
+#endif
+
+int bubi_ra_credential_store(const char* service, const char* account,
+                             const char* secret) {
 #if defined(__APPLE__)
   SecKeychainItemRef item = NULL;
   OSStatus status = SecKeychainFindGenericPassword(
@@ -564,14 +578,32 @@ int bubi_ra_keychain_store(const char* service, const char* account,
         (UInt32)strlen(secret), secret, NULL);
   }
   return (int)status;
+#elif defined(__linux__) && BUBI_RA_HAS_LIBSECRET
+  GError* error = NULL;
+  gboolean stored = secret_password_store_sync(
+      &bubi_ra_secret_schema, SECRET_COLLECTION_DEFAULT, service, secret, NULL,
+      &error, "account", account, NULL);
+  if (!stored) {
+    if (error)
+      g_error_free(error);
+    return BUBI_RA_CREDENTIAL_BACKEND_ERROR;
+  }
+  return 0;
+#elif defined(__linux__)
+  (void)service;
+  (void)account;
+  (void)secret;
+  return BUBI_RA_CREDENTIAL_BACKEND_MISSING;
 #else
-  (void)service; (void)account; (void)secret;
-  return -1;
+  (void)service;
+  (void)account;
+  (void)secret;
+  return BUBI_RA_CREDENTIAL_UNAVAILABLE;
 #endif
 }
 
-int bubi_ra_keychain_load(const char* service, const char* account,
-                          char* secret, size_t secret_size) {
+int bubi_ra_credential_load(const char* service, const char* account,
+                            char* secret, size_t secret_size) {
 #if defined(__APPLE__)
   void* data = NULL;
   UInt32 length = 0;
@@ -588,13 +620,44 @@ int bubi_ra_keychain_load(const char* service, const char* account,
     SecKeychainItemFreeContent(NULL, data);
   }
   return (int)status;
+#elif defined(__linux__) && BUBI_RA_HAS_LIBSECRET
+  GError* error = NULL;
+  gchar* value = secret_password_lookup_sync(&bubi_ra_secret_schema, NULL, &error,
+                                             "account", account, NULL);
+  if (error) {
+    g_error_free(error);
+    return BUBI_RA_CREDENTIAL_BACKEND_ERROR;
+  }
+  if (!value)
+    return BUBI_RA_CREDENTIAL_UNAVAILABLE;
+
+  size_t length = strlen(value);
+  if (!secret || secret_size == 0 || length >= secret_size) {
+    secret_password_free(value);
+    return BUBI_RA_CREDENTIAL_BACKEND_ERROR;
+  }
+
+  memcpy(secret, value, length);
+  secret[length] = '\0';
+  secret_password_free(value);
+  (void)service;
+  return 0;
+#elif defined(__linux__)
+  (void)service;
+  (void)account;
+  (void)secret;
+  (void)secret_size;
+  return BUBI_RA_CREDENTIAL_BACKEND_MISSING;
 #else
-  (void)service; (void)account; (void)secret; (void)secret_size;
-  return -1;
+  (void)service;
+  (void)account;
+  (void)secret;
+  (void)secret_size;
+  return BUBI_RA_CREDENTIAL_UNAVAILABLE;
 #endif
 }
 
-int bubi_ra_keychain_delete(const char* service, const char* account) {
+int bubi_ra_credential_delete(const char* service, const char* account) {
 #if defined(__APPLE__)
   SecKeychainItemRef item = NULL;
   OSStatus status = SecKeychainFindGenericPassword(
@@ -605,8 +668,24 @@ int bubi_ra_keychain_delete(const char* service, const char* account) {
     CFRelease(item);
   }
   return (int)status;
+#elif defined(__linux__) && BUBI_RA_HAS_LIBSECRET
+  GError* error = NULL;
+  gboolean cleared = secret_password_clear_sync(
+      &bubi_ra_secret_schema, NULL, &error, "account", account, NULL);
+  if (error) {
+    g_error_free(error);
+    return BUBI_RA_CREDENTIAL_BACKEND_ERROR;
+  }
+  (void)service;
+  (void)cleared;
+  return 0;
+#elif defined(__linux__)
+  (void)service;
+  (void)account;
+  return BUBI_RA_CREDENTIAL_BACKEND_MISSING;
 #else
-  (void)service; (void)account;
-  return -1;
+  (void)service;
+  (void)account;
+  return BUBI_RA_CREDENTIAL_UNAVAILABLE;
 #endif
 }
