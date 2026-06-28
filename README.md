@@ -102,6 +102,18 @@ Output: `src/BubiBoy.App/bin/Release/net10.0/<rid>/publish`
 
 The CI workflow wraps this publish output as an AppImage.
 
+On Apple Silicon macOS, you can run Linux-native builds without a separate VM manager by using Apple Container:
+
+```sh
+container system start
+tools/build-linux-with-container.sh linux-arm64
+tools/build-linux-with-container.sh linux-x64
+```
+
+This helper script runs a Linux container (`mcr.microsoft.com/dotnet/sdk:10.0`), builds `libbubi_miniaudio.so`,
+publishes for the selected Linux RID, and copies the native library into
+`src/BubiBoy.App/bin/Release/net10.0/<rid>/publish/runtimes/<rid>/native`.
+
 ### Windows
 
 ```sh
